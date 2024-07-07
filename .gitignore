@@ -1,0 +1,11 @@
+/demo
+*.py
+/datas/
+/tmp/
+/.idea/
+go.sum
+/qrcodes/
+__debug_bin
+.vscode/launch.json
+*.exe
+snapshots/
