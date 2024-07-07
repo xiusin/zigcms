@@ -2,12 +2,12 @@ package mgr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/kataras/iris/v12/x/errors"
 )
 
 var pubOpts = chromedp.DefaultExecAllocatorOptions[:]

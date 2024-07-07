@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/kataras/golog"
-	"pengwin.com/live/service-live-cookie/mgr"
+	"github.com/xiusin/webdriver/mgr"
 )
 
 type Resp struct {
