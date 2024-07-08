@@ -31,7 +31,11 @@ func (hctx *Creator) Run() {
 	hctx._cookies = hctx.ParseCookie(cookies)
 
 	time.Sleep(time.Second * 5)
-	filepath := []string{"/Users/xiusin/Desktop/BMjAyNDAxMDQxODMzMzdfMjIzOTI5Nzk2NV8xMjEzNDA5MDU5OTBfMV8z_b_B79e9b0fce435fce6baee011d3816c302.mp4"}
+	filepath := []string{}
+
+	// 下载视频
+
+	
 
 	tasks := chromedp.Tasks{
 		chromedp.ActionFunc(func(ctx context.Context) error {

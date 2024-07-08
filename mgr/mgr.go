@@ -36,13 +36,13 @@ func init() {
 		chromedp.Flag("disable-renderer-backgrounding", true),
 		chromedp.Flag("disable-sync", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-web-security", true),
+		chromedp.Flag("disable-web-security", false),
 		chromedp.Flag("disable-extensions", true),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
 		chromedp.Flag("enable-automation", false),
 		chromedp.Flag("disable-infobars", true),
 		chromedp.Flag("disable-notifications", true),
-		//chromedp.DisableGPU,
+		chromedp.DisableGPU,
 		// chromedp.NoSandbox,
 		// chromedp.Flag("disable-setuid-sandbox", true),
 		//chromedp.Flag("blink-settings", "imagesEnabled=false"),
@@ -142,7 +142,6 @@ func (mgr *CtxMgr) GetHeadlessCtx(req StartReq) PlatformInf {
 	} else {
 		return nil
 	}
-	fmt.Println(req.Platform)
 	mgr.ctxs[req.ClientId] = hctx
 	hctx.Run()
 
