@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/page"
+	"golang.org/x/exp/slog"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
-	"github.com/kataras/golog"
 )
 
 type Doudian struct {
@@ -51,7 +51,7 @@ func (hctx *Doudian) Run() {
 
 	begin := time.Now()
 	defer func() {
-		golog.Info("抖店扫码流程耗时", time.Since(begin).String())
+		slog.Info("抖店扫码流程耗时", time.Since(begin).String())
 	}()
 
 	hctx.uriMap = map[string]network.RequestID{
@@ -114,7 +114,7 @@ func (hctx *Doudian) Run() {
 	}
 
 	if err := chromedp.Run(ctx, tasks); err != nil {
-		golog.Error(err)
+		slog.Error(err.Error())
 		return
 	}
 	hctx.ScanEvent(ctx)
@@ -260,7 +260,7 @@ func (hctx *Doudian) handleEvent(ctx context.Context, cb func(string)) {
 			}
 			var currentUrl string
 			_ = chromedp.Run(ctx, chromedp.Location(&currentUrl), chromedp.Evaluate("localStorage.setItem('$_GUIDE_PREFIX_homepage-guide', '1');", nil)) // 关闭引导手册
-			golog.Println(currentUrl)
+			slog.Info(currentUrl)
 			if strings.Contains(currentUrl, "https://insurance.jinritemai.com/home") {
 				hctx.scanned = true
 				hctx.clickToBaoHuaXia(ctx)
@@ -359,7 +359,7 @@ func (hctx *Doudian) QC(ctx context.Context) {
 		return
 	}
 	defer func() {
-		golog.Debug("千川信息获取完成", hctx.QcCookie)
+		slog.Debug("千川信息获取完成", hctx.QcCookie)
 	}()
 	defer func() {
 		hctx.QcEnd = true
@@ -371,7 +371,7 @@ func (hctx *Doudian) QC(ctx context.Context) {
 	info := hctx.GetTarget(ctx, "https://qianchuan.jinritemai.com/")
 	if info == nil {
 		hctx.Unlock()
-		golog.Debug("没有获取到千川页签")
+		slog.Debug("没有获取到千川页签")
 		return
 	}
 
@@ -400,10 +400,10 @@ func (hctx *Doudian) QC(ctx context.Context) {
 	}()
 
 	if hctx.Aavid = hctx.getUrlParam(qc, "aavid"); len(hctx.Aavid) == 0 {
-		golog.Debug("无法获取aavid")
+		slog.Debug("无法获取aavid")
 		return
 	}
-	golog.Debug("获取aavid:", hctx.Aavid)
+	slog.Debug("获取aavid:", hctx.Aavid)
 	dataReportUrl := "https://qianchuan.jinritemai.com/data-report/evaluation/today-live?aavid=" + hctx.Aavid
 	chromedp.Run(qc, chromedp.Navigate(dataReportUrl), chromedp.WaitReady(".aweme-select-container"))
 	hctx.GetAnchorIds(qc)
@@ -415,11 +415,11 @@ func (hctx *Doudian) QC(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				if len(hctx.AnchorIds) > 0 && hctx.QcCookie != "" {
-					golog.Debug("千川信息已完整,退出")
+					slog.Debug("千川信息已完整,退出")
 					cancel()
 					return
 				} else if times%30 == 0 {
-					golog.Debug("等待千川信息完成", len(hctx.AnchorIds) > 0, hctx.QcCookie != "")
+					slog.Debug("等待千川信息完成", len(hctx.AnchorIds) > 0, hctx.QcCookie != "")
 				}
 				times++
 			case <-qc.Done():
@@ -441,9 +441,9 @@ func (hctx *Doudian) LP(ctx context.Context) {
 	if !hctx.HasLp || len(hctx.LpCookie) > 0 {
 		return
 	}
-	golog.Debug("进入获取罗盘cookie逻辑")
+	slog.Debug("进入获取罗盘cookie逻辑")
 	defer func() {
-		golog.Debug("获取罗盘cookie结束", hctx.LpCookie)
+		slog.Debug("获取罗盘cookie结束", hctx.LpCookie)
 	}()
 
 	sel := hctx.GetBtnSel(ctx, "电商罗盘", ".index_wrapper__2PBS2 > div")
@@ -504,7 +504,7 @@ func (hctx *Doudian) LP(ctx context.Context) {
 
 // ScanEvent 监听扫码状态
 func (hctx *Doudian) ScanEvent(ctx context.Context) {
-	golog.Debug("注册扫码事件监听")
+	slog.Debug("注册扫码事件监听")
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if len(hctx.CheckUri) == 0 {
 			return
@@ -553,9 +553,9 @@ func (hctx *Doudian) GetAnchorIds(ctx context.Context) {
 		var ticker = time.NewTicker(time.Second * 2)
 		defer ticker.Stop()
 		fn := func() {
-			golog.Debug("千川信息anchor_ids: ", len(hctx.AnchorIds), " cookie: ", len(hctx.QcCookie), " nodes:", hctx.GetNodeCnt(ctx, ".select-custom"))
+			slog.Debug("千川信息anchor_ids: ", len(hctx.AnchorIds), " cookie: ", len(hctx.QcCookie), " nodes:", hctx.GetNodeCnt(ctx, ".select-custom"))
 			chromedp.Run(ctx, chromedp.WaitReady(".select-custom", chromedp.ByQuery), chromedp.Click(".select-custom", chromedp.ByQuery))
-			golog.Debug("点击下拉框")
+			slog.Debug("点击下拉框")
 		}
 
 		fn()
@@ -584,18 +584,18 @@ func (hctx *Doudian) GetAnchorIds(ctx context.Context) {
 			}
 			if strings.Contains(ev.Headers[":path"].(string), api) && len(hctx.QcCookie) == 0 {
 				if cookie := ev.Headers["cookie"]; cookie != nil {
-					golog.Debug("获取到千川cookie")
+					slog.Debug("获取到千川cookie")
 					hctx.QcCookie = cookie.(string)
 				}
 			}
 		case *network.EventLoadingFinished:
 			if ev.RequestID == targetID {
 				go func() {
-					golog.Debug("执行获取")
+					slog.Debug("执行获取")
 					c := chromedp.FromContext(ctx)
 					body, _ := network.GetResponseBody(ev.RequestID).Do(cdp.WithExecutor(ctx, c.Target))
 					var resp listBoundUserIDsResp
-					golog.Debug("解析json", json.Unmarshal(body, &resp))
+					slog.Debug("解析json", json.Unmarshal(body, &resp))
 
 					for _, info := range resp.Data.BindUserInfos {
 						avatar := ""
@@ -613,7 +613,7 @@ func (hctx *Doudian) GetAnchorIds(ctx context.Context) {
 			}
 		}
 	})
-	golog.Debug("注册获取anchor_ids")
+	slog.Debug("注册获取anchor_ids")
 }
 
 // GetTarget 获取指定路由的tab页签

@@ -8,7 +8,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
-	"github.com/kataras/golog"
+	"golang.org/x/exp/slog"
 )
 
 // https://www.yujn.cn/?action=interface&id=310
@@ -34,8 +34,6 @@ func (hctx *Creator) Run() {
 	filepath := []string{}
 
 	// 下载视频
-
-	
 
 	tasks := chromedp.Tasks{
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -76,7 +74,7 @@ func (hctx *Creator) Run() {
 		chromedp.Click(".recommendDisplay--RleAd .recommendCover--JprtV:nth-child(1) img", chromedp.ByQuery),
 	}
 	if err := chromedp.Run(ctx, tasks); err != nil {
-		golog.Error(err)
+		slog.Error(err.Error())
 		return
 	}
 

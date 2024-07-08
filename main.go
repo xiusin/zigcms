@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/kataras/golog"
 	"github.com/xiusin/webdriver/mgr"
 )
 
@@ -20,8 +19,7 @@ type Resp struct {
 
 func init() {
 	time.Local = time.FixedZone("CST", 8*3600)
-	rand.Seed(time.Now().UnixNano())
-	golog.SetLevel("DEBUG")
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 	os.Mkdir("snapshots", os.ModePerm)
 }
 

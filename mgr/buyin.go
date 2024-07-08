@@ -9,7 +9,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/kataras/golog"
+	"golang.org/x/exp/slog"
 )
 
 type Buyin struct {
@@ -42,11 +42,10 @@ func (hctx *Buyin) Run() {
 		chromedp.Navigate(hctx.GetUrl()),
 	}
 	if err := chromedp.Run(ctx, tasks); err != nil {
-		golog.Error(err)
+		slog.Error(err.Error())
 		return
 	}
 
-	fmt.Println("exit")
 	// go hctx.event(ctx, "/dashboard")
 	<-hctx.quit
 }

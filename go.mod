@@ -5,7 +5,6 @@ go 1.19
 require (
 	github.com/chromedp/cdproto v0.0.0-20240626232640-f933b107c653
 	github.com/chromedp/chromedp v0.9.5
-	github.com/kataras/golog v0.1.8
 )
 
 require (
@@ -14,7 +13,7 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/kataras/pio v0.0.11 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
 	golang.org/x/sys v0.22.0 // indirect
 )

@@ -9,7 +9,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
-	"github.com/kataras/golog"
+	"golang.org/x/exp/slog"
 )
 
 type Eos struct {
@@ -35,7 +35,7 @@ func (hctx *Eos) Run() {
 		chromedp.Navigate(hctx.GetUrl()),
 		chromedp.WaitReady(hctx.WaitSel(), chromedp.ByQuery),
 	}); err != nil {
-		golog.Error(err)
+		slog.Error("初始化浏览器失败", slog.Any("平台", "Eos"))
 		return
 	}
 
@@ -88,7 +88,7 @@ func (hctx *Eos) event(ctx context.Context, landFace string) {
 			if strings.Contains(url, landFace) {
 				hctx.canGetCookie = true // 标志可以获取cookie信息
 			} else if strings.Contains(url, "/livesite/live/home") {
-				golog.Debug("从首页跳转到直播间页面")
+				slog.Debug("从首页跳转到直播间页面")
 				chromedp.Run(ctx, chromedp.Navigate("https://eos.douyin.com/livesite/live/current"))
 			} else if strings.Contains(url, "login") { // 防止中间页面
 				darenNodeCnt := hctx.GetNodeCnt(ctx, ".src-pages-login-modules-Introductory-index-module__grouponCommerce__ezlqi")

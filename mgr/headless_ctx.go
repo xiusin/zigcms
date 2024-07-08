@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"runtime"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
-	"github.com/kataras/golog"
 
 	"github.com/chromedp/chromedp"
 )
@@ -203,7 +203,7 @@ func (hctx *HeadlessCtx) getUrlParam(ctx context.Context, param string) string {
 	}
 
 	if vv == "" {
-		golog.Debug("无法获取"+param, currentUrl)
+		slog.Debug("无法获取"+param, currentUrl)
 	}
 	return vv
 }
@@ -212,7 +212,7 @@ func (hctx *HeadlessCtx) GetSnapshot(ctx context.Context, tip string) {
 	if runtime.GOOS == "darwin" {
 		return
 	}
-	defer golog.Debug(tip + "截取快照图片完成")
+	defer slog.Debug(tip + "截取快照图片完成")
 	var buf []byte
 	chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 80))
 	os.WriteFile(fmt.Sprintf("snapshots/%s.jpg", hctx.Id), buf, 0o644)
