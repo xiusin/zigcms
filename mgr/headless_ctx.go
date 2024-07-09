@@ -86,11 +86,7 @@ func (hctx *HeadlessCtx) GetNodeCnt(ctx context.Context, sel string) int {
 
 func (hctx *HeadlessCtx) Opts() []chromedp.ExecAllocatorOption {
 	hctx.tmpDir, _ = os.MkdirTemp("tmp", "*")
-	opts := append(pubOpts[:], chromedp.UserDataDir(hctx.tmpDir))
-	if runtime.GOOS == "darwin" {
-		opts = append(opts, chromedp.ExecPath("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"))
-	}
-	return opts
+	return append(pubOpts[:], chromedp.UserDataDir(hctx.tmpDir))
 }
 
 // HijackingRequest 劫持请求信息

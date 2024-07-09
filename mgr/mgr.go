@@ -131,13 +131,7 @@ func (mgr *CtxMgr) GetHeadlessCtx(req StartReq) PlatformInf {
 	}
 
 	var hctx PlatformInf
-	if req.Platform == "doudian" {
-		hctx = &Doudian{HeadlessCtx: innerCtx, Type: req.Type, QcId: req.QcId, NextCh: make(chan struct{}), ShopName: req.ShopName}
-	} else if req.Platform == "eos" {
-		hctx = &Eos{HeadlessCtx: innerCtx}
-	} else if req.Platform == "buyin" {
-		hctx = &Buyin{HeadlessCtx: innerCtx}
-	} else if req.Platform == "creator" {
+	if req.Platform == "creator" {
 		hctx = &Creator{HeadlessCtx: innerCtx}
 	} else {
 		return nil

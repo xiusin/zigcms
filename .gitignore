@@ -10,3 +10,4 @@ __debug_bin
 *.exe
 snapshots/
 mgr.bin
+.zig-cache
