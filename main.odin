@@ -4,7 +4,9 @@ import "core:bytes"
 import "core:encoding/json"
 import "core:fmt"
 import "core:math"
+import "core:mem"
 import "core:strings"
+import "core:sync/chan"
 import "core:unicode/utf8"
 
 API_URL :: "https://webhook.site/4022e8ae-c3ae-4f2f-a85f-b3d891a71593"
@@ -21,6 +23,10 @@ Person :: struct {
 
 main :: proc() {
 	fmt.println("api_url =", API_URL)
+
+	ch, _ := chan.create_unbuffered(typeid Person, allocator = context.allocator)
+
+
 	t_strings()
 }
 
@@ -33,18 +39,33 @@ t_strings :: proc() {
 	p.address = strings.concatenate({"中国", "河南", "郑州", "黄河路"})
 	assert(p.address == "中国河南郑州黄河路") // TODO 打印有问题,转为了unicode码了
 
-	builder := strings.builder_from_bytes(str_to_bytes("this is a bytes"))
-	strings.builder_grow(&builder, 1024)
-	strings.write_string(&builder, ". we are the champions.")
+	fmt.println(&p)
+	byts := str_to_bytes("this is a bytes")
+
+	// bytes: [10]byte // 有点像zig 先初始化一个容器
+	// builder := strings.builder_from_bytes(bytes[:])
+
+	// 初始化动态容器
+	builder := strings.builder_make()
+	strings.write_string(&builder, "we are the champions.")
 
 	defer strings.builder_destroy(&builder)
+	fmt.println(
+		"builder.to_string =",
+		strings.to_string(builder),
+		" len=",
+		len(strings.to_string(builder)),
+	)
 
-	// 如何打印
+	strings.builder_grow(&builder, 1024)
+	strings.write_string(&builder, " growed append!")
 
+	fmt.println(strings.to_string(builder))
 
+	fmt.println("strings.to_pascal_case =", strings.to_pascal_case("hello world"))
 }
 
 // str_to_bytes 字符串转换为字节切片
-str_to_bytes :: proc(str: string) -> []u8 {
-	return transmute([]u8)str
+str_to_bytes :: proc(str: string) -> []byte {
+	return transmute([]byte)str
 }
