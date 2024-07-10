@@ -1,0 +1,33 @@
+package main
+
+import "core:fmt"
+import "core:io"
+import "core:net"
+import "core:os"
+import "vendors/odin-http/client"
+
+main :: proc() {
+	cwd := os.get_current_directory()
+	req: client.Request
+
+	res, err := client.request(&req, "https://webhook.site/4022e8ae-c3ae-4f2f-a85f-b3d891a71593")
+	if err != nil {
+		fmt.printf("Request failed: %s", err)
+		return
+	}
+	defer client.response_destroy(&res)
+
+	fmt.printf("Status: %s\n", res.status)
+	fmt.printf("Headers: %v\n", res.headers)
+	fmt.printf("Cookies: %v\n", res.cookies)
+
+	body, allocation, berr := client.response_body(&res)
+	if berr != nil {
+		fmt.printf("Error retrieving response body: %s", berr)
+		return
+	}
+	defer client.body_destroy(body, allocation)
+
+	fmt.println(body)
+
+}

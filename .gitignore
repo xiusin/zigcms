@@ -11,3 +11,7 @@ __debug_bin
 snapshots/
 mgr.bin
 .zig-cache
+vendors/
+webdriver.o
+webdriver
+
