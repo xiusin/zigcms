@@ -7,6 +7,7 @@ import "core:math"
 import "core:mem"
 import "core:strings"
 import "core:sync/chan"
+import "core:time"
 import "core:unicode/utf8"
 
 API_URL :: "https://webhook.site/4022e8ae-c3ae-4f2f-a85f-b3d891a71593"
@@ -22,15 +23,29 @@ Person :: struct {
 
 
 main :: proc() {
-	fmt.println("api_url =", API_URL)
-
-	ch, _ := chan.create_unbuffered(typeid Person, allocator = context.allocator)
-
-
+	t_time()
 	t_strings()
 }
 
+
+t_time :: proc() {
+	fmt.println("=========== time  S =============")
+	now := time.now()
+	fmt.println("time.unix =", time.time_to_unix(now))
+	time.accurate_sleep(time.Second * 2)
+	fmt.println("time.unix =", time.time_to_unix(time.time_add(now, time.Second * 2)))
+    
+    // 缺少时区数据
+	y, m, d := time.date(now)
+	h, i, s := time.clock(now)
+
+	fmt.printf("当前时间 = %d-%d-%d %d:%d:%d\n", y, m, d, h, i, s)
+
+	fmt.println("=========== time  E =============\n\n\n")
+}
+
 t_strings :: proc() {
+	fmt.println("=========== strings  S =============")
 	str := `{"name": "xiusin", "age": 2, "active": false, "friends": ["zhangsan", "lisi"], "score": 92.19992838}`
 	p: Person
 	_ = json.unmarshal(str_to_bytes(str), &p)
@@ -63,6 +78,8 @@ t_strings :: proc() {
 	fmt.println(strings.to_string(builder))
 
 	fmt.println("strings.to_pascal_case =", strings.to_pascal_case("hello world"))
+
+	fmt.println("=========== strings  E =============")
 }
 
 // str_to_bytes 字符串转换为字节切片
