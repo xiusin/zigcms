@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/xiusin/webdriver/mgr"
@@ -20,7 +19,6 @@ type Resp struct {
 func init() {
 	time.Local = time.FixedZone("CST", 8*3600)
 	rand.New(rand.NewSource(time.Now().UnixNano()))
-	os.Mkdir("snapshots", os.ModePerm)
 }
 
 func main() {

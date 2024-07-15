@@ -1,0 +1,30 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "extensions": {
+        "recommendations": [
+            "ziglang.vscode-zig",
+            "lorenzopirro.zig-snippets",
+            "bwork.zig-tools",
+            "streetsidesoftware.code-spell-checker",
+            "MS-CEINTL.vscode-language-pack-zh-hans",
+            "golang.go",
+            "whosydd.go-impl",
+            "wero.go-struct-tag",
+            "k--kato.intellij-idea-keybindings",
+            "MarsCode.marscode-extension",
+            "DanielGavin.ols",
+        ]
+    },
+    "settings": {
+        "editor.fontSize": 13,
+        "editor.fontFamily": "Hack Nerd Font Mono, Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
+        "editor.autoIndent": "advanced",
+        "editor.fontLigatures": true,
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": true,
+    }
+}
