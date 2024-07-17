@@ -42,9 +42,15 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("zap", zap.module("zap"));
 
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
+    const zig_webui = b.dependency("zig-webui", .{
+        .target = target,
+        .optimize = optimize,
+        .enable_tls = false, // whether enable tls support
+        .is_static = true, // whether static link
+    });
+
+    exe.root_module.addImport("webui", zig_webui.module("webui"));
+
     b.installArtifact(exe);
 
     // This *creates* a Run step in the build graph, to be executed when another

@@ -1,12 +1,11 @@
 const std = @import("std");
 const logger = std.log.scoped(.main);
+const webui = @import("webui");
 
 var called: u64 = 1;
 
 pub fn main() !void {
-    defer {
-        std.debug.print("exit...", .{});
-    }
+    start_webui();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -74,13 +73,6 @@ pub fn main() !void {
     // _ = result; // autofix
     // logger.debug("async result = {d}", .{await result});
 
-    const _i88: i8 = 10;
-
-    var pI88 = &_i88;
-
-    pI88.* += 1;
-
-    std.log.debug("{d} - {d}", .{ pI88.*, _i88 });
 }
 
 fn async_fn() u64 {
@@ -90,4 +82,10 @@ fn async_fn() u64 {
 fn once_call() void {
     called += 1;
     logger.debug("once called times = {d}", .{called});
+}
+
+fn start_webui() void {
+    var nwin = webui.newWindow();
+    _ = nwin.show("https://star.xiusin.cn/");
+    webui.wait();
 }

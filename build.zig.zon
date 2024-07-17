@@ -7,6 +7,10 @@
             .url = "https://github.com/zigzap/zap/archive/refs/tags/v0.8.0.tar.gz",
             .hash = "12209936c3333b53b53edcf453b1670babb9ae8c2197b1ca627c01e72670e20c1a21",
         },
+        .@"zig-webui" = .{
+            .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
+            .hash = "12202d3d03ad02a9f8c083b8278f6d66350abdac421f9c645d6cb8c838082cd5d3df",
+        },
     },
     .paths = .{
         "build.zig",
