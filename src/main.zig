@@ -1,16 +1,19 @@
 const std = @import("std");
 const logger = std.log.scoped(.main);
 const webui = @import("./modules/webui.zig");
-const regex = @import("./modules//regex.zig");
+const regex = @import("./modules/regex.zig");
+const zmpl = @import("./modules/zmpl.zig");
 
 var called: u64 = 1;
 
 pub fn main() !void {
-    // webui.start();
-    try regex.start();
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    try zmpl.start(allocator);
+
+    // webui.start();
+    // try regex.start();
+
 
     var h = std.StringHashMap([]const u8).init(allocator);
     defer h.deinit();

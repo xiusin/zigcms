@@ -19,6 +19,14 @@
             .url = "https://github.com/tiehuis/zig-regex/archive/master.tar.gz",
             .hash = "1220b497739b6fd60f627da85862cbd0cec01f3d6b7ddaa923057a7999ecfa138704",
         },
+        .zmpl = .{
+            .url = "https://github.com/jetzig-framework/zmpl/archive/main.tar.gz",
+            .hash = "12207c30c6fbcb8c7519719fc47ff9d0acca72a3557ec671984d16260bdf1c832740",
+        },
+        .json = .{
+            .url = "https://github.com/getty-zig/json/archive/main.tar.gz",
+            .hash = "1220c7d749d83bcac8daecd67f1f78ee2762df10c9fef123bbf44c882965f644c1e5",
+        },
     },
     .paths = .{
         "build.zig",

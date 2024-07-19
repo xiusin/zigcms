@@ -27,33 +27,23 @@ pub fn build(b: *std.Build) void {
     // running `zig build`).
     b.installArtifact(lib);
 
-    const exe = b.addExecutable(.{
-        .name = "vendor",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const exe = b.addExecutable(.{.name = "vendor",.root_source_file = b.path("src/main.zig"),.target = target,.optimize = optimize});
 
-    const zap = b.dependency("zap", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    const zap = b.dependency("zap", .{.target = target, .optimize = optimize});
     exe.root_module.addImport("zap", zap.module("zap"));
 
-    const zig_webui = b.dependency("zig-webui", .{
-        .target = target,
-        .optimize = optimize,
-        .enable_tls = false,
-        .is_static = true,
-    });
-
-    const regex = b.dependency("regex", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("regex", regex.module( "regex"));
+    const zig_webui = b.dependency("zig-webui", .{.target = target,.optimize = optimize,.enable_tls = false,.is_static = true});
     exe.root_module.addImport("webui", zig_webui.module("webui"));
-    // exe.root_module.addImport("capy", capy);
+
+    const regex = b.dependency("regex", .{.target = target,.optimize = optimize});
+    exe.root_module.addImport("regex", regex.module( "regex"));
+
+    const zmpl = b.dependency("zmpl", .{.target = target,.optimize = optimize});
+    exe.root_module.addImport("zmpl", zmpl.module( "zmpl"));
+
+    const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("pretty", pretty.module("pretty"));
+
     b.installArtifact(exe);
 
     // This *creates* a Run step in the build graph, to be executed when another

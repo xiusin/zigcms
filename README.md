@@ -17,3 +17,5 @@ backend:
     - 视频合成
     - 视频发布
 
+https://github.com/timfayz/pretty/archive/main.tar.gz
+
