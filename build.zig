@@ -1,19 +1,17 @@
 const std = @import("std");
+// const build_capy = @import("capy");
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
 pub fn build(b: *std.Build) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
+
+    // const capy_dep = b.dependency("capy", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    //     .app_name = @as([]const u8, "capy-template"),
+    // });
+    // const capy = capy_dep.module("capy");
+
 
     const lib = b.addStaticLibrary(.{
         .name = "vendor",
@@ -45,12 +43,17 @@ pub fn build(b: *std.Build) void {
     const zig_webui = b.dependency("zig-webui", .{
         .target = target,
         .optimize = optimize,
-        .enable_tls = false, // whether enable tls support
-        .is_static = true, // whether static link
+        .enable_tls = false,
+        .is_static = true,
     });
 
+    const regex = b.dependency("regex", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("regex", regex.module( "regex"));
     exe.root_module.addImport("webui", zig_webui.module("webui"));
-
+    // exe.root_module.addImport("capy", capy);
     b.installArtifact(exe);
 
     // This *creates* a Run step in the build graph, to be executed when another

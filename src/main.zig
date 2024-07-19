@@ -1,11 +1,13 @@
 const std = @import("std");
 const logger = std.log.scoped(.main);
-const webui = @import("webui");
+const webui = @import("./modules/webui.zig");
+const regex = @import("./modules//regex.zig");
 
 var called: u64 = 1;
 
 pub fn main() !void {
-    start_webui();
+    // webui.start();
+    try regex.start();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -84,8 +86,3 @@ fn once_call() void {
     logger.debug("once called times = {d}", .{called});
 }
 
-fn start_webui() void {
-    var nwin = webui.newWindow();
-    _ = nwin.show("https://star.xiusin.cn/");
-    webui.wait();
-}
