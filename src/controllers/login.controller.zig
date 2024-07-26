@@ -21,9 +21,15 @@ pub const Login = struct {
 
         while (try result.next()) |row| {
             const num = row.get(i32, 0);
-            std.log.info("\nUser {d}", .{num});
+            std.log.info("User {d}", .{num});
         }
-
+        std.log.err("Error", .{});
+        req.setContentType(.JSON) catch return;
+        req.setStatus(.ok);
+        req.sendBody("hello world!") catch |e| {
+            std.log.err("Error: {any}", .{e});
+        };
+        std.log.err("Error", .{});
         // req.sendJson("ok") catch return;
     }
 };
