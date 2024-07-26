@@ -1,64 +1,37 @@
 const std = @import("std");
-// const build_capy = @import("capy");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // const capy_dep = b.dependency("capy", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .app_name = @as([]const u8, "capy-template"),
-    // });
-    // const capy = capy_dep.module("capy");
-
-
-    const lib = b.addStaticLibrary(.{
-        .name = "vendor",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
+    const lib = b.addStaticLibrary(.{ .name = "vendor", .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
     b.installArtifact(lib);
 
-    const exe = b.addExecutable(.{.name = "vendor",.root_source_file = b.path("src/main.zig"),.target = target,.optimize = optimize});
+    const exe = b.addExecutable(.{ .name = "vendor", .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
 
-    const zap = b.dependency("zap", .{.target = target, .optimize = optimize});
+    const zap = b.dependency("zap", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("zap", zap.module("zap"));
 
-    const zig_webui = b.dependency("zig-webui", .{.target = target,.optimize = optimize,.enable_tls = false,.is_static = true});
+    const zig_webui = b.dependency("zig-webui", .{ .target = target, .optimize = optimize, .enable_tls = false, .is_static = true });
     exe.root_module.addImport("webui", zig_webui.module("webui"));
 
-    const regex = b.dependency("regex", .{.target = target,.optimize = optimize});
-    exe.root_module.addImport("regex", regex.module( "regex"));
+    const regex = b.dependency("regex", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("regex", regex.module("regex"));
 
-    const zmpl = b.dependency("zmpl", .{.target = target,.optimize = optimize});
-    exe.root_module.addImport("zmpl", zmpl.module( "zmpl"));
+    const zmpl = b.dependency("zmpl", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("zmpl", zmpl.module("zmpl"));
+
+    const pg = b.dependency("pg", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("pg", pg.module("pg"));
 
     const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("pretty", pretty.module("pretty"));
 
     b.installArtifact(exe);
 
-    // This *creates* a Run step in the build graph, to be executed when another
-    // step is evaluated that depends on it. The next line below will establish
-    // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
-
-    // By making the run step depend on the install step, it will be run from the
-    // installation directory rather than directly from within the cache directory.
-    // This is not necessary, however, if the application depends on other installed
-    // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(b.getInstallStep());
 
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }

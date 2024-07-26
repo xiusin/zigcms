@@ -20,7 +20,7 @@
         ]
     },
     "settings": {
-        "editor.fontSize": 13,
+        "editor.fontSize": 12,
         "editor.fontFamily": "Hack Nerd Font Mono, Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
         "editor.autoIndent": "advanced",
         "editor.fontLigatures": true,

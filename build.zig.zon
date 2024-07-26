@@ -27,6 +27,14 @@
             .url = "https://github.com/getty-zig/json/archive/main.tar.gz",
             .hash = "1220c7d749d83bcac8daecd67f1f78ee2762df10c9fef123bbf44c882965f644c1e5",
         },
+        .pg = .{
+            .url = "https://github.com/karlseguin/pg.zig/archive/master.tar.gz",
+            .hash = "1220bd73cc6127dad105d12637dbbf0229515c8ec23199c9c8d9caa43cef2d91a8af",
+        },
+        .pretty = .{
+            .url = "https://github.com/timfayz/pretty/archive/main.tar.gz",
+            .hash = "1220309f083656d3e9b487a4c0f79f514b0fbc682dba717c294fb02ec2bfd7080850",
+        },
     },
     .paths = .{
         "build.zig",

@@ -19,3 +19,5 @@ backend:
 
 https://github.com/timfayz/pretty/archive/main.tar.gz
 
+
+### zig build run  -- debug
