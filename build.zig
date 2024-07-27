@@ -27,6 +27,9 @@ pub fn build(b: *std.Build) void {
     const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("pretty", pretty.module("pretty"));
 
+    const json = b.dependency("json", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("json", json.module("json"));
+
     // const string = b.dependency("zig-string", .{ .target = target, .optimize = optimize });
     // exe.root_module.addImport("string", string.module("string"));
 

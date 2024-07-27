@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const pretty = @import("pretty");
 
 var _allocator: std.mem.Allocator = undefined;
 var _pool: *pg.Pool = undefined;
@@ -38,15 +39,12 @@ pub fn get_conn() !*pg.Conn {
     return pool.acquire();
 }
 
-pub fn sql_get_count(sql: []const u8, values: anytype) i32 {
-    var conn = get_conn() catch return 0;
+pub fn sql_get_count(allo: std.mem.Allocator, sql: []const u8, values: anytype) !i64 {
+    var conn = try get_conn();
     defer conn.release();
-
-    var result = conn.query(sql, values) catch return 0;
-    defer result.deinit();
-    while (result.next() catch return 0) |row| {
-        const num = row.get(i32, 0);
-        return num;
+    if (try conn.row(sql, values)) |result| {
+        try pretty.print(allo, result, .{});
+        return result.get(i32, 0);
     }
     return 0;
 }
