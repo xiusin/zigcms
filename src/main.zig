@@ -15,9 +15,9 @@ fn not_found(req: zap.Request) void {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
+    global.set_allocator(allocator);
     var simpleRouter = zap.Router.init(allocator, .{ .not_found = not_found });
     defer simpleRouter.deinit();
-    global.set_allocator(allocator);
 
     var login = Login.init(allocator);
     try simpleRouter.handle_func("/login", &login, &Login.login);

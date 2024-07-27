@@ -17,8 +17,6 @@ pub const Login = struct {
     pub fn register(self: *Self, req: zap.Request) void {
         req.parseBody() catch |e| return base.send_error(self.allocator, req, e);
 
-        const params = req.parametersToOwnedList(self.allocator, false) catch unreachable;
-        defer params.deinit();
         var registerDto: dto.Register = undefined;
         if (req.body) |body| {
             registerDto = std.json.parseFromSliceLeaky(dto.Register, self.allocator, body, .{}) catch |e| return base.send_error(self.allocator, req, e);
@@ -28,28 +26,25 @@ pub const Login = struct {
             return base.send_error(self.allocator, req, error.ParamMiss);
         }
 
-        const num = global.sql_get_count(
-            self.allocator,
-            "SELECT COUNT(*) FROM zigcms.admin WHERE username = $1",
+        var pool = global.get_pg_pool() catch |e| return base.send_error(self.allocator, req, e);
+        var row = (pool.row(
+            "SELECT COUNT(*) AS num FROM zigcms.admin WHERE username = $1",
             .{registerDto.username},
-        ) catch |e| return base.send_error(self.allocator, req, e);
+        ) catch |e| return base.send_error(self.allocator, req, e)) orelse unreachable;
 
-        if (num > 0) {
-            req.sendBody("已存在") catch return;
-            return;
+        defer row.deinit() catch {};
+        if (row.get(i64, 0) > 0) {
+            return base.send_failed(self.allocator, req, "用户已存在");
         }
 
         const result = global.sql_exec(
             "INSERT INTO zigcms.admin (username, password, created_at) VALUES ($1, $2, $3);",
             .{ registerDto.username, registerDto.password, std.time.microTimestamp() },
         ) catch |e| return base.send_error(self.allocator, req, e);
-
-        std.log.debug("result = {d}", .{result});
         if (result > 0) {
             return base.send_ok(self.allocator, req, registerDto);
         }
-
-        req.sendJson("ok") catch return;
+        return base.send_ok(self.allocator, req, .{});
     }
 
     pub fn login(self: *Self, req: zap.Request) void {

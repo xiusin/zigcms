@@ -20,7 +20,7 @@ fn init_pg() !void {
             .database = "postgres",
             .application_name = "zigcms",
             .password = password,
-            .timeout = 10_000,
+            .timeout = 10_0000,
         } });
     }
 }
@@ -37,16 +37,6 @@ pub fn get_pg_pool() !*pg.Pool {
 pub fn get_conn() !*pg.Conn {
     const pool = try get_pg_pool();
     return pool.acquire();
-}
-
-pub fn sql_get_count(allo: std.mem.Allocator, sql: []const u8, values: anytype) !i64 {
-    var conn = try get_conn();
-    defer conn.release();
-    if (try conn.row(sql, values)) |result| {
-        try pretty.print(allo, result, .{});
-        return result.get(i32, 0);
-    }
-    return 0;
 }
 
 pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
