@@ -26,5 +26,7 @@
         "editor.fontLigatures": true,
         "editor.formatOnSave": true,
         "editor.formatOnPaste": true,
+        "zig.zls.inlayHintsShowVariableTypeHints": true,
+        "zig.zls.inlayHintsShowParameterName": true,
     }
 }

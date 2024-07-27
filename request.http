@@ -1,0 +1,7 @@
+### 注册
+GET http://localhost:3000/register
+Content-Type: application/json
+{
+    "username": "xiusin",
+    "password": "123456"    
+}
