@@ -17,6 +17,8 @@
             "k--kato.intellij-idea-keybindings",
             "MarsCode.marscode-extension",
             "DanielGavin.ols",
+            "anweber.vscode-httpyac",
+            "MarsCode.marscode-extension",
         ]
     },
     "settings": {

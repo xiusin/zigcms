@@ -30,6 +30,9 @@ pub fn build(b: *std.Build) void {
     const json = b.dependency("json", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("json", json.module("json"));
 
+    const zig_jwt = b.dependency("zig-jwt", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("jwt", zig_jwt.module("jwt"));
+
     // const string = b.dependency("zig-string", .{ .target = target, .optimize = optimize });
     // exe.root_module.addImport("string", string.module("string"));
 

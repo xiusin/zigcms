@@ -25,11 +25,12 @@ pub fn main() !void {
 
     var listener = zap.HttpListener.init(.{
         .port = 3000,
-        .on_request = simpleRouter.on_request_handler(),
+        .on_request = simpleRouter.on_request_handler(), // TODO 闭包执行中间件
         .log = false,
         .public_folder = "reources",
         .max_clients = 10000,
     });
     try listener.listen();
+    zap.enableDebugLog();
     zap.start(.{ .threads = 2, .workers = 1 });
 }
