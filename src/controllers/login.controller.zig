@@ -10,6 +10,7 @@ const models = @import("../models/models.zig");
 
 pub const Login = struct {
     const Self = @This();
+
     allocator: std.mem.Allocator,
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{ .allocator = allocator };
@@ -52,7 +53,9 @@ pub const Login = struct {
         req.parseBody() catch |e| return base.send_error(self.allocator, req, e);
         var dto: dtos.User.Login = undefined;
         if (req.body) |body| {
-            dto = std.json.parseFromSliceLeaky(dtos.User.Login, self.allocator, body, .{}) catch |e| return base.send_error(self.allocator, req, e);
+            dto = std.json.parseFromSliceLeaky(dtos.User.Login, self.allocator, body, .{
+                .ignore_unknown_fields = true,
+            }) catch |e| return base.send_error(self.allocator, req, e);
         }
 
         if (dto.password.len == 0 or dto.username.len == 0) {
@@ -60,7 +63,10 @@ pub const Login = struct {
         }
 
         var pool = global.get_pg_pool() catch |e| return base.send_error(self.allocator, req, e);
-        var row = (pool.rowOpts("SELECT * FROM zigcms.admin WHERE username = $1", .{dto.username}, .{ .column_names = true }) catch |e| return base.send_error(self.allocator, req, e)) orelse unreachable;
+        var row = (pool.rowOpts("SELECT * FROM zigcms.admin WHERE username = $1", .{dto.username}, .{
+            .column_names = true,
+        }) catch |e| return base.send_error(self.allocator, req, e)) orelse unreachable;
+
         defer row.deinit() catch {};
         var user = row.to(models.Admin, .{ .map = .name }) catch |e| return base.send_error(self.allocator, req, e);
 
