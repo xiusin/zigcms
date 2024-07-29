@@ -12,26 +12,30 @@ pub const Public = struct {
     }
 
     pub fn upload(self: *Self, req: zap.Request) void {
-        req.parseBody() catch return base.send_failed(self.allocator, req, "数据解析错误");
+        if (!std.mem.eql(u8, req.method.?, "POST")) {
+            return base.send_failed(self.allocator, req, "不支持的请求方式");
+        }
+        if (req.body.?.len > 1024 * 1024 * 1024 * 20) return base.send_failed(self.allocator, req, "上传文件过大");
 
+        req.parseBody() catch return base.send_failed(self.allocator, req, "数据解析错误");
         const params = req.parametersToOwnedList(self.allocator, false) catch return base.send_failed(self.allocator, req, "数据解析错误");
         defer params.deinit();
         for (params.items) |kv| {
             if (kv.value) |v| {
                 switch (v) {
                     zap.Request.HttpParam.Hash_Binfile => |*file| {
-                        // 验证文件md5
-                        const filename = file.filename orelse return base.send_failed(self.allocator, req, "文件上传失败");
+                        const origin_filename = file.filename orelse return base.send_failed(self.allocator, req, "文件上传失败");
                         const data = file.data orelse return base.send_failed(self.allocator, req, "文件上传失败");
+
+                        const ext = std.fs.path.extension(origin_filename);
 
                         const Md5 = std.crypto.hash.Md5;
                         var out: [Md5.digest_length]u8 = undefined;
-
                         Md5.hash(data, &out, .{});
+
                         const md5 = std.fmt.allocPrint(self.allocator, "{s}", .{
                             std.fmt.fmtSliceHexLower(out[0..]),
                         }) catch return base.send_failed(self.allocator, req, "获取文件错误");
-
                         defer self.allocator.free(md5);
 
                         // 文件目录分段
@@ -40,30 +44,53 @@ pub const Public = struct {
                             md5[3..6],
                         }) catch return base.send_failed(self.allocator, req, "获取文件错误");
                         defer self.allocator.free(dir);
+                        std.fs.cwd().makePath(dir) catch return base.send_failed(self.allocator, req, "创建上传目录失败");
 
+                        // 创建目录
                         const savedir = std.mem.concat(self.allocator, u8, &[_][]const u8{
-                            "resources",
-                            "/",
+                            "resources/",
                             dir,
                         }) catch return base.send_failed(self.allocator, req, "构建地址错误");
                         defer self.allocator.free(savedir);
 
-                        const sub_path = std.mem.concat(self.allocator, u8, &[_][]const u8{
-                            savedir,
-                            "/",
-                            filename,
-                        }) catch return base.send_failed(self.allocator, req, "构建地址错误");
-                        defer self.allocator.free(sub_path);
+                        // 生成相对目录
+                        const filename = std.mem.concat(self.allocator, u8, &[_][]const u8{
+                            savedir, "/",
+                            md5,     ext,
+                        }) catch return base.send_failed(self.allocator, req, "构建地址错误:LOCALFILE");
+                        defer self.allocator.free(filename);
 
-                        std.fs.cwd().makePath(savedir) catch return base.send_failed(self.allocator, req, "创建上传目录失败");
-                        std.fs.cwd().writeFile(.{
-                            .sub_path = sub_path,
-                            .data = data,
-                            .flags = .{},
-                        }) catch |e| return base.send_error(self.allocator, req, e);
+                        var cache = true;
+                        const fullpath = std.fs.cwd().realpathAlloc(
+                            self.allocator,
+                            filename,
+                        ) catch return base.send_failed(self.allocator, req, "生成对象地址错误:FULLPATH");
+                        defer self.allocator.free(fullpath);
+
+                        const url = std.mem.concat(
+                            self.allocator,
+                            u8,
+                            &[_][]const u8{ "http://zig.xiusin.cn/", filename[10..] },
+                        ) catch return base.send_failed(self.allocator, req, "生成对象地址错误:URL");
+                        defer self.allocator.free(url);
+
+                        // 判断文件是否存在, statFile 必须是绝对路径
+                        _ = std.fs.cwd().statFile(fullpath) catch |err| {
+                            std.log.debug("{any}", .{err});
+                            std.fs.cwd().makePath(savedir) catch return base.send_failed(self.allocator, req, "创建上传目录失败");
+                            std.fs.cwd().writeFile(.{
+                                .sub_path = filename,
+                                .data = data,
+                                .flags = .{},
+                            }) catch |e| return base.send_error(self.allocator, req, e);
+                            cache = false;
+                        };
 
                         return base.send_ok(self.allocator, req, .{
-                            .path = sub_path,
+                            .path = filename,
+                            .url = url,
+                            .filename = origin_filename,
+                            .cache = cache,
                         });
                     },
                     else => {
