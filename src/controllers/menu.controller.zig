@@ -43,7 +43,7 @@ pub const Menu = struct {
             defer self.allocator.free(dto);
         }
 
-        var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+        // var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
 
         base.send_ok(self.allocator, req, .{});
     }

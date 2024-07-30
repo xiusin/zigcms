@@ -56,7 +56,6 @@ pub const Login = struct {
             dto = std.json.parseFromSliceLeaky(dtos.User.Login, self.allocator, body, .{
                 .ignore_unknown_fields = true,
             }) catch |e| return base.send_error(req, e);
-            defer self.allocator.free(dto);
         }
 
         if (dto.password.len == 0 or dto.username.len == 0) {
