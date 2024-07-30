@@ -82,7 +82,7 @@ pub const Public = struct {
                                 .sub_path = filename,
                                 .data = data,
                                 .flags = .{},
-                            }) catch |e| return base.send_error(self.allocator, req, e);
+                            }) catch |e| return base.send_error(req, e);
                             cache = false;
                         };
 

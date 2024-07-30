@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 
 const Public = @import("./controllers/public.controller.zig").Public;
 const Login = @import("./controllers/login.controller.zig").Login;
+const Menu = @import("./controllers/menu.controller.zig").Menu;
 const global = @import("global/global.zig");
 
 pub fn main() !void {
@@ -21,6 +22,9 @@ pub fn main() !void {
 
     var public = Public.init(allocator);
     try simpleRouter.handle_func("/public/upload", &public, &Public.upload);
+
+    var menu = Menu.init(allocator);
+    try simpleRouter.handle_func("/menu/list", &menu, &Menu.list);
 
     var listener = zap.HttpListener.init(.{
         .port = 3000,
