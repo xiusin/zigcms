@@ -4,6 +4,7 @@ const zap = @import("zap");
 const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
 const models = @import("../models/menu.model.zig");
+const dtos = @import("../dto/dtos.zig");
 
 pub const Menu = struct {
     const Self = @This();
@@ -29,6 +30,21 @@ pub const Menu = struct {
             std.log.debug("menu = {any}", .{menu});
             menus.append(menu) catch {};
         }
+        base.send_ok(self.allocator, req, .{});
+    }
+
+    pub fn save(self: *Self, req: zap.Request) void {
+        req.parseBody() catch |e| return base.send_error(req, e);
+        var dto: dtos.Menu.Save = undefined;
+        if (req.body) |body| {
+            dto = std.json.parseFromSliceLeaky(dtos.Menu.Save, self.allocator, body, .{
+                .ignore_unknown_fields = true,
+            }) catch |e| return base.send_error(req, e);
+            defer self.allocator.free(dto);
+        }
+
+        var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+
         base.send_ok(self.allocator, req, .{});
     }
 };
