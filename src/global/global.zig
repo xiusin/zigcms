@@ -42,9 +42,7 @@ pub fn get_conn() !*pg.Conn {
 pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
     var conn = try get_conn();
     defer conn.release();
-    std.log.debug("exec {s}", .{sql});
     if (try conn.exec(sql, values)) |result| {
-        std.log.debug("exec {d}", .{result});
         return result;
     }
     return error.SqlExecFailed;

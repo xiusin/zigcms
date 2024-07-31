@@ -82,7 +82,9 @@ pub const Login = struct {
             .key = "secret",
         }) catch |e| return base.send_error(req, e);
         defer self.allocator.free(token);
-        user.token = token;
-        base.send_ok(self.allocator, req, user);
+        base.send_ok(self.allocator, req, .{
+            .token = token,
+            .user = user,
+        });
     }
 };
