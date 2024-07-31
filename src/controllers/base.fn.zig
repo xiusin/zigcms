@@ -31,3 +31,21 @@ pub fn send_failed(allocator: std.mem.Allocator, req: zap.Request, message: []co
     defer allocator.free(ser);
     req.sendJson(ser) catch return;
 }
+
+pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) []const u8 {
+    var fields = std.ArrayList([]const u8).init(allocator);
+    defer fields.deinit();
+    var values = std.ArrayList([]const u8).init(allocator);
+    defer values.deinit();
+
+    inline for (std.meta.fields(T), 0..) |field, index| {
+        fields.append(field.name) or {};
+        values.append(std.fmt.allocPrint(allocator, "${d}", .{index + 1})) or {};
+    }
+
+    return std.fmt.allocPrint(allocator, "INSERT INTO {s} ({s}) VALUES ({s})", .{
+        @typeName(T),
+        std.mem.join(allocator, ",", fields.items),
+        std.mem.join(allocator, ",", values.items),
+    }) catch "";
+}

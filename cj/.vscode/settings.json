@@ -1,0 +1,22 @@
+{
+    "terminal.integrated.env.osx": {
+        "FIG_NEW_SESSION": "1",
+        "Q_NEW_SESSION": "1",
+        "CANGJIE_HOME": "/opt/cangjie",
+        "CANGJIE_PATH": "/opt/cangjie/bin:/opt/cangjie/tools/bin:/opt/cangjie/debugger/bin:",
+        "CANGJIE_LD_LIBRARY_PATH": "/opt/cangjie/runtime/lib/darwin_aarch64_llvm:/opt/cangjie/tools/lib:",
+        "DYLD_LIBRARY_PATH": "${config:terminal.integrated.env.osx.CANGJIE_LD_LIBRARY_PATH}:${env:DYLD_LIBRARY_PATH}",
+        "PATH": "${config:terminal.integrated.env.osx.CANGJIE_PATH}:${env:PATH}"
+    },
+    "editor.gotoLocation.alternativeDeclarationCommand": "editor.action.revealDefinition",
+    "editor.gotoLocation.alternativeDefinitionCommand": "editor.action.revealDefinition",
+    "editor.gotoLocation.alternativeTypeDefinitionCommand": "editor.action.revealDefinition",
+    "editor.selectionHighlight": false,
+    "files.autoSave": "onFocusChange",
+    "editor.suggest.snippetsPreventQuickSuggestions": false,
+    "editor.quickSuggestions": {
+        "other": "on",
+        "comments": "off",
+        "strings": "on"
+    }
+}
