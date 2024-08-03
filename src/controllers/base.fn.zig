@@ -37,30 +37,11 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
     defer fields.deinit();
     var values = std.ArrayList([]const u8).init(allocator);
     defer values.deinit();
+
     inline for (std.meta.fields(T), 0..) |field, index| {
-        // var skip: bool = false;
-        // if (@hasDecl(T, "ingore_fields")) {
-        //     // TODO 优化下列逻辑
-        //     // if (std.mem.indexOfScalar(u8, &T.ingore_fields, field.name)) {
-        //     //     std.log.debug("ss", .{});
-        //     // }
-
-        //     for (T.ingore_fields) |field_| {
-        //         if (std.mem.eql(u8, field_, field.name)) {
-        //             skip = true;
-        //             break;
-        //         }
-        //     }
-        // }
-
         try fields.append(field.name);
-        try values.append(try std.fmt.allocPrint(allocator, "${d}", .{index + 1}));
-
-        // if (!skip) {
-        //     idx += 1;
-        //     try fields.append(field.name);
-        //     try values.append(try std.fmt.allocPrint(allocator, "${d}", .{idx}));
-        // }
+        var buf: [1024]u8 = undefined;
+        try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
     }
 
     var iter = std.mem.split(u8, @typeName(T), ".");
@@ -70,10 +51,14 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
     }
     const output: []u8 = undefined;
     const low_tablename = std.ascii.lowerString(output, tablename);
+    const fields_arg = try std.mem.join(allocator, ", ", fields.items);
+    const values_arg = try std.mem.join(allocator, ", ", values.items);
+    defer allocator.free(fields_arg);
+    defer allocator.free(values_arg);
 
     return try std.fmt.allocPrint(allocator, "INSERT INTO zigcms.,{s} ({s}) VALUES ({s})", .{
         low_tablename,
-        try std.mem.join(allocator, ", ", fields.items),
-        try std.mem.join(allocator, ", ", values.items),
+        fields_arg,
+        values_arg,
     });
 }

@@ -70,7 +70,7 @@ pub const Public = struct {
                         const url = std.mem.concat(
                             self.allocator,
                             u8,
-                            &[_][]const u8{ "http://zig.xiusin.cn/", filename[10..] },
+                            &[_][]const u8{ "https://dev.xiusin.cn/", filename[10..] },
                         ) catch return base.send_failed(self.allocator, req, "生成对象地址错误:URL");
                         defer self.allocator.free(url);
 

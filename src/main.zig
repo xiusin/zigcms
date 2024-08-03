@@ -3,19 +3,46 @@ const zap = @import("zap");
 const pretty = @import("pretty");
 const Allocator = std.mem.Allocator;
 
-const Public = @import("./controllers/public.controller.zig").Public;
-const Login = @import("./controllers/login.controller.zig").Login;
-const Menu = @import("./controllers/menu.controller.zig").Menu;
 const global = @import("global/global.zig");
+const controllers = @import("./controllers/controllers.zig");
 const base = @import("./controllers/base.fn.zig");
 const models = @import("./models/models.zig");
 
-fn structToTuple(structure: anytype) @TypeOf(structure) {
-    var tuple: @TypeOf(structure) = undefined;
-    inline for (std.meta.fields(@TypeOf(structure))) |field| {
-        @field(tuple, field.name) = @field(structure, field.name);
-    }
-    return tuple;
+const FnParam = std.builtin.Type.Fn.Param;
+
+/// generate a fuction's param tuple
+pub fn FnParamsToTuple(comptime params: []const FnParam) type {
+    const Type = std.builtin.Type;
+    const fields: [params.len]Type.StructField = blk: {
+        var res: [params.len]Type.StructField = undefined;
+
+        for (params, 0..params.len) |param, i| {
+            if (param.type) |t| {
+                res[i] = Type.StructField{
+                    .type = t,
+                    .alignment = @alignOf(t),
+                    .default_value = null,
+                    .is_comptime = false,
+                    .name = std.fmt.comptimePrint("{}", .{i}),
+                };
+            } else {
+                const error_message = std.fmt.comptimePrint(
+                    "sorry the param is anytype!",
+                    .{param},
+                );
+                @compileError(error_message);
+            }
+        }
+        break :blk res;
+    };
+    return @Type(.{
+        .Struct = std.builtin.Type.Struct{
+            .layout = .Auto,
+            .is_tuple = true,
+            .decls = &.{},
+            .fields = &fields,
+        },
+    });
 }
 
 pub fn main() !void {
@@ -26,27 +53,33 @@ pub fn main() !void {
     const sql = try base.build_insert_sql(models.Admin, allocator);
     defer allocator.free(sql);
 
-    var pool = try global.get_pg_pool();
+    // var pool = try global.get_pg_pool();
 
     const admin = models.Admin{
         .username = "admin",
         .password = "123456",
     };
 
-    try pool.exec(sql, structToTuple(admin));
+    std.log.debug("{?}", .{admin});
+
+    // try pool.exec(sql, structToTuple(admin));
 
     var simpleRouter = zap.Router.init(allocator, .{});
     defer simpleRouter.deinit();
 
-    var login = Login.init(allocator);
-    try simpleRouter.handle_func("/login", &login, &Login.login);
-    try simpleRouter.handle_func("/register", &login, &Login.register);
+    var login = controllers.Login.init(allocator);
+    try simpleRouter.handle_func("/login", &login, &controllers.Login.login);
+    try simpleRouter.handle_func("/register", &login, &controllers.Login.register);
 
-    var public = Public.init(allocator);
-    try simpleRouter.handle_func("/public/upload", &public, &Public.upload);
+    var public = controllers.Public.init(allocator);
+    try simpleRouter.handle_func("/public/upload", &public, &controllers.Public.upload);
 
-    var menu = Menu.init(allocator);
-    try simpleRouter.handle_func("/menu/list", &menu, &Menu.list);
+    var menu = controllers.Menu.init(allocator);
+    try simpleRouter.handle_func("/menu/list", &menu, &controllers.Menu.list);
+
+    var setting = controllers.Setting.init(allocator);
+    try simpleRouter.handle_func("/setting/get", &setting, &controllers.Setting.get);
+    try simpleRouter.handle_func("/setting/save", &setting, &controllers.Setting.save);
 
     var listener = zap.HttpListener.init(.{
         .port = 3000,
