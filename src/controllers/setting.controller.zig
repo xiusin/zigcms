@@ -45,13 +45,8 @@ pub const Setting = struct {
 
         var iter = values.object.iterator();
         while (iter.next()) |entity| {
-            // 删除原有KEY
             _ = global.sql_exec("DELETE FROM zigcms.setting WHERE key = $1", .{entity.key_ptr.*}) catch {};
-
-            _ = global.sql_exec("INSERT INTO zigcms.setting (key, value) VALUES ($1, $2)", .{
-                entity.key_ptr.*,
-                entity.value_ptr.string,
-            }) catch |e| return base.send_error(req, e);
+            _ = global.sql_exec("INSERT INTO zigcms.setting (key, value) VALUES ($1, $2)", .{ entity.key_ptr.*, entity.value_ptr.string }) catch {};
         }
 
         return base.send_ok(self.allocator, req, "保存成功");
