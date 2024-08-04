@@ -7,7 +7,7 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
     req.sendError(
         e,
         if (@errorReturnTrace()) |t| t.* else null,
-        505,
+        500,
     );
 }
 
@@ -17,7 +17,19 @@ pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void 
         .code = 0,
         .msg = "ok",
         .data = v,
-    }) catch return;
+    }) catch |e| return send_error(req, e);
+    defer allocator.free(ser);
+    req.sendJson(ser) catch return;
+}
+
+//  send_list_ok 响应成功消息
+pub fn send_list_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype, count: u64) void {
+    const ser = json.toSlice(allocator, .{
+        .code = 0,
+        .count = count,
+        .msg = "ok",
+        .data = v,
+    }) catch |e| return send_error(req, e);
     defer allocator.free(ser);
     req.sendJson(ser) catch return;
 }
@@ -25,7 +37,7 @@ pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void 
 // send_failed 响应失败消息
 pub fn send_failed(allocator: std.mem.Allocator, req: zap.Request, message: []const u8) void {
     const ser = json.toSlice(allocator, .{
-        .code = 0,
+        .code = 500,
         .msg = message,
     }) catch return;
     defer allocator.free(ser);

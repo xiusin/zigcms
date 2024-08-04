@@ -18,3 +18,9 @@ Content-Type: application/json
 {"sitename":"zig","domain":"http://layuimini.99php.cn","upload":"png|gif|jpg|jpeg|zip|rar","title":"layuimini 简洁易用后台管理模板","keywords":"","descript":"layuimini，最简洁、清爽、易用的layui后台框架模板。","copyright":"© 2019 layuimini.99php.cn MIT license"}
 
 
+### 文章详情
+GET http://localhost:3000/article/get?id=1
+
+### 文章列表
+GET http://localhost:3000/article/list?page=2&limit=100
+

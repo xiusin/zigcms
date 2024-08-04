@@ -54,8 +54,26 @@
                     "target": "_self"
                 },
                 {
+                    "title": "内容管理",
+                    "icon": "fa fa-file-text",
+                    "target": "_self",
+                    "child": [
+                        {
+                            "title": "分类管理",
+                            "href": "page/form.html",
+                            "icon": "fa fa-list-alt",
+                            "target": "_self"
+                        },
+                        {
+                            "title": "文章管理",
+                            "href": "page/article/list.html",
+                            "icon": "fa fa-navicon",
+                            "target": "_self"
+                        }
+                    ]
+                },
+                {
                     "title": "表单示例",
-                    "href": "",
                     "icon": "fa fa-calendar",
                     "target": "_self",
                     "child": [
@@ -88,7 +106,13 @@
                         {
                             "title": "邮箱配置",
                             "href": "page/email.html",
-                            "icon": "fa fa-gears",
+                            "icon": "fa fa-envelope-o",
+                            "target": "_self"
+                        },
+                        {
+                            "title": "对象存储",
+                            "href": "page/tos.html",
+                            "icon": "fa fa-envelope-o",
                             "target": "_self"
                         }
                     ]

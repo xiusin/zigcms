@@ -81,6 +81,11 @@ pub fn main() !void {
     try simpleRouter.handle_func("/setting/get", &setting, &controllers.Setting.get);
     try simpleRouter.handle_func("/setting/save", &setting, &controllers.Setting.save);
 
+    var article = controllers.Article.init(allocator);
+    try simpleRouter.handle_func("/article/get", &article, &controllers.Article.get);
+    try simpleRouter.handle_func("/article/list", &article, &controllers.Article.list);
+    try simpleRouter.handle_func("/article/delete", &article, &controllers.Article.delete);
+
     var listener = zap.HttpListener.init(.{
         .port = 3000,
         .on_request = simpleRouter.on_request_handler(),
