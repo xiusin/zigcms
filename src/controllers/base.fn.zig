@@ -4,6 +4,7 @@ const std = @import("std");
 
 // send_error 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
+    std.log.debug("err = {any}", .{e});
     req.sendError(
         e,
         if (@errorReturnTrace()) |t| t.* else null,
@@ -50,12 +51,15 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
     var values = std.ArrayList([]const u8).init(allocator);
     defer values.deinit();
 
-    inline for (std.meta.fields(T), 0..) |field, index| {
-        try fields.append(field.name);
-        var buf: [1024]u8 = undefined;
-        try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
+    var index: usize = 0;
+    inline for (std.meta.fields(T)) |field| {
+        if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
+            try fields.append(field.name);
+            var buf: [1024]u8 = undefined;
+            try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
+            index += 1;
+        }
     }
-
     var iter = std.mem.split(u8, @typeName(T), ".");
     var tablename: []const u8 = undefined;
     while (iter.next()) |v| {
@@ -68,9 +72,5 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
     defer allocator.free(fields_arg);
     defer allocator.free(values_arg);
 
-    return try std.fmt.allocPrint(allocator, "INSERT INTO zigcms.,{s} ({s}) VALUES ({s})", .{
-        low_tablename,
-        fields_arg,
-        values_arg,
-    });
+    return try std.fmt.allocPrint(allocator, "INSERT INTO zigcms.{s} ({s}) VALUES ({s})", .{ low_tablename, fields_arg, values_arg });
 }

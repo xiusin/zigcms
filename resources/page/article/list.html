@@ -14,21 +14,20 @@
 <body>
     <div class="layuimini-container">
         <div class="layuimini-main">
-            <script type="text/html" id="toolbarDemo">
+            <script type="text/html" id="btns">
                 <div class="layui-btn-container">
                     <button class="layui-btn layui-btn-normal layui-btn-sm data-add-btn" lay-event="add"> 添加 </button>
-                    <button class="layui-btn layui-btn-sm layui-btn-danger data-delete-btn" lay-event="delete"> 删除 </button>
                 </div>
             </script>
 
-            <table class="layui-hide" id="currentTableId" lay-filter="currentTableFilter"></table>
+            <table class="layui-hide" id="table" lay-filter="currentTableFilter"></table>
 
             <script type="text/html" id="templet-switch">
                 <input type="checkbox" name="status" class="layui-sm" value="{{= d.status }}" disabled lay-skin="switch" 
-                {{=d.status ? "checked" : "" }}>
+                {{=d.status == 1 ? "checked" : "" }}>
             </script>
 
-            <script type="text/html" id="currentTableBar">
+            <script type="text/html" id="tablebar">
             <a class="layui-btn layui-btn-normal layui-btn-xs data-count-edit" lay-event="edit">编辑</a>
             <a class="layui-btn layui-btn-xs layui-btn-danger data-count-delete" lay-event="delete">删除</a>
         </script>
@@ -43,19 +42,18 @@
                 table = layui.table;
 
             table.render({
-                elem: '#currentTableId',
+                elem: '#table',
                 url: '/article/list',
-                toolbar: '#toolbarDemo',
+                toolbar: '#btns',
                 defaultToolbar: ['filter', 'exports', 'print', {
                     title: '提示',
                     layEvent: 'LAYTABLE_TIPS',
                     icon: 'layui-icon-tips'
                 }],
                 cols: [[
-                    { type: "checkbox", width: 50 },
                     { field: 'id', width: 80, title: 'ID', sort: true },
                     { field: 'image_url', width: 150, title: '文章封面' },
-                    { field: 'title', width: 150, title: '文章标题' },
+                    { field: 'title', minWidth: 240, title: '文章标题' },
                     { field: 'article_type', width: 150, title: '文章类型', templet: (d) => d.article_type == 'article_type_original' ? '原创' : '转载' },
                     { field: 'category_id', width: 150, title: '文章分类' },
                     { field: 'tags', title: '标签' },

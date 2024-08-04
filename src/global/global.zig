@@ -11,6 +11,7 @@ fn init_pg() !void {
         inited = true;
         const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
         defer _allocator.free(password);
+        std.log.debug("DB_PASSWORD = {s}", .{password});
 
         _pool = try pg.Pool.init(_allocator, .{ .size = 5, .connect = .{
             .port = 5432,

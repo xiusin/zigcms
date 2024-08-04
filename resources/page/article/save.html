@@ -11,19 +11,14 @@
     <link rel="stylesheet" href="../../css/public.css" media="all">
     <link rel="stylesheet" href="../../lib/jq-module/zyupload/zyupload-1.0.0.min.css" media="all">
     <link rel="stylesheet" href="../../js/lay-module/inputTags/inputTag.css" media="all">
-    <style>
-        body {
-            background-color: #ffffff;
-        }
-    </style>
 </head>
 
-<body>
+<body style="background-color: #ffffff">
     <div class="layui-form layuimini-form">
         <div class="layui-form-item">
             <label class="layui-form-label required">标题</label>
             <div class="layui-input-block">
-                <input type="hidden" name="id" value="0" />
+                <input type="hidden" name="id" value="" />
                 <input name="title" lay-verify="required" lay-reqtext="标题不能为空" placeholder="请输入标题"
                     class="layui-input" />
             </div>
@@ -82,9 +77,9 @@
             <div class="layui-input-block ">
                 <select lay-filter="category_id">
                     <option value="">请选择</option>
-                    <option value="AAA">选项 A</option>
-                    <option value="BBB">选项 B</option>
-                    <option value="CCC">选项 C</option>
+                    <option value="1">选项 A</option>
+                    <option value="2">选项 B</option>
+                    <option value="3">选项 C</option>
                 </select>
             </div>
         </div>
@@ -123,13 +118,22 @@
         <div class="layui-form-item">
             <label class="layui-form-label">观看数</label>
             <div class="layui-input-block">
-                <input name="number" placeholder="请输入观看数" class="layui-input">
+                <input name="view_count" placeholder="请输入观看数" class="layui-input">
+            </div>
+        </div>
+
+
+        <div class="layui-form-item">
+            <label class="layui-form-label">状态</label>
+            <div class="layui-input-block">
+                <input type="radio" name="status" value="1" title="发布" checked>
+                <input type="radio" name="status" value="0" title="草稿">
             </div>
         </div>
 
         <div class="layui-form-item">
             <div class="layui-input-block">
-                <button class="layui-btn layui-btn-normal" lay-submit lay-filter="saveBtn">确认保存</button>
+                <button class="layui-btn layui-btn-normal" lay-submit lay-filter="save">确认保存</button>
             </div>
         </div>
     </div>
@@ -161,7 +165,6 @@
                 removeKeyNum: 8,
                 createKeyNum: 13,
                 onChange: function (data, value, type) {
-                    console.log(arguments);
                     $('#tag1').text(JSON.stringify(data));
                 }
             });
@@ -206,19 +209,24 @@
             });
 
             //监听提交
-            form.on('submit(saveBtn)', function (data) {
-                var index = layer.alert(JSON.stringify(data.field), {
-                    title: '最终的提交信息'
-                }, function () {
-
-                    // 关闭弹出层
-                    layer.close(index);
-
-                    var iframeIndex = parent.layer.getFrameIndex(window.name);
-                    parent.layer.close(iframeIndex);
-
+            form.on('submit(save)', function (data) {
+                if (!data.field['id']) delete data.field['id'];
+                if (!data.field['view_count']) delete data.field['view_count'];
+                data.field['content'] = vditor.getValue();
+                var index = layer.load(1, { shade: false });
+                $.ajax({
+                    url: "/article/save",
+                    data: JSON.stringify(data.field),
+                    type: "POST",
+                    processData: false,
+                    contentType: "application/json",
+                    success: (res) => {
+                        layer.close(index);
+                        if (res.code) return layer.error(res.msg)
+                        var iframeIndex = parent.layer.getFrameIndex(window.name);
+                        parent.layer.close(iframeIndex);
+                    }
                 });
-
                 return false;
             });
 

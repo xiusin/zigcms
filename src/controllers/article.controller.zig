@@ -34,10 +34,8 @@ pub const Article = struct {
             ) catch return base.send_failed(self.allocator, req, "limit参数类型错误");
         }
 
-        std.log.debug("dto = {any}", .{dto});
-
         var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
-        var result = pool.queryOpts("SELECT * FROM zigcms.article OFFSET $1 LIMIT $2", .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+        var result = pool.queryOpts("SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2", .{ (dto.page - 1) * dto.limit, dto.limit }, .{
             .column_names = true,
         }) catch |e| return base.send_error(req, e);
 
@@ -84,5 +82,33 @@ pub const Article = struct {
             return base.send_failed(self.allocator, req, "文章不存在");
         }
         return base.send_ok(self.allocator, req, "删除成功");
+    }
+
+    pub fn save(self: *Self, req: zap.Request) void {
+        req.parseBody() catch |e| return base.send_error(req, e);
+        var dto: models.Article = undefined;
+        if (req.body) |body| {
+            std.log.debug("body = {s}", .{body});
+            dto = std.json.parseFromSliceLeaky(models.Article, self.allocator, body, .{
+                .ignore_unknown_fields = true,
+            }) catch return base.send_failed(self.allocator, req, "解析参数错误");
+        }
+
+        if (dto.id == null) dto.create_time = std.time.microTimestamp();
+        dto.update_time = std.time.microTimestamp();
+
+        const sql = base.build_insert_sql(
+            models.Article,
+            self.allocator,
+        ) catch return base.send_failed(self.allocator, req, "保存失败");
+        defer self.allocator.free(sql);
+
+        var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+        const row = pool.exec(sql, .{ dto.title, dto.keyword, dto.description, dto.content, dto.image_url, dto.video_url, dto.category_id, dto.article_type, dto.comment_switch, dto.recomment_type, dto.tags, dto.status, dto.sort, dto.view_count, dto.create_time, dto.update_time, dto.is_delete }) catch |e| return base.send_error(req, e);
+
+        if (row == 0) {
+            return base.send_failed(self.allocator, req, "保存失败");
+        }
+        return base.send_ok(self.allocator, req, .{row});
     }
 };

@@ -24,3 +24,19 @@ GET http://localhost:3000/article/get?id=1
 ### 文章列表
 GET http://localhost:3000/article/list?page=2&limit=100
 
+
+### 文章保存
+POST http://localhost:3000/article/save
+Content-Type: application/json
+{
+  "title": "123213213",
+  "keyword": "",
+  "description": "",
+  "file": "",
+  "video_url": "",
+  "article_type": "article_type_original",
+  "comment_switch": "0",
+  "recomment_type": "0",
+  "view_count": "0",
+  "content": "asdasdasd"
+}
