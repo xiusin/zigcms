@@ -14,7 +14,7 @@
 </head>
 
 <body style="background-color: #ffffff">
-    <div class="layui-form layuimini-form">
+    <div class="layui-form layuimini-form" lay-filter="form">
         <div class="layui-form-item">
             <label class="layui-form-label required">标题</label>
             <div class="layui-input-block">
@@ -75,7 +75,7 @@
         <div class="layui-form-item">
             <label class="layui-form-label">文章分类</label>
             <div class="layui-input-block ">
-                <select lay-filter="category_id">
+                <select name="category_id" lay-filter="category_id">
                     <option value="">请选择</option>
                     <option value="1">选项 A</option>
                     <option value="2">选项 B</option>
@@ -208,6 +208,18 @@
                 }
             });
 
+
+            // 详情渲染
+            var params = new URLSearchParams(window.location.search);
+            const id = params.get('id');
+            if (id) {
+                $.get('/article/get', { id: id }, (res) => {
+                    form.val('form', res.data);
+                    // $("#editor").html(res.data.content);
+                    // vditor.setValue(res.data.content);
+                });
+            }
+
             //监听提交
             form.on('submit(save)', function (data) {
                 if (!data.field['id']) delete data.field['id'];
@@ -229,7 +241,6 @@
                 });
                 return false;
             });
-
         });
     </script>
 </body>

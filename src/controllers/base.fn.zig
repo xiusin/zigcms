@@ -16,7 +16,7 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
 pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void {
     const ser = json.toSlice(allocator, .{
         .code = 0,
-        .msg = "ok",
+        .msg = "操作成功",
         .data = v,
     }) catch |e| return send_error(req, e);
     defer allocator.free(ser);
@@ -28,7 +28,7 @@ pub fn send_list_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype, 
     const ser = json.toSlice(allocator, .{
         .code = 0,
         .count = count,
-        .msg = "ok",
+        .msg = "获取列表成功",
         .data = v,
     }) catch |e| return send_error(req, e);
     defer allocator.free(ser);
