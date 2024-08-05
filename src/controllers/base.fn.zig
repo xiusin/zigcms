@@ -1,19 +1,32 @@
 const zap = @import("zap");
 const json = @import("json");
 const std = @import("std");
+const global = @import("../global/global.zig");
+
+pub const Response = struct {
+    code: usize = 0,
+    msg: []const u8 = "",
+    data: *void,
+    count: u64 = 0,
+};
 
 // send_error 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
-    std.log.debug("err = {any}", .{e});
-    req.sendError(
-        e,
-        if (@errorReturnTrace()) |t| t.* else null,
-        500,
-    );
+    req.sendError(e, if (@errorReturnTrace()) |t| t.* else null, 500);
 }
 
 //  send_ok 响应成功消息
 pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void {
+    const ser = json.toSlice(allocator, .{
+        .code = 0,
+        .msg = "操作成功",
+        .data = v,
+    }) catch |e| return send_error(req, e);
+    defer allocator.free(ser);
+    req.sendJson(ser) catch return;
+}
+
+pub fn send_ok_resp(allocator: std.mem.Allocator, req: zap.Request, v: Response) void {
     const ser = json.toSlice(allocator, .{
         .code = 0,
         .msg = "操作成功",
