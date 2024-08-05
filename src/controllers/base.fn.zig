@@ -72,5 +72,34 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
     defer allocator.free(fields_arg);
     defer allocator.free(values_arg);
 
-    return try std.fmt.allocPrint(allocator, "INSERT INTO zigcms.{s} ({s}) VALUES ({s})", .{ low_tablename, fields_arg, values_arg });
+    const query = "INSERT INTO zigcms.{s} ({s}) VALUES ({s})";
+    return try std.fmt.allocPrint(allocator, query, .{ low_tablename, fields_arg, values_arg });
+}
+
+// build_update_sql 构建更新sql语句, 仅支持简单语句生成
+pub fn build_update_sql(comptime T: type, allocator: std.mem.Allocator) ![]const u8 {
+    var fields = std.ArrayList([]const u8).init(allocator);
+    defer fields.deinit();
+
+    var index: usize = 0;
+    inline for (std.meta.fields(T)) |field| {
+        if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
+            var buf: [1024]u8 = undefined;
+            try fields.append(try std.fmt.bufPrint(buf[0..], "{s} = ${d}", .{ field.name, index + 1 }));
+            index += 1;
+        }
+    }
+
+    var iter = std.mem.split(u8, @typeName(T), ".");
+    var tablename: []const u8 = undefined;
+    while (iter.next()) |v| {
+        tablename = v;
+    }
+    const output: []u8 = undefined;
+    const low_tablename = std.ascii.lowerString(output, tablename);
+    const fields_arg = try std.mem.join(allocator, ", ", fields.items);
+    defer allocator.free(fields_arg);
+
+    const query = "UPDATE zigcms.{s} SET {s} WHERE id = ${d}";
+    return try std.fmt.allocPrint(allocator, query, .{ low_tablename, fields_arg, index + 1 });
 }

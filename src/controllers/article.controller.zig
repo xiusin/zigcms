@@ -35,7 +35,9 @@ pub const Article = struct {
         }
 
         var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
-        var result = pool.queryOpts("SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2", .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+
+        const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
+        var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
             .column_names = true,
         }) catch |e| return base.send_error(req, e);
 
@@ -93,22 +95,69 @@ pub const Article = struct {
                 .ignore_unknown_fields = true,
             }) catch return base.send_failed(self.allocator, req, "解析参数错误");
         }
-
-        if (dto.id == null) dto.create_time = std.time.microTimestamp();
         dto.update_time = std.time.microTimestamp();
 
-        const sql = base.build_insert_sql(
-            models.Article,
-            self.allocator,
-        ) catch return base.send_failed(self.allocator, req, "保存失败");
-        defer self.allocator.free(sql);
-
+        var row: ?i64 = 0;
         var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
-        const row = pool.exec(sql, .{ dto.title, dto.keyword, dto.description, dto.content, dto.image_url, dto.video_url, dto.category_id, dto.article_type, dto.comment_switch, dto.recomment_type, dto.tags, dto.status, dto.sort, dto.view_count, dto.create_time, dto.update_time, dto.is_delete }) catch |e| return base.send_error(req, e);
+        if (dto.id) |id| {
+            dto.create_time = std.time.microTimestamp();
+            const sql = base.build_update_sql(
+                models.Article,
+                self.allocator,
+            ) catch return base.send_failed(self.allocator, req, "保存失败");
+            defer self.allocator.free(sql);
 
-        if (row == 0) {
+            row = pool.exec(sql, .{
+                dto.title,
+                dto.keyword,
+                dto.description,
+                dto.content,
+                dto.image_url,
+                dto.video_url,
+                dto.category_id,
+                dto.article_type,
+                dto.comment_switch,
+                dto.recomment_type,
+                dto.tags,
+                dto.status,
+                dto.sort,
+                dto.view_count,
+                dto.create_time,
+                dto.update_time,
+                dto.is_delete,
+                id,
+            }) catch |e| return base.send_error(req, e);
+        } else {
+            const sql = base.build_insert_sql(
+                models.Article,
+                self.allocator,
+            ) catch return base.send_failed(self.allocator, req, "保存失败");
+            defer self.allocator.free(sql);
+
+            row = pool.exec(sql, .{
+                dto.title,
+                dto.keyword,
+                dto.description,
+                dto.content,
+                dto.image_url,
+                dto.video_url,
+                dto.category_id,
+                dto.article_type,
+                dto.comment_switch,
+                dto.recomment_type,
+                dto.tags,
+                dto.status,
+                dto.sort,
+                dto.view_count,
+                dto.create_time,
+                dto.update_time,
+                dto.is_delete,
+            }) catch |e| return base.send_error(req, e);
+        }
+
+        if (row == null or row == 0) {
             return base.send_failed(self.allocator, req, "保存失败");
         }
-        return base.send_ok(self.allocator, req, .{row});
+        return base.send_ok(self.allocator, req, .{});
     }
 };

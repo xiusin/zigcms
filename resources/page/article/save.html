@@ -47,6 +47,7 @@
         <div class="layui-form-item layui-form-text">
             <label class="layui-form-label">封面图</label>
             <div class="layui-input-block">
+                <input type="hidden" id="upload-file-input" name="image_url" value="" />
                 <div style="width: 132px;">
                     <div class="layui-upload-list" id="ID-upload-demo-btn"
                         style="min-width: 50px; border: 1px solid #ccc; position: relative; text-align: center;">
@@ -56,9 +57,6 @@
                         </div>
                         <img class="layui-upload-img" id="ID-upload-demo-img" style=" height: 92px;">
                         <div id="ID-upload-demo-text"></div>
-                    </div>
-                    <div class="layui-progress layui-progress-small" lay-filter="filter-demo">
-                        <div class="layui-progress-bar" lay-percent=""></div>
                     </div>
                 </div>
             </div>
@@ -86,7 +84,7 @@
 
         <div class="layui-form-item">
             <label class="layui-form-label">文章类型</label>
-            <div class="layui-input-block ">
+            <div class="layui-input-block">
                 <input type="radio" name="article_type" value="article_type_original" title="原创" checked>
                 <input type="radio" name="article_type" value="article_type_reprint" title="转载">
             </div>
@@ -141,98 +139,8 @@
     <script src="../../js/lay-config.js" charset="utf-8"></script>
     <link rel="stylesheet" href="https://unpkg.com/vditor/dist/index.css" />
     <script src="https://unpkg.com/vditor/dist/index.min.js"></script>
-    <script>
-        layui.use(['form', 'layer', 'inputTag'], function () {
-            var form = layui.form,
-                layer = layui.layer,
-                upload = layui.upload,
-                inputTag = layui.inputTag,
-                $ = layui.$;
-
-            const vditor = new Vditor("editor", {
-                height: '100%',
-                minHeight: 500,
-                width: 1000,
-                toolbarConfig: { pin: true },
-                counter: { enable: true },
-                cache: { enable: false },
-                placeholder: '请输入此刻的想法...'
-            });
-
-            inputTag.render({
-                elem: '.tag1',
-                data: [],
-                removeKeyNum: 8,
-                createKeyNum: 13,
-                onChange: function (data, value, type) {
-                    $('#tag1').text(JSON.stringify(data));
-                }
-            });
-
-            // 单图片上传
-            var uploadInst = upload.render({
-                elem: '#ID-upload-demo-btn',
-                url: '/public/upload',
-                before: function (obj) {
-                    obj.preview(function (index, file, result) {
-                        $('#ID-upload-demo-img').attr('src', result); // 图片链接（base64）
-                    });
-                    layer.msg('上传中', { icon: 16, time: 0 });
-                },
-                done: function (res) {
-                    if (res.code > 0) {
-                        return layer.msg('上传失败');
-                    }
-                    $('#ID-upload-demo-text').html('');
-                },
-                error: function () {
-                    var demoText = $('#ID-upload-demo-text');
-                    demoText.html('<span style="color: #FF5722;">上传失败</span> <a class="layui-btn layui-btn-xs demo-reload">重试</a>');
-                    demoText.find('.demo-reload').on('click', function () {
-                        uploadInst.upload();
-                    });
-                },
-                progress: function (n, elem, e) {
-                    // element.progress('filter-demo', n + '%'); // 可配合 layui 进度条元素使用
-                    if (n == 100) {
-                        layer.msg('上传完毕', { icon: 1 });
-                    }
-                }
-            });
-
-            // 详情渲染
-            var params = new URLSearchParams(window.location.search);
-            const id = params.get('id');
-            if (id) {
-                $.get('/article/get', { id: id }, (res) => {
-                    form.val('form', res.data);
-                    setTimeout(() => vditor.setValue(res.data.content), 50);
-                });
-            }
-
-            //监听提交
-            form.on('submit(save)', function (data) {
-                if (!data.field['id']) delete data.field['id'];
-                if (!data.field['view_count']) delete data.field['view_count'];
-                data.field['content'] = vditor.getValue();
-                var index = layer.load(1, { shade: false });
-                $.ajax({
-                    url: "/article/save",
-                    data: JSON.stringify(data.field),
-                    type: "POST",
-                    processData: false,
-                    contentType: "application/json",
-                    success: (res) => {
-                        layer.close(index);
-                        if (res.code) return layer.error(res.msg)
-                        var iframeIndex = parent.layer.getFrameIndex(window.name);
-                        parent.layer.close(iframeIndex);
-                    }
-                });
-                return false;
-            });
-        });
-    </script>
+    <script src="../../js/public.js"></script>
+    <script src="js/save.js"></script>
 </body>
 
 </html>

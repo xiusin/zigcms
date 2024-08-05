@@ -1,0 +1,98 @@
+layui.use(['form', 'table'], function () {
+    var $ = layui.jquery,
+        form = layui.form,
+        table = layui.table;
+
+    table.render({
+        elem: '#table',
+        url: '/article/list',
+        toolbar: '#btns',
+        defaultToolbar: ['filter', 'exports', 'print', {
+            title: '提示',
+            layEvent: 'LAYTABLE_TIPS',
+            icon: 'layui-icon-tips'
+        }],
+        cols: [[
+            { field: 'id', width: 80, title: 'ID', sort: true },
+            { field: 'image_url', width: 150, title: '文章封面' },
+            { field: 'title', minWidth: 240, title: '文章标题' },
+            { field: 'article_type', width: 150, title: '文章类型', templet: (d) => d.article_type == 'article_type_original' ? '原创' : '转载' },
+            { field: 'category_id', width: 150, title: '文章分类' },
+            { field: 'tags', title: '标签' },
+            { field: 'status', width: 100, title: '状态', templet: '#templet-switch' },
+            { field: 'view_count', width: 100, title: '观看次数' },
+            { field: 'create_time', width: 160, title: '创建时间', templet: (d) => new Date(d.create_time / 1000).toLocaleString() },
+            { field: 'update_time', width: 160, title: '创建时间', templet: (d) => new Date(d.create_time / 1000).toLocaleString() },
+            { title: '操作', minWidth: 150, toolbar: '#tablebar', align: "center" }
+        ]],
+        limits: [10, 15, 20, 25, 50, 100],
+        limit: 15,
+        page: true,
+        skin: 'line'
+    });
+
+    // 监听搜索操作
+    form.on('submit(data-search-btn)', function (data) {
+        var result = JSON.stringify(data.field);
+        layer.alert(result, {
+            title: '最终的搜索信息'
+        });
+
+        //执行搜索重载
+        table.reload('currentTableId', {
+            page: { urr: 1 },
+            where: { searchParams: result }
+        }, 'data');
+
+        return false;
+    });
+
+    /**
+     * toolbar监听事件
+     */
+    table.on('toolbar(currentTableFilter)', function (obj) {
+        if (obj.event === 'add') {  // 监听添加操作
+            var index = layer.open({
+                title: '添加文章',
+                type: 2,
+                shade: 0.2,
+                maxmin: true,
+                shadeClose: true,
+                area: ['100%', '100%'],
+                content: 'save.html',
+            });
+            $(window).on("resize", function () {
+                layer.full(index);
+            });
+        } else if (obj.event === 'delete') {  // 监听删除操作
+            var checkStatus = table.checkStatus('currentTableId')
+                , data = checkStatus.data;
+            layer.alert(JSON.stringify(data));
+        }
+    });
+
+    table.on('tool(currentTableFilter)', function (obj) {
+        var data = obj.data;
+        if (obj.event === 'edit') {
+            var index = layer.open({
+                title: '编辑文章',
+                type: 2,
+                shade: 0.2,
+                maxmin: true,
+                shadeClose: true,
+                area: ['100%', '100%'],
+                content: 'save.html?id=' + data.id,
+            });
+            $(window).on("resize", () => layer.full(index));
+            return false;
+        } else if (obj.event === 'delete') {
+            layer.confirm('真的删除吗?', function (index) {
+                $.get('/article/delete', { id: data.id }, (res) => {
+                    if (res.code === 0) obj.del();
+                    layer.closeAll(index);
+                    layer.msg(res.msg);
+                })
+            });
+        }
+    });
+});
