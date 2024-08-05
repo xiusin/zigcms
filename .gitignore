@@ -18,3 +18,4 @@ zig-cache
 zig-out/
 .DS_Store
 target/
+resources/uploads/
