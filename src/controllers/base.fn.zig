@@ -3,13 +3,6 @@ const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
 
-pub const Response = struct {
-    code: usize = 0,
-    msg: []const u8 = "",
-    data: *void,
-    count: u64 = 0,
-};
-
 // send_error 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
     req.sendError(e, if (@errorReturnTrace()) |t| t.* else null, 500);
@@ -17,20 +10,13 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
 
 //  send_ok 响应成功消息
 pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void {
+    // const count = if (@hasField(@typeInfo(v), "count")) v.count else 0;
+    std.log.debug("{any}", .{@typeName(@Type(v))});
     const ser = json.toSlice(allocator, .{
         .code = 0,
         .msg = "操作成功",
         .data = v,
-    }) catch |e| return send_error(req, e);
-    defer allocator.free(ser);
-    req.sendJson(ser) catch return;
-}
-
-pub fn send_ok_resp(allocator: std.mem.Allocator, req: zap.Request, v: Response) void {
-    const ser = json.toSlice(allocator, .{
-        .code = 0,
-        .msg = "操作成功",
-        .data = v,
+        // .count = count,
     }) catch |e| return send_error(req, e);
     defer allocator.free(ser);
     req.sendJson(ser) catch return;

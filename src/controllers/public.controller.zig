@@ -83,6 +83,16 @@ pub fn upload(self: *Self, req: zap.Request) void {
                         }) catch |e| return base.send_error(req, e);
                         cache = false;
                     };
+                    // 判断文件是否存在, statFile 必须是绝对路径
+                    _ = std.fs.cwd().statFile(filename) catch {
+                        std.fs.cwd().makePath(savedir) catch return base.send_failed(self.allocator, req, "创建上传目录失败");
+                        std.fs.cwd().writeFile(.{
+                            .sub_path = filename,
+                            .data = data,
+                            .flags = .{},
+                        }) catch |e| return base.send_error(req, e);
+                        cache = false;
+                    };
 
                     return base.send_ok(self.allocator, req, .{
                         .path = filename,

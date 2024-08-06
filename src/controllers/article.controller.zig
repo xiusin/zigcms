@@ -65,7 +65,7 @@ pub fn get(self: *Self, req: zap.Request) void {
 
     defer row.?.deinit() catch {};
     const article = row.?.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);
-    return base.send_ok_resp(self.allocator, req, .{ .data = @ptrCast(&article) });
+    return base.send_ok(self.allocator, req, article);
 }
 
 pub fn delete(self: *Self, req: zap.Request) void {
