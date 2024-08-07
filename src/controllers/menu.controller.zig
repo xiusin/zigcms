@@ -29,7 +29,7 @@ pub fn list(self: *Self, req: zap.Request) void {
         std.log.debug("menu = {any}", .{menu});
         menus.append(menu) catch {};
     }
-    base.send_ok(self.allocator, req, .{});
+    base.send_ok(req, .{});
 }
 
 pub fn save(self: *Self, req: zap.Request) void {

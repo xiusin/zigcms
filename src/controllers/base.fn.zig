@@ -9,38 +9,36 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
 }
 
 //  send_ok 响应成功消息
-pub fn send_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype) void {
-    // const count = if (@hasField(@typeInfo(v), "count")) v.count else 0;
-    std.log.debug("{any}", .{@typeName(@Type(v))});
-    const ser = json.toSlice(allocator, .{
+pub fn send_ok( req: zap.Request, v: anytype) void {
+    const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
         .msg = "操作成功",
         .data = v,
         // .count = count,
     }) catch |e| return send_error(req, e);
-    defer allocator.free(ser);
+    defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;
 }
 
 //  send_list_ok 响应成功消息
-pub fn send_list_ok(allocator: std.mem.Allocator, req: zap.Request, v: anytype, count: u64) void {
-    const ser = json.toSlice(allocator, .{
+pub fn send_list_ok(req: zap.Request, v: anytype, count: u64) void {
+    const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
         .count = count,
         .msg = "获取列表成功",
         .data = v,
     }) catch |e| return send_error(req, e);
-    defer allocator.free(ser);
+    defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;
 }
 
 // send_failed 响应失败消息
-pub fn send_failed(allocator: std.mem.Allocator, req: zap.Request, message: []const u8) void {
-    const ser = json.toSlice(allocator, .{
+pub fn send_failed(req: zap.Request, message: []const u8) void {
+    const ser = json.toSlice(global.get_allocator(), .{
         .code = 500,
         .msg = message,
     }) catch return;
-    defer allocator.free(ser);
+    defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;
 }
 
@@ -65,14 +63,17 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
         tablename = v;
     }
     const output: []u8 = undefined;
-    const low_tablename = std.ascii.lowerString(output, tablename);
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     const values_arg = try std.mem.join(allocator, ", ", values.items);
     defer allocator.free(fields_arg);
     defer allocator.free(values_arg);
 
     const query = "INSERT INTO zigcms.{s} ({s}) VALUES ({s})";
-    return try std.fmt.allocPrint(allocator, query, .{ low_tablename, fields_arg, values_arg });
+    return try std.fmt.allocPrint(allocator, query, .{
+        std.ascii.lowerString(output, tablename),
+        fields_arg,
+        values_arg,
+    });
 }
 
 // build_update_sql 构建更新sql语句, 仅支持简单语句生成

@@ -27,12 +27,12 @@ pub fn get(self: Self, req: zap.Request) void {
     while (mapper.next() catch |e| return base.send_error(req, e)) |item| {
         config.put(item.key, item.value) catch {};
     }
-    return base.send_ok(self.allocator, req, config);
+    return base.send_ok(req, config);
 }
 
 pub fn save(self: Self, req: zap.Request) void {
     req.parseBody() catch |e| return base.send_error(req, e);
-    const body = req.body orelse return base.send_failed(self.allocator, req, "提交参数为空");
+    const body = req.body orelse return base.send_failed(req, "提交参数为空");
 
     var values = std.json.parseFromSliceLeaky(
         std.json.Value,
@@ -48,5 +48,5 @@ pub fn save(self: Self, req: zap.Request) void {
         _ = global.sql_exec("INSERT INTO zigcms.setting (key, value) VALUES ($1, $2)", .{ entity.key_ptr.*, entity.value_ptr.string }) catch {};
     }
 
-    return base.send_ok(self.allocator, req, "保存成功");
+    return base.send_ok(req, "保存成功");
 }

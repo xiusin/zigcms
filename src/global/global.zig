@@ -30,6 +30,10 @@ pub fn set_allocator(allocator: std.mem.Allocator) void {
     _allocator = allocator;
 }
 
+pub fn get_allocator() std.mem.Allocator {
+    return _allocator;
+}
+
 pub fn get_pg_pool() !*pg.Pool {
     try init_pg();
     return _pool;
