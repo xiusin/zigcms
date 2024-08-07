@@ -13,8 +13,8 @@ layui.use(['form', 'table'], function () {
             icon: 'layui-icon-tips'
         }],
         cols: [[
-            { field: 'id', width: 80, title: 'ID', sort: true },
-            { field: 'image_url', width: 150, title: '文章封面' },
+            // { field: 'id', width: 80, title: 'ID', sort: true },
+            // { field: 'image_url', width: 150, title: '文章封面', templet: '#templet-image' },
             { field: 'title', minWidth: 240, title: '文章标题' },
             { field: 'article_type', width: 150, title: '文章类型', templet: (d) => d.article_type == 'article_type_original' ? '原创' : '转载' },
             { field: 'category_id', width: 150, title: '文章分类' },
@@ -47,9 +47,6 @@ layui.use(['form', 'table'], function () {
         return false;
     });
 
-    /**
-     * toolbar监听事件
-     */
     table.on('toolbar(currentTableFilter)', function (obj) {
         if (obj.event === 'add') {  // 监听添加操作
             var index = layer.open({
