@@ -58,7 +58,6 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     const savedir = std.mem.concat(self.allocator, u8, sd) catch return base.send_failed(req, "构建地址错误");
                     defer self.allocator.free(savedir);
 
-                    // 生成相对目录
                     const fd = &[_][]const u8{ savedir, "/", md5, ext };
                     const filename = std.mem.concat(self.allocator, u8, fd) catch return base.send_failed(req, "上传失败");
                     defer self.allocator.free(filename);
@@ -71,18 +70,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     ) catch return base.send_failed(req, "生成对象地址错误:URL");
                     defer self.allocator.free(url);
 
-                    // 判断文件是否存在, statFile 必须是绝对路径
-                    _ = std.fs.cwd().statFile(filename) catch |err| {
-                        std.log.debug("{any}", .{err});
-                        std.fs.cwd().makePath(savedir) catch return base.send_failed(req, "创建上传目录失败");
-                        std.fs.cwd().writeFile(.{
-                            .sub_path = filename,
-                            .data = data,
-                            .flags = .{},
-                        }) catch |e| return base.send_error(req, e);
-                        cache = false;
-                    };
-                    // 判断文件是否存在, statFile 必须是绝对路径
+                    // 判断文件是否存在
                     _ = std.fs.cwd().statFile(filename) catch {
                         std.fs.cwd().makePath(savedir) catch return base.send_failed( req, "创建上传目录失败");
                         std.fs.cwd().writeFile(.{
