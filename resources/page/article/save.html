@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../css/public.css" media="all">
     <link rel="stylesheet" href="../../lib/jq-module/zyupload/zyupload-1.0.0.min.css" media="all">
     <link rel="stylesheet" href="../../js/lay-module/inputTags/inputTag.css" media="all">
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@latest"></script>
 </head>
 
 <body style="background-color: #ffffff">
@@ -43,20 +44,27 @@
             </div>
         </div>
 
+        <div class="layui-form-item layui-form-text">
+            <label class="layui-form-label">内容</label>
+            <div class="layui-input-block">
+                <div id="editorjs" style="margin: 50px 0 50px 0"></div>
+            </div>
+        </div>
+
 
         <div class="layui-form-item layui-form-text">
             <label class="layui-form-label">封面图</label>
-            <div class="layui-input-block">
-                <input type="hidden" id="upload-file-input" name="image_url" value="" />
-                <div style="width: 132px;">
-                    <div class="layui-upload-list" id="ID-upload-demo-btn"
-                        style="min-width: 50px; border: 1px solid #ccc; position: relative; text-align: center;">
-                        <div
-                            style="width: 100%; height: 92px; text-align: center; line-height: 92px; position: absolute; z-index: -1; top: 0;">
-                            <i class="layui-icon layui-icon-upload"></i>
-                        </div>
+            <div class="layui-input-block ">
+                <div class="img-content">
+                    <input type="hidden" id="upload-file-input" name="image_url" value="" />
+                    <!-- <div class="upload-image-div" id="ID-upload-demo-btn">
                         <img class="layui-upload-img" id="ID-upload-demo-img" style=" height: 92px;">
-                        <div id="ID-upload-demo-text"></div>
+                        <a class="upload-image-a"> + 添加图片</a>
+                    </div> -->
+                    <div class="img-container">
+                        <img class="img-src"
+                            src="https://php-b2c-demo.likeshop.cn/uploads/images/202104011043284d5fe5125.png"><a
+                            class="img-del-x">x</a>
                     </div>
                 </div>
             </div>
@@ -141,6 +149,14 @@
     <script src="https://unpkg.com/vditor/dist/index.min.js"></script>
     <script src="../../js/public.js"></script>
     <script src="js/save.js"></script>
+    <script>
+        const editor = new EditorJS({
+            /**
+             * Id of Element that should contain the Editor
+             */
+            holderId: 'editorjs',
+        });
+    </script>
 </body>
 
 </html>
