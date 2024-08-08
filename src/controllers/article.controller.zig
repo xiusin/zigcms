@@ -98,6 +98,27 @@ pub fn save(self: *Self, req: zap.Request) void {
 
     var row: ?i64 = 0;
     var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+
+    const update = .{
+        dto.title,
+        dto.keyword,
+        dto.description,
+        dto.content,
+        dto.image_url,
+        dto.video_url,
+        dto.category_id,
+        dto.article_type,
+        dto.comment_switch,
+        dto.recomment_type,
+        dto.tags,
+        dto.status,
+        dto.sort,
+        dto.view_count,
+        dto.create_time,
+        dto.update_time,
+        dto.is_delete,
+    };
+
     if (dto.id) |id| {
         dto.create_time = std.time.microTimestamp();
         const sql = base.build_update_sql(
@@ -106,26 +127,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
 
-        row = pool.exec(sql, .{
-            dto.title,
-            dto.keyword,
-            dto.description,
-            dto.content,
-            dto.image_url,
-            dto.video_url,
-            dto.category_id,
-            dto.article_type,
-            dto.comment_switch,
-            dto.recomment_type,
-            dto.tags,
-            dto.status,
-            dto.sort,
-            dto.view_count,
-            dto.create_time,
-            dto.update_time,
-            dto.is_delete,
-            id,
-        }) catch |e| return base.send_error(req, e);
+        row = pool.exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
     } else {
         const sql = base.build_insert_sql(
             models.Article,
@@ -133,25 +135,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
 
-        row = pool.exec(sql, .{
-            dto.title,
-            dto.keyword,
-            dto.description,
-            dto.content,
-            dto.image_url,
-            dto.video_url,
-            dto.category_id,
-            dto.article_type,
-            dto.comment_switch,
-            dto.recomment_type,
-            dto.tags,
-            dto.status,
-            dto.sort,
-            dto.view_count,
-            dto.create_time,
-            dto.update_time,
-            dto.is_delete,
-        }) catch |e| return base.send_error(req, e);
+        row = pool.exec(sql, update) catch |e| return base.send_error(req, e);
     }
 
     if (row == null or row == 0) {

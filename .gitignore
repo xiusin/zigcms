@@ -19,3 +19,4 @@ zig-out/
 .DS_Store
 target/
 resources/uploads/
+*.db

@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const sqlite = @import("sqlite");
 
@@ -396,7 +395,11 @@ pub const GitApi = struct {
         const url = try std.fmt.allocPrint(self.allocator, "https://github.com/login/oauth/access_token", .{});
         defer self.allocator.free(url);
 
-        var resp = try self.request(url, .POST, "client_id={s}&client_secret={s}&code={s}", .{ self.client_id.?, self.client_secret.?, code });
+        var resp = try self.request(url, .POST, "client_id={s}&client_secret={s}&code={s}", .{
+            self.client_id.?,
+            self.client_secret.?,
+            code,
+        });
         defer resp.deinit();
     }
 };

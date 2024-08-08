@@ -6,8 +6,11 @@ const Allocator = std.mem.Allocator;
 const global = @import("global/global.zig");
 const controllers = @import("controllers/controllers.zig");
 const base = @import("controllers/base.fn.zig");
+const models = @import("models/models.zig");
 
 pub fn main() !void {
+    // std.log.debug("{?}", Struct2Tuple(models.Admin));
+
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     global.set_allocator(allocator);
@@ -42,7 +45,6 @@ pub fn main() !void {
         .public_folder = "resources",
         .max_clients = 10000,
     });
-    zap.enableDebugLog();
     try listener.listen();
     zap.start(.{ .threads = 2, .workers = 2 });
 }

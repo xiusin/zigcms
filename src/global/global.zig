@@ -1,6 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const pretty = @import("pretty");
+const models = @import("../models/models.zig");
 
 var _allocator: std.mem.Allocator = undefined;
 var _pool: *pg.Pool = undefined;
@@ -51,4 +52,50 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
         return result;
     }
     return error.SqlExecFailed;
+}
+
+pub fn get_setting(allocator: std.mem.Allocator, key: []const u8) ![]const u8 {
+    var pool = try get_pg_pool();
+    const sql = "SELECT * FROM zigcms.setting";
+    var result = try pool.queryOpts(sql, .{}, .{ .column_names = true });
+
+    defer result.deinit();
+    const mapper = result.mapper(models.Setting, .{ .allocator = allocator });
+    var config = std.StringHashMap([]const u8).init(allocator);
+    defer config.deinit();
+    while (try mapper.next()) |item| {
+        try config.put(item.key, item.value);
+    }
+    if (config.get(key)) |val| {
+        return val;
+    }
+    return error.SettingNotFound;
+}
+
+
+pub fn Struct2Tuple(comptime T: anytype) type {
+    const Type = std.builtin.Type;
+    const fields: [std.meta.fields(T).len]Type.StructField = blk: {
+        var res: [std.meta.fields(T).len]Type.StructField = undefined;
+
+        inline for (std.meta.fields(T), 0..) |field, i| {
+            res[i] = Type.StructField{
+                .type = field.type,
+                .alignment = @alignOf(field.type),
+                .default_value = null,
+                .is_comptime = false,
+                .name = std.fmt.comptimePrint("{}", .{i}),
+            };
+        }
+        break :blk res;
+    };
+
+    return @Type(.{
+        .Struct = std.builtin.Type.Struct{
+            .layout = .auto,
+            .is_tuple = true,
+            .decls = &.{},
+            .fields = &fields,
+        },
+    });
 }

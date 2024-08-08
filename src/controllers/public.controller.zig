@@ -1,6 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
-
+const strings = @import("zig-strings");
 const base = @import("base.fn.zig");
 
 const Self = @This();
