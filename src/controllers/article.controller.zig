@@ -35,9 +35,9 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
 
-    var row = pool.rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e);
-    defer row.?.deinit() catch {};
-    const total = row.?.to(struct { total: i32 = 0 }, .{}) catch |e| return base.send_error(req, e);
+    var row = (pool.rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
+    defer row.deinit() catch {};
+    const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
     const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
     var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
         .column_names = true,
