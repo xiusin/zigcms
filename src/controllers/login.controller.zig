@@ -1,4 +1,6 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
 const zap = @import("zap");
 const pretty = @import("pretty");
 const jwt = @import("jwt");
@@ -10,8 +12,8 @@ const models = @import("../models/models.zig");
 
 const Self = @This();
 
-allocator: std.mem.Allocator,
-pub fn init(allocator: std.mem.Allocator) Self {
+allocator: Allocator,
+pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 

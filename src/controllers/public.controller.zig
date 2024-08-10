@@ -1,5 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
+const Allocator = std.mem.Allocator;
 const strings = @import("zig-strings");
 const base = @import("base.fn.zig");
 
@@ -7,8 +8,8 @@ const Self = @This();
 
 const ResourceBaseDir = "resources";
 
-allocator: std.mem.Allocator,
-pub fn init(allocator: std.mem.Allocator) Self {
+allocator: Allocator,
+pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
@@ -26,7 +27,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
             switch (v) {
                 zap.Request.HttpParam.Hash_Binfile => |*file| {
                     const origin_filename = file.filename orelse return base.send_failed(req, "文件上传失败");
-                    const data = file.data orelse return base.send_failed( req, "文件上传失败");
+                    const data = file.data orelse return base.send_failed(req, "文件上传失败");
                     const ext = std.fs.path.extension(origin_filename);
 
                     const Md5 = std.crypto.hash.Md5;
@@ -72,7 +73,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
 
                     // 判断文件是否存在
                     _ = std.fs.cwd().statFile(filename) catch {
-                        std.fs.cwd().makePath(savedir) catch return base.send_failed( req, "创建上传目录失败");
+                        std.fs.cwd().makePath(savedir) catch return base.send_failed(req, "创建上传目录失败");
                         std.fs.cwd().writeFile(.{
                             .sub_path = filename,
                             .data = data,

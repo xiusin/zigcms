@@ -25,14 +25,14 @@ const LanguageCountModel = struct { language: []u8 = "", count: i32 = 0 };
 pub const GitApi = struct {
     base_url: []const u8 = "https://api.github.com",
     token: []const u8 = undefined,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     db: sqlite.Db,
     user: ?UserModel = null,
     last_error_message: ?[]const u8 = null,
     client_id: ?[]const u8 = null,
     client_secret: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, token: []const u8) !GitApi {
+    pub fn init(allocator: Allocator, token: []const u8) !GitApi {
         const buf = try allocator.dupe(u8, token);
 
         var db = try sqlite.Db.init(.{ .mode = sqlite.Db.Mode{ .File = "git.db" }, .open_flags = .{ .write = true, .create = true }, .threading_mode = .MultiThread });

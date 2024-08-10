@@ -3,14 +3,13 @@ const std = @import("std");
 const Self = @This();
 
 debug: bool = false,
-allocator: std.mem.Allocator,
+allocator: Allocator,
 key: []const u8,
 passphrase: []const u8,
 secret: []const u8,
 last_error_message: ?[]const u8 = null,
 
-
-pub fn init(allocator: std.mem.Allocator, key: []const u8, secret: []const u8, passphrase: []const u8) !Http {
+pub fn init(allocator: Allocator, key: []const u8, secret: []const u8, passphrase: []const u8) !Http {
     return .{
         .allocator = allocator,
         .key = try allocator.dupe(u8, key),

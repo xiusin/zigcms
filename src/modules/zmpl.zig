@@ -1,7 +1,7 @@
 const std = @import("std");
 const zmpl = @import("zmpl");
 
-pub fn start(allocator: std.mem.Allocator) !void {
+pub fn start(allocator: Allocator) !void {
     var data = zmpl.Data.init(allocator);
     defer data.deinit();
 
@@ -14,10 +14,10 @@ pub fn start(allocator: std.mem.Allocator) !void {
     var body = try data.object();
     try body.put("person", props); // TODO 不能用?
 
-    if (zmpl.find("hello")) | template | {
+    if (zmpl.find("hello")) |template| {
         const output = try template.render(&data);
         defer allocator.free(output);
 
-        std.debug.print("{s}\n",.{output});
+        std.debug.print("{s}\n", .{output});
     }
 }

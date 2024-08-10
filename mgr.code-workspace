@@ -18,12 +18,12 @@
             "MarsCode.marscode-extension",
             "DanielGavin.ols",
             "anweber.vscode-httpyac",
-            "MarsCode.marscode-extension",
+            "Codeium.codeium",
         ]
     },
     "settings": {
-        "editor.fontSize": 12,
-        "editor.fontFamily": "Hack Nerd Font Mono, Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
+        "editor.fontSize": 10,
+        "editor.fontFamily": "'FiraCode Nerd Font Mono','Hack Nerd Font Mono', Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
         "editor.autoIndent": "advanced",
         "editor.fontLigatures": true,
         "editor.formatOnSave": true,
@@ -34,7 +34,7 @@
         "editor.gotoLocation.alternativeDefinitionCommand": "editor.action.revealDefinition",
         "editor.gotoLocation.alternativeTypeDefinitionCommand": "editor.action.revealDefinition",
         "editor.selectionHighlight": false,
-        "files.autoSave": "onFocusChange",
+        "files.autoSave": "afterDelay",
         "editor.suggest.snippetsPreventQuickSuggestions": false,
         "editor.quickSuggestions": {
             "other": "on",

@@ -17,11 +17,11 @@ const Reply = struct {
     type: DataType = undefined,
     eof: []const u8 = "\r\n",
     err: anyerror = undefined,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     alloc_strings: ?[][]const u8 = null,
     alloc_map: ?std.StringArrayHashMap([]const u8) = null,
 
-    pub fn init(allocator: std.mem.Allocator, buf: []u8) Reply {
+    pub fn init(allocator: Allocator, buf: []u8) Reply {
         return .{
             .buf = allocator.dupe(u8, buf) catch unreachable,
             .allocator = allocator,
@@ -128,13 +128,13 @@ const Reply = struct {
 
 // 定义redis客户端
 pub const Client = struct {
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     stream: std.net.Stream = undefined,
     mu: std.Thread.Mutex = .{},
     config: Config,
 
     /// 初始化客户端
-    pub fn init(allocator: std.mem.Allocator, config: Config) !Client {
+    pub fn init(allocator: Allocator, config: Config) !Client {
         var client = Client{ .allocator = allocator, .config = config };
 
         try client.connect();

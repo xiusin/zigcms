@@ -1,9 +1,10 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const pg = @import("pg");
 const pretty = @import("pretty");
 const models = @import("../models/models.zig");
 
-var _allocator: std.mem.Allocator = undefined;
+var _allocator: Allocator = undefined;
 var _pool: *pg.Pool = undefined;
 var inited: bool = false;
 
@@ -27,11 +28,11 @@ fn init_pg() !void {
     }
 }
 
-pub fn set_allocator(allocator: std.mem.Allocator) void {
+pub fn set_allocator(allocator: Allocator) void {
     _allocator = allocator;
 }
 
-pub fn get_allocator() std.mem.Allocator {
+pub fn get_allocator() Allocator {
     return _allocator;
 }
 
@@ -54,7 +55,7 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
     return error.SqlExecFailed;
 }
 
-pub fn get_setting(allocator: std.mem.Allocator, key: []const u8) ![]const u8 {
+pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
     var pool = try get_pg_pool();
     const sql = "SELECT * FROM zigcms.setting";
     var result = try pool.queryOpts(sql, .{}, .{ .column_names = true });
@@ -71,7 +72,6 @@ pub fn get_setting(allocator: std.mem.Allocator, key: []const u8) ![]const u8 {
     }
     return error.SettingNotFound;
 }
-
 
 pub fn Struct2Tuple(comptime T: anytype) type {
     const Type = std.builtin.Type;

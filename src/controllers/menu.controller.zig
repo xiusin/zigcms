@@ -1,15 +1,15 @@
 const std = @import("std");
 const zap = @import("zap");
-
 const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
 const models = @import("../models/menu.model.zig");
 const dtos = @import("../dto/dtos.zig");
 
 const Self = @This();
+const Allocator = std.mem.Allocator;
 
-allocator: std.mem.Allocator,
-pub fn init(allocator: std.mem.Allocator) Self {
+allocator: Allocator,
+pub fn init(allocator: Allocator) Self {
     return .{
         .allocator = allocator,
     };

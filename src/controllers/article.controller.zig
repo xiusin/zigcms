@@ -1,5 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
+const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
@@ -8,8 +9,8 @@ const dtos = @import("../dto/dtos.zig");
 
 const Self = @This();
 
-allocator: std.mem.Allocator,
-pub fn init(allocator: std.mem.Allocator) Self {
+allocator: Allocator,
+pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
@@ -34,6 +35,7 @@ pub fn list(self: *Self, req: zap.Request) void {
     var row = (pool.rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
+    std.log.debug("total = {any}", .{total});
     const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
     var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
         .column_names = true,
@@ -47,7 +49,7 @@ pub fn list(self: *Self, req: zap.Request) void {
     while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
         articles.append(article) catch {};
     }
-    base.send_list_ok(req, articles, @as(u64, @intCast(total.total)));
+    // base.send_list_ok(req, articles, @as(u64, @intCast(total.total)));
 }
 
 pub fn get(_: *Self, req: zap.Request) void {
@@ -57,7 +59,7 @@ pub fn get(_: *Self, req: zap.Request) void {
     var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
     var row = (pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
         .column_names = true,
-    }) orelse return base.send_failed(req, "文章不存在")) catch |e| return base.send_error(req, e);
+    }) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "文章不存在");
 
     defer row.deinit() catch {};
     const article = row.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);

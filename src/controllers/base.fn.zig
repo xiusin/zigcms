@@ -2,12 +2,13 @@ const zap = @import("zap");
 const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
+const Allocator = std.mem.Allocator;
 
 pub const Response = struct {
-        code: u32 = 0,
-        count: ?u32 = null,
-        msg: ?[]const u8 = null,
-        data: *void = null,
+    code: u32 = 0,
+    count: ?u32 = null,
+    msg: ?[]const u8 = null,
+    data: *void = null,
 };
 
 // send_error 响应异常信息
@@ -16,7 +17,7 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
 }
 
 //  send_ok 响应成功消息
-pub fn send_ok( req: zap.Request, v: anytype) void {
+pub fn send_ok(req: zap.Request, v: anytype) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
         .msg = "操作成功",
@@ -48,7 +49,7 @@ pub fn send_failed(req: zap.Request, message: []const u8) void {
     req.sendJson(ser) catch return;
 }
 
-pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const u8 {
+pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
     var values = std.ArrayList([]const u8).init(allocator);
@@ -83,7 +84,7 @@ pub fn build_insert_sql(comptime T: type, allocator: std.mem.Allocator) ![]const
 }
 
 // build_update_sql 构建更新sql语句, 仅支持简单语句生成
-pub fn build_update_sql(comptime T: type, allocator: std.mem.Allocator) ![]const u8 {
+pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
 
