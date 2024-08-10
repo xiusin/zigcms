@@ -29,7 +29,7 @@ pub fn register(self: *Self, req: zap.Request) void {
         return base.send_error(req, error.ParamMiss);
     }
 
-    var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+    var pool = global.get_pg_pool();
     var row = (pool.row(
         "SELECT COUNT(*) AS num FROM zigcms.admin WHERE username = $1",
         .{dto.username},
@@ -63,7 +63,7 @@ pub fn login(self: *Self, req: zap.Request) void {
         return base.send_failed(req, "缺少必要参数");
     }
 
-    var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+    var pool = global.get_pg_pool();
     var row = (pool.rowOpts("SELECT * FROM zigcms.admin WHERE username = $1", .{dto.username}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e)) orelse unreachable;

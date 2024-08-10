@@ -13,7 +13,11 @@ pub const Response = struct {
 
 // send_error 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
-    req.sendError(e, if (@errorReturnTrace()) |t| t.* else null, 500);
+    req.sendError(
+        e,
+        if (@errorReturnTrace()) |t| t.* else null,
+        500,
+    );
 }
 
 //  send_ok 响应成功消息
@@ -104,6 +108,7 @@ pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     }
     const output: []u8 = undefined;
     const low_tablename = std.ascii.lowerString(output, tablename);
+
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     defer allocator.free(fields_arg);
 

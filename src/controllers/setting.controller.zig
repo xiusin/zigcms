@@ -14,7 +14,7 @@ pub fn init(allocator: Allocator) Self {
 }
 
 pub fn get(self: Self, req: zap.Request) void {
-    var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+    var pool = global.get_pg_pool();
     var result = pool.queryOpts("SELECT * FROM zigcms.setting", .{}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
@@ -45,8 +45,14 @@ pub fn save(self: Self, req: zap.Request) void {
 
     var iter = values.object.iterator();
     while (iter.next()) |entity| {
-        _ = global.sql_exec("DELETE FROM zigcms.setting WHERE key = $1", .{entity.key_ptr.*}) catch {};
-        _ = global.sql_exec("INSERT INTO zigcms.setting (key, value) VALUES ($1, $2)", .{ entity.key_ptr.*, entity.value_ptr.string }) catch {};
+        const deleteSql = "DELETE FROM zigcms.setting WHERE key = $1";
+        _ = global.sql_exec(deleteSql, .{entity.key_ptr.*}) catch {};
+
+        const insertSql = "INSERT INTO zigcms.setting (key, value) VALUES ($1, $2)";
+        _ = global.sql_exec(insertSql, .{
+            entity.key_ptr.*,
+            entity.value_ptr.string,
+        }) catch {};
     }
 
     return base.send_ok(req, "保存成功");

@@ -36,20 +36,13 @@ pub fn get_allocator() Allocator {
     return _allocator;
 }
 
-pub fn get_pg_pool() !*pg.Pool {
-    try init_pg();
+pub fn get_pg_pool() *pg.Pool {
+    init_pg() catch {};
     return _pool;
 }
 
-pub fn get_conn() !*pg.Conn {
-    const pool = try get_pg_pool();
-    return pool.acquire();
-}
-
 pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
-    var conn = try get_conn();
-    defer conn.release();
-    if (try conn.exec(sql, values)) |result| {
+    if (try get_pg_pool().exec(sql, values)) |result| {
         return result;
     }
     return error.SqlExecFailed;

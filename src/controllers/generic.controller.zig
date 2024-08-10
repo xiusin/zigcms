@@ -36,7 +36,7 @@ pub fn Generic(comptime T: type) type {
                 ) catch return base.send_failed(req, "limit参数类型错误");
             }
 
-            var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+            var pool = global.get_pg_pool();
 
             const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
             var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
@@ -58,7 +58,7 @@ pub fn Generic(comptime T: type) type {
             req.parseQuery();
             const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
             if (id.len == 0) return base.send_failed(req, "缺少ID参数");
-            var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+            var pool = global.get_pg_pool();
             var row = pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
                 .column_names = true,
             }) catch |e| return base.send_error(req, e);
@@ -75,7 +75,7 @@ pub fn Generic(comptime T: type) type {
             req.parseQuery();
             const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
             if (id.len == 0) return base.send_failed(req, "缺少ID参数");
-            var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+            var pool = global.get_pg_pool();
             const row_num = (pool.exec("DELETE FROM zigcms.article WHERE id = $1", .{
                 id,
             }) catch |e| return base.send_error(
@@ -100,7 +100,7 @@ pub fn Generic(comptime T: type) type {
             dto.update_time = std.time.microTimestamp();
 
             var row: ?i64 = 0;
-            var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+            var pool = global.get_pg_pool();
 
             const update = .{
                 dto.title,

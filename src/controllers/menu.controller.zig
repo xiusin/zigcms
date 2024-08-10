@@ -16,7 +16,7 @@ pub fn init(allocator: Allocator) Self {
 }
 
 pub fn list(self: *Self, req: zap.Request) void {
-    var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+    var pool = global.get_pg_pool();
     var result = pool.queryOpts("SELECT * FROM zigcms.menu", .{}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
@@ -42,7 +42,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         defer self.allocator.free(dto);
     }
 
-    // var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
+    // var pool = global.get_pg_pool();
 
     base.send_ok(self.allocator, req, .{});
 }

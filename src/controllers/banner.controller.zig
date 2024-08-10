@@ -19,7 +19,14 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     req.parseQuery();
     if (req.getParamSlice("page")) |page| {
-        dto.page = std.fmt.parseInt(u32, page, 10) catch return base.send_failed(req, "page参数类型错误");
+        dto.page = std.fmt.parseInt(
+            u32,
+            page,
+            10,
+        ) catch return base.send_failed(
+            req,
+            "page参数类型错误",
+        );
     }
 
     if (req.getParamSlice("limit")) |limit| {
@@ -27,12 +34,15 @@ pub fn list(self: *Self, req: zap.Request) void {
             u32,
             limit,
             10,
-        ) catch return base.send_failed(req, "limit参数类型错误");
+        ) catch return base.send_failed(
+            req,
+            "limit参数类型错误",
+        );
     }
 
     var pool = global.get_pg_pool();
 
-    var row = (global.get_pg_pool().rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
+    var row = (pool.rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
     std.log.debug("total = {any}", .{total});
