@@ -18,11 +18,7 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     req.parseQuery();
     if (req.getParamSlice("page")) |page| {
-        dto.page = std.fmt.parseInt(
-            u32,
-            page,
-            10,
-        ) catch return base.send_failed(req, "page参数类型错误");
+        dto.page = std.fmt.parseInt(u32, page, 10) catch return base.send_failed(req, "page参数类型错误");
     }
 
     if (req.getParamSlice("limit")) |limit| {
@@ -59,15 +55,12 @@ pub fn get(_: *Self, req: zap.Request) void {
     const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
     if (id.len == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool() catch |e| return base.send_error(req, e);
-    var row = pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
+    var row = (pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
         .column_names = true,
-    }) catch |e| return base.send_error(req, e);
-    if (row == null) {
-        return base.send_failed(req, "文章不存在");
-    }
+    }) orelse return base.send_failed(req, "文章不存在")) catch |e| return base.send_error(req, e);
 
-    defer row.?.deinit() catch {};
-    const article = row.?.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);
+    defer row.deinit() catch {};
+    const article = row.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);
     return base.send_ok(req, article);
 }
 

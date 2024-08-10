@@ -14,3 +14,22 @@ export fn add(a: i32, b: i32) i32 {
 test "basic add functionality" {
     try testing.expect(add(3, 7) == 10);
 }
+
+
+pub const Response = struct {
+    code: u32 = 0,
+    count: ?u32 = null,
+    msg: ?[]const u8 = null,
+    data: anyopaque = null,
+};
+
+test "response" {
+    const resp = Response{
+        .data = .{
+
+        },
+    };
+
+    testing.expect(resp.data == null);
+
+}
