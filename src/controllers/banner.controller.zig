@@ -42,24 +42,32 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     var pool = global.get_pg_pool();
 
-    var row = (pool.rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
+    const countSQL = "SELECT COUNT(*) AS total FROM zigcms.banner";
+    var row = (pool.row(
+        countSQL,
+        .{},
+    ) catch |e| return base.send_error(
+        req,
+        e,
+    )) orelse return base.send_ok(req, "数据异常");
+
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
     std.log.debug("total = {any}", .{total});
-    const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
-    var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+
+    const pageSQL = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
+    var result = pool.queryOpts(pageSQL, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
-
     defer result.deinit();
 
-    const mapper = result.mapper(models.Article, .{ .allocator = self.allocator });
-    var articles = std.ArrayList(models.Article).init(self.allocator);
-    defer articles.deinit();
+    const mapper = result.mapper(models.Banner, .{ .allocator = self.allocator });
+    var banners = std.ArrayList(models.Banner).init(self.allocator);
+    defer banners.deinit();
     while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
-        articles.append(article) catch {};
+        banners.append(article) catch {};
     }
-    // base.send_list_ok(req, articles, @as(u64, @intCast(total.total)));
+    base.send_response(req, banners, @as(u64, @intCast(total.total)));
 }
 
 pub fn get(_: *Self, req: zap.Request) void {
@@ -67,12 +75,15 @@ pub fn get(_: *Self, req: zap.Request) void {
     const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
     if (id.len == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    var row = (pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
+    const infoSQL = "SELECT * FROM zigcms.banner WHERE id = $1";
+    var row = (pool.rowOpts(infoSQL, .{id}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "文章不存在");
 
     defer row.deinit() catch {};
-    const article = row.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);
+    const article = row.to(models.Banner, .{
+        .map = .name,
+    }) catch |e| return base.send_error(req, e);
     return base.send_ok(req, article);
 }
 
@@ -81,7 +92,8 @@ pub fn delete(_: *Self, req: zap.Request) void {
     const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
     if (id.len == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    const row_num = (pool.exec("DELETE FROM zigcms.article WHERE id = $1", .{
+    const deleteSQL = "DELETE FROM zigcms.banner WHERE id = $1";
+    const row_num = (pool.exec(deleteSQL, .{
         id,
     }) catch |e| return base.send_error(
         req,
@@ -95,10 +107,10 @@ pub fn delete(_: *Self, req: zap.Request) void {
 
 pub fn save(self: *Self, req: zap.Request) void {
     req.parseBody() catch |e| return base.send_error(req, e);
-    var dto: models.Article = undefined;
+    var dto: models.Banner = undefined;
     if (req.body) |body| {
         std.log.debug("body = {s}", .{body});
-        dto = std.json.parseFromSliceLeaky(models.Article, self.allocator, body, .{
+        dto = std.json.parseFromSliceLeaky(models.Banner, self.allocator, body, .{
             .ignore_unknown_fields = true,
         }) catch return base.send_failed(req, "解析参数错误");
     }
@@ -130,7 +142,7 @@ pub fn save(self: *Self, req: zap.Request) void {
     if (dto.id) |id| {
         dto.create_time = std.time.microTimestamp();
         const sql = base.build_update_sql(
-            models.Article,
+            models.Banner,
             self.allocator,
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
@@ -138,7 +150,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         row = pool.exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
     } else {
         const sql = base.build_insert_sql(
-            models.Article,
+            models.Banner,
             self.allocator,
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);

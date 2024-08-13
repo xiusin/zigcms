@@ -31,5 +31,6 @@
         "comments": "off",
         "strings": "on"
     },
-    "editor.fontFamily": "'FiraCode Nerd Font Mono','Hack Nerd Font Mono', Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace"
+    "editor.fontFamily": "'FiraCode Nerd Font Mono','Hack Nerd Font Mono', Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
+    "editor.fontSize": 12
 }

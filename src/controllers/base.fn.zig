@@ -31,7 +31,7 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
     req.sendJson(ser) catch return;
 }
 
-//  send_list_ok 响应成功消息
+//  send_response 响应成功消息
 pub fn send_response(req: zap.Request, v: anytype, count: u64) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,

@@ -1,5 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
+const GitApi = @import("modules/git.zig").GitApi;
 
 const Person = struct {
     id: i32,
@@ -15,21 +16,35 @@ test "basic add functionality" {
     try testing.expect(add(3, 7) == 10);
 }
 
+test "git test" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var api = try GitApi.init(allocator, std.os.getenvW("GIT_TOKEN").?);
+    defer api.deinit();
 
-pub const Response = struct {
-    code: u32 = 0,
-    count: ?u32 = null,
-    msg: ?[]const u8 = null,
-    data: anyopaque = null,
-};
+    const repos = try api.list_starred_repos();
+    defer api.allocator.free(repos);
+    for (repos) |value| {
+        std.debug.print("repo name = {any}\n", .{value});
+    }
 
-test "response" {
-    const resp = Response{
-        .data = .{
+    const readme = try api.get_repo_readme_html("xiusin", "web-redis-manager");
+    defer api.allocator.free(readme);
+    std.debug.print("{s}\n", .{readme});
 
-        },
-    };
+    const trend_html = try api.get_trending_html("go", "daily");
+    defer api.allocator.free(trend_html);
+    std.debug.print("{s}\n", .{trend_html});
 
-    testing.expect(resp.data == null);
+    const follow_users = try api.followers();
+    defer api.allocator.free(follow_users);
+    for (follow_users) |value| {
+        std.debug.print("follow user name = {s}\n", .{value.login.?});
+    }
 
+    const following_users = try api.following();
+    defer api.allocator.free(following_users);
+    for (following_users) |value| {
+        std.debug.print("following user name = {s}\n", .{value.login.?});
+    }
 }
