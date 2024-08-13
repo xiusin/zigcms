@@ -36,34 +36,34 @@ pub const GitApi = struct {
     pub fn init(allocator: Allocator, token: []const u8) !GitApi {
         const buf = try allocator.dupe(u8, token);
 
-        var db = try sqlite.Db.init(.{
+        var dbp = try sqlite.Db.init(.{
             .mode = sqlite.Db.Mode{ .File = "git.db" },
             .open_flags = .{ .write = true, .create = true },
             .threading_mode = .MultiThread,
         });
 
         // 判断users表是否存在
-        var stmt = try db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?");
+        var stmt = try dbp.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?");
         defer stmt.deinit();
 
         var row = try stmt.one(usize, .{}, .{ .name = "users" });
         if (row == null) {
-            try db.exec("CREATE TABLE users(id INTEGER PRIMARY KEY, login TEXT, avatar TEXT, followers INTEGER, following INTEGER, git_token TEXT)", .{}, .{});
+            try dbp.exec("CREATE TABLE users(id INTEGER PRIMARY KEY, login TEXT, avatar TEXT, followers INTEGER, following INTEGER, git_token TEXT)", .{}, .{});
         }
         stmt.reset();
 
         row = try stmt.one(usize, .{}, .{ .name = "repos" });
         if (row == null) {
-            try db.exec("CREATE TABLE repos(id INTEGER PRIMARY KEY, name TEXT, full_name TEXT, author TEXT, login TEXT, avatar TEXT, description TEXT, forks_count INTEGER, stargazers_count INTEGER, watchers_count INTEGER, default_branch TEXT, open_issues_count INTEGER, language TEXT, url TEXT, readme TEXT, created_at TEXT, updated_at TEXT, pushed_at TEXT)", .{}, .{});
+            try dbp.exec("CREATE TABLE repos(id INTEGER PRIMARY KEY, name TEXT, full_name TEXT, author TEXT, login TEXT, avatar TEXT, description TEXT, forks_count INTEGER, stargazers_count INTEGER, watchers_count INTEGER, default_branch TEXT, open_issues_count INTEGER, language TEXT, url TEXT, readme TEXT, created_at TEXT, updated_at TEXT, pushed_at TEXT)", .{}, .{});
         }
         stmt.reset();
 
         row = try stmt.one(usize, .{}, .{ .name = "tags" });
         if (row == null) {
-            try db.exec("CREATE TABLE tags(repository_id INTEGER, author TEXT, name TEXT, language TEXT, tag TEXT)", .{}, .{});
+            try dbp.exec("CREATE TABLE tags(repository_id INTEGER, author TEXT, name TEXT, language TEXT, tag TEXT)", .{}, .{});
         }
 
-        var git_api = GitApi{ .allocator = allocator, .token = buf, .db = db };
+        var git_api = GitApi{ .allocator = allocator, .token = buf, .db = dbp };
         try git_api._user();
 
         return git_api;
