@@ -5,16 +5,6 @@ layui.use(['form', 'layer', 'inputTag'], function () {
         inputTag = layui.inputTag,
         $ = layui.$;
 
-    const vditor = new Vditor("editor", {
-        height: '100%',
-        minHeight: 500,
-        width: 1000,
-        toolbarConfig: { pin: true },
-        counter: { enable: true },
-        cache: { enable: false },
-        placeholder: '请输入此刻的想法...'
-    });
-
     inputTag.render({
         elem: '.tag1',
         data: [],
