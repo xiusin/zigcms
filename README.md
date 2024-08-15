@@ -24,3 +24,7 @@ https://github.com/timfayz/pretty/archive/main.tar.gz
 
 
 https://y-admin.yijianku.com/#
+
+
+
+<script src="https://cdn.jsdelivr.net/gh/kirakiray/ofa.js/dist/ofa.min.js"></script>  前端mvvm组件
