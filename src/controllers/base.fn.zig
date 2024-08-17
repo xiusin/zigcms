@@ -13,6 +13,7 @@ pub const Response = struct {
 
 // send_error 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
+    std.log.err("错误信息 = {?}", .{e});
     req.sendError(
         e,
         if (@errorReturnTrace()) |t| t.* else null,

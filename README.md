@@ -28,3 +28,6 @@ https://y-admin.yijianku.com/#
 
 
 <script src="https://cdn.jsdelivr.net/gh/kirakiray/ofa.js/dist/ofa.min.js"></script>  前端mvvm组件
+
+
+https://admin.demo.ulthon.com/admin/Index/index.html#/admin/system.auth/index.html 

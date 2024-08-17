@@ -13,6 +13,20 @@ body {
     margin: 10px 10px 10px 10px;
 }
 
+th .layui-table-cell {
+    font-size: 12px !important;
+}
+
+.layui-table td,
+.layui-table th {
+    font-size: 12px !important;
+}
+
+.table-search-fieldset {
+    font-size: 12px;
+}
+
+
 /**必填红点 */
 .layuimini-form>.layui-form-item>.required:after {
     content: '*';
@@ -45,7 +59,6 @@ body {
 .layuimini-container .table-search-fieldset {
     margin: 0;
     border: 1px solid #e6e6e6;
-    padding: 10px 20px 5px 20px;
     color: #6b6b6b;
 }
 

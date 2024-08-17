@@ -37,6 +37,7 @@ pub fn main() !void {
     try simpleRouter.handle_func("/article/list", &article, &controllers.Article.list);
     try simpleRouter.handle_func("/article/delete", &article, &controllers.Article.delete);
     try simpleRouter.handle_func("/article/save", &article, &controllers.Article.save);
+    try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
 
     var listener = zap.HttpListener.init(.{
         .port = 3000,

@@ -1,14 +1,13 @@
 const std = @import("std");
 const zap = @import("zap");
-const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
 const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
-const strings = @import("../modules/strings.zig");
 
 const Self = @This();
+const Allocator = std.mem.Allocator;
 
 allocator: Allocator,
 pub fn init(allocator: Allocator) Self {
@@ -31,13 +30,20 @@ pub fn list(self: *Self, req: zap.Request) void {
         ) catch return base.send_failed(req, "limit参数类型错误");
     }
 
-    var pool = global.get_pg_pool();
+    const totalSQL = "SELECT COUNT(*) AS total FROM zigcms.category";
+    var row = (global.get_pg_pool().rowOpts(
+        totalSQL,
+        .{},
+        .{},
+    ) catch |e| return base.send_error(
+        req,
+        e,
+    )) orelse return base.send_ok(req, "数据异常");
 
-    var row = (global.get_pg_pool().rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
-    const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
-    var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+    const query = "SELECT * FROM zigcms.category ORDER BY id DESC OFFSET $1 LIMIT $2";
+    var result = global.get_pg_pool().queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
 
@@ -64,43 +70,6 @@ pub fn get(_: *Self, req: zap.Request) void {
     defer row.deinit() catch {};
     const article = row.to(models.Article, .{ .map = .name }) catch |e| return base.send_error(req, e);
     return base.send_ok(req, article);
-}
-
-pub fn modify(self: *Self, req: zap.Request) void {
-    var dto = dtos.Modify{};
-    req.parseBody() catch |e| return base.send_error(req, e);
-    if (req.body == null) return base.send_failed(req, "缺少必要参数");
-    var params = req.parametersToOwnedStrList(self.allocator, true) catch return base.send_failed(req, "解析参数错误");
-    defer params.deinit();
-
-    for (params.items) |item| {
-        if (strings.eql("id", item.key.str)) {
-            dto.id = @as(u32, @intCast(strings.to_number(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
-        } else if (strings.eql("field", item.key.str)) {
-            dto.field = item.value.str;
-        } else if (strings.eql("value", item.key.str)) {
-            dto.value.? = item.value.str;
-        }
-    }
-
-    if (dto.id == 0 or dto.field.len == 0 or dto.value == null) {
-        return base.send_failed(req, "缺少必要参数");
-    }
-
-    const sql = strings.join(self.allocator, " ", &[_][]const u8{
-        "UPDATE zigcms.article SET ",
-        dto.field,
-        "=$2 WHERE id = $1",
-    }) catch return;
-    defer self.allocator.free(sql);
-    _ = (global.get_pg_pool().exec(sql, .{
-        dto.id,
-        dto.value.?,
-    }) catch |e| return base.send_error(
-        req,
-        e,
-    )) orelse return base.send_failed(req, "更新失败");
-    return base.send_ok(req, "更新成功");
 }
 
 pub fn delete(_: *Self, req: zap.Request) void {

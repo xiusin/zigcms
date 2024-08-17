@@ -10,7 +10,15 @@ pub fn split(allocator: Allocator, str: []const u8, delimiter: []const u8) ![][]
     return try parts.toOwnedSlice();
 }
 
-pub inline fn join(allocator: Allocator, separator: []const u8, parts: [][]const u8) ![]const u8 {
+pub inline fn to_number(str: []const u8) !usize {
+    return try std.fmt.parseInt(usize, str, 10);
+}
+
+pub inline fn eql(str1: []const u8, str2: []const u8) bool {
+    return std.mem.eql(u8, str1, str2);
+}
+
+pub inline fn join(allocator: Allocator, separator: []const u8, parts: []const []const u8) ![]const u8 {
     return try std.mem.join(allocator, separator, parts);
 }
 
@@ -65,10 +73,10 @@ pub inline fn substr_count(str: []const u8, needle: []const u8) usize {
     return std.mem.count(u8, str, needle);
 }
 
-pub inline fn substr(str: []const u8, start: usize, end: usize) ![]const u8 {
-    const view = try std.unicode.Utf8View.init(str);
-    var iter = view.iterator();
+// pub inline fn substr(str: []const u8, start: usize, end: usize) ![]const u8 {
+//     const view = try std.unicode.Utf8View.init(str);
+//     var iter = view.iterator();
 
-    var i: usize = 0;
-    while (iter.nextCodepointSlice()) |char| {}
-}
+//     var i: usize = 0;
+//     while (iter.nextCodepointSlice()) |char| {}
+// }
