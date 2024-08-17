@@ -103,19 +103,47 @@ pub fn modify(self: *Self, req: zap.Request) void {
     return base.send_ok(req, "更新成功");
 }
 
-pub fn delete(_: *Self, req: zap.Request) void {
-    req.parseQuery();
-    const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
-    if (id.len == 0) return base.send_failed(req, "缺少ID参数");
+pub fn delete(self: *Self, req: zap.Request) void {
+    var ids = std.ArrayList(usize).init(self.allocator);
+    defer ids.deinit();
+
+    if (strings.eql(req.method.?, "POST")) {
+        req.parseBody() catch return;
+        if (req.body == null) return;
+        var params = req.parametersToOwnedStrList(
+            self.allocator,
+            true,
+        ) catch return;
+
+        defer params.deinit();
+        for (params.items) |item| {
+            if (strings.eql("id", item.key.str)) {
+                const items = strings.split(self.allocator, item.value.str, ",") catch return;
+                defer self.allocator.free(items);
+                for (items) |value| {
+                    ids.append(strings.to_number(value) catch |e| return base.send_error(
+                        req,
+                        e,
+                    )) catch unreachable;
+                }
+            }
+        }
+    } else {
+        req.parseQuery();
+        if (req.getParamSlice("id")) |id| {
+            const id_num = strings.to_number(id) catch return base.send_failed(req, "缺少参数");
+            ids.append(id_num) catch unreachable;
+        }
+    }
+
+    if (ids.capacity == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    const row_num = (pool.exec("DELETE FROM zigcms.article WHERE id = $1", .{
-        id,
-    }) catch |e| return base.send_error(
-        req,
-        e,
-    )) orelse return base.send_ok(req, "删除失败");
-    if (row_num == 0) {
-        return base.send_failed(req, "文章不存在");
+    const sql = "DELETE FROM zigcms.article WHERE id = $1";
+    for (ids.items) |id| {
+        pool.exec(sql, .{id}) catch |e| return base.send_error(
+            req,
+            e,
+        );
     }
     return base.send_ok(req, "删除成功");
 }

@@ -149,3 +149,7 @@ th .layui-table-cell {
     border-radius: 10px;
     color: #4e8bff;
 }
+
+#content {
+    border: none;
+}

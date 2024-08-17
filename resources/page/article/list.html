@@ -14,13 +14,13 @@
     <link rel="stylesheet" href="../../lib/font-awesome-4.7.0/css/font-awesome.min.css" media="all">
     <script src="../../lib/layui/layui.js" charset="utf-8"></script>
     <script src="../../js/lay-config.js" charset="utf-8"></script>
-
+    <script src="../../js/public.js"></script>
 </head>
 
 <body class="elem-style-neomorphic">
     <div class="layuimini-container">
         <div class="layuimini-main">
-            <table id="currentTable" class="layui-table layui-hide" data-auth-add="{:auth('system.menu/add')}"
+            <table id="currentTable" class="layui-table layui-hide" data-auth-add="/article/add"
                 data-auth-edit="{:auth('system.menu/edit')}" data-auth-delete="{:auth('system.menu/delete')}"
                 data-auth-modify="{:auth('system.menu/modify')}" lay-filter="currentTable">
             </table>
@@ -32,7 +32,6 @@
         <button class="layui-btn layui-btn-normal layui-btn-sm" data-open="system.menu/add" data-title="添加" data-full="true"><i class="fa fa-plus"></i> 添加</button>
         <button class="layui-btn layui-btn-sm layui-btn-danger" data-url="system.menu/del" data-treetable-delete="currentTableRenderId"><i class="fa fa-trash-o"></i> 删除</button>
     </script>
-    <script src="../../js/public.js"></script>
     <script src="./js/list.js"></script>
 </body>
 

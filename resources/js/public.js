@@ -88,9 +88,7 @@ layui.use(['form', 'table'], function () {
             shade: [0.02, '#000'],
         },
         url: function (url) {
-
             var urlPrefixCheck = ['/', 'http://', 'https://'];
-
             for (const index in urlPrefixCheck) {
                 if (Object.hasOwnProperty.call(urlPrefixCheck, index)) {
                     const prefix = urlPrefixCheck[index];
@@ -99,8 +97,7 @@ layui.use(['form', 'table'], function () {
                     }
                 }
             }
-
-            return '/' + CONFIG.ADMIN + '/' + url;
+            return url;
         },
         headers: function () {
             return {};
@@ -1293,7 +1290,7 @@ layui.use(['form', 'table'], function () {
                 });
             },
             listenTableSort(option) {
-                //触发排序事件 
+                //触发排序事件
                 table.on('sort(' + option.layFilter + ')', function (obj) { //注：sort 是工具条事件名，test 是 table 原始容器的属性 lay-filter="对应的值"
 
                     var lastWhere = lastTableWhere[option.id] ? lastTableWhere[option.id] : {};
@@ -1495,11 +1492,11 @@ layui.use(['form', 'table'], function () {
                         $.each(body, function (i, v) {
 
                             // todo 优化弹出层背景色修改
-                            $(v).before('<style>\n' +
-                                'html, body {\n' +
-                                '    background: #ffffff;\n' +
-                                '}\n' +
-                                '</style>');
+                            // $(v).before('<style>\n' +
+                            //     'html, body {\n' +
+                            //     '    background: #ffffff;\n' +
+                            //     '}\n' +
+                            //     '</style>');
                         });
                     }
                 },
@@ -1507,9 +1504,8 @@ layui.use(['form', 'table'], function () {
                     index = null;
                 }
             });
-            if (admin.checkMobile() || width === undefined || height === undefined) {
-                layer.full(index);
-            }
+
+            layer.full(index);
             if (isResize) {
                 $(window).on("resize", function () {
                     index && layer.full(index);
@@ -1778,11 +1774,11 @@ layui.use(['form', 'table'], function () {
                 $.each(data, function (i, v) {
                     ids.push(v.id);
                 });
-                admin.msg.confirm('确定删除？', function () {
+                admin.msg.confirm('确定删除选择？', function () {
                     admin.request.post({
                         url: url,
                         data: {
-                            id: ids
+                            id: ids.join(',')
                         },
                     }, function (res) {
                         admin.msg.success(res.msg, function () {
@@ -2239,20 +2235,20 @@ layui.use(['form', 'table'], function () {
 
                 }
             },
-            // editor: function () {
-            //     CKEDITOR.tools.setCookie('ckCsrfToken', window.CONFIG.CSRF_TOKEN);
-            //     var editorList = document.querySelectorAll(".editor");
-            //     if (editorList.length > 0) {
-            //         $.each(editorList, function (i, v) {
-            //             CKEDITOR.replace(
-            //                 $(this).attr("name"),
-            //                 {
-            //                     height: $(this).height(),
-            //                     filebrowserImageUploadUrl: admin.url('ajax/uploadEditor'),
-            //                 });
-            //         });
-            //     }
-            // },
+            editor: function () {
+                // CKEDITOR.tools.setCookie('ckCsrfToken', window.CONFIG.CSRF_TOKEN);
+                var editorList = document.querySelectorAll(".editor");
+                if (editorList.length > 0) {
+                    $.each(editorList, function (i, v) {
+                        CKEDITOR.replace(
+                            $(this).attr("name"),
+                            {
+                                height: $(this).height(),
+                                filebrowserImageUploadUrl: admin.url('ajax/uploadEditor'),
+                            });
+                    });
+                }
+            },
             select: function () {
 
                 var selectList = document.querySelectorAll("[data-select]");
@@ -2461,7 +2457,7 @@ layui.use(['form', 'table'], function () {
                 tableElem: tableSel,
                 tableRenderId: currentTableRenderId,
                 indexUrl: prefix + '/list',
-                addUrl: prefix + '/save',
+                addUrl: 'save.html',
                 editUrl: prefix + '/edit',
                 deleteUrl: prefix + '/delete',
                 exportUrl: prefix + '/export',
