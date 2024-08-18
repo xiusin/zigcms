@@ -2059,6 +2059,7 @@ layui.use(['form', 'table'], function () {
                             multiple: uploadNumber !== 'one',//是否多文件上传
                             headers: admin.headers(),
                             done: function (res) {
+                                console.log(res.code, elemFilenameField, uploadFilenameField)
                                 if (res.code === 0) {
                                     var url = res.data.url;
                                     var filename = res.data.original_name;
@@ -2190,12 +2191,11 @@ layui.use(['form', 'table'], function () {
                         }
 
                         $(v).click(function () {
-
                             layer.open({
                                 title: '选择文件',
                                 type: 2,
                                 area: [clienWidth, clientHeight],
-                                content: admin.url('/public/upload/list') + '?select_mode=' + selectCheck,
+                                content: '../upload/list.html?select_mode=' + selectCheck,
                                 success(layero, index) {
                                     window.onTableDataConfirm = function (data) {
                                         var currentUrl = $(elem).val();
