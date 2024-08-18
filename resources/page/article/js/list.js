@@ -12,8 +12,8 @@ layui.$(function () {
                 { field: 'tags', title: '标签' },
                 { field: 'status', width: 100, title: '状态', selectList: { 0: '关闭', 1: '开启' }, templet: za.table.switch },
                 { field: 'view_count', width: 100, title: '观看次数' },
-                { field: 'create_time', width: 160, title: '创建时间', templet: (d) => new Date(d.create_time / 1000).toLocaleString() },
-                { field: 'update_time', width: 160, title: '创建时间', templet: (d) => new Date(d.create_time / 1000).toLocaleString() },
+                { field: 'create_time', width: 160, title: '创建时间', templet: za.table.time('create_time') },
+                { field: 'update_time', width: 160, title: '更新时间', templet: za.table.time('update_time') },
                 {
                     width: 250,
                     title: '操作',

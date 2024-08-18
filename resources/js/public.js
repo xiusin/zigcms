@@ -32,7 +32,7 @@ layui.use(['form', 'table'], function () {
     var init = {
         tableElem: '#currentTable',
         tableRenderId: 'currentTableRenderId',
-        uploadUrl: 'ajax/upload',
+        uploadUrl: '/public/upload',
         uploadExts: '',
         extGroup: {}
     };
@@ -1073,8 +1073,14 @@ layui.use(['form', 'table'], function () {
                     return option.selectList[value];
                 }
             },
+            time: function (field) {
+                return function (data) {
+                    return new Date(data[field]).toLocaleString();
+                }
+            },
             filePreview: function (data) {
-                var mimeName = data.mime_type.split('/')[0];
+                // TODO data.mime_type.split('/')[0];
+                var mimeName = "image";
 
                 if (mimeName == 'image') {
                     return admin.table.image(data);
@@ -2053,7 +2059,7 @@ layui.use(['form', 'table'], function () {
                             multiple: uploadNumber !== 'one',//是否多文件上传
                             headers: admin.headers(),
                             done: function (res) {
-                                if (res.code === 1) {
+                                if (res.code === 0) {
                                     var url = res.data.url;
                                     var filename = res.data.original_name;
                                     if (uploadNumber !== 'one') {
@@ -2094,7 +2100,7 @@ layui.use(['form', 'table'], function () {
                                     var parant = $(this).parent('div');
                                     var liHtml = '';
                                     $.each(urlArray, function (i, v) {
-
+                                        console.log('vvv', v);
                                         // 获取链接扩展名
                                         var ext = v.substr(v.lastIndexOf('.') + 1);
 
@@ -2189,7 +2195,7 @@ layui.use(['form', 'table'], function () {
                                 title: '选择文件',
                                 type: 2,
                                 area: [clienWidth, clientHeight],
-                                content: admin.url('system.uploadfile/index') + '?select_mode=' + selectCheck,
+                                content: admin.url('/public/upload/list') + '?select_mode=' + selectCheck,
                                 success(layero, index) {
                                     window.onTableDataConfirm = function (data) {
                                         var currentUrl = $(elem).val();

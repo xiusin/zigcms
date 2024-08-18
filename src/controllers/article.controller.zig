@@ -19,16 +19,35 @@ pub fn list(self: *Self, req: zap.Request) void {
     var dto = dtos.Page{};
 
     req.parseQuery();
-    if (req.getParamSlice("page")) |page| {
-        dto.page = std.fmt.parseInt(u32, page, 10) catch return base.send_failed(req, "page参数类型错误");
-    }
 
-    if (req.getParamSlice("limit")) |limit| {
-        dto.limit = std.fmt.parseInt(
-            u32,
-            limit,
-            10,
-        ) catch return base.send_failed(req, "limit参数类型错误");
+    var items = req.parametersToOwnedStrList(self.allocator, true) catch unreachable;
+    defer items.deinit();
+
+    for (items.items) |value| {
+        if (strings.eql(value.key.str, "page")) {
+            dto.page = std.fmt.parseInt(
+                u32,
+                value.value.str,
+                10,
+            ) catch return base.send_failed(req, "page参数类型错误");
+        }
+
+        if (strings.eql(value.key.str, "limit")) {
+            dto.limit = std.fmt.parseInt(
+                u32,
+                value.value.str,
+                10,
+            ) catch return base.send_failed(req, "limit参数类型错误");
+        }
+
+        if (strings.starts_with(value.key.str, "sort[")) {
+            dto.field = base.get_sort_field(value.key.str).?;
+            dto.sort = value.value.str;
+        }
+    }
+    if (dto.field.len == 0) {
+        dto.field = "id";
+        dto.sort = "desc";
     }
 
     var pool = global.get_pg_pool();
@@ -36,7 +55,16 @@ pub fn list(self: *Self, req: zap.Request) void {
     var row = (global.get_pg_pool().rowOpts("SELECT COUNT(*) AS total FROM zigcms.article", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
-    const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
+    const query = std.mem.join(self.allocator, "", &[_][]const u8{
+        "SELECT * FROM zigcms.article ",
+        "ORDER BY ",
+        dto.field,
+        " ",
+        dto.sort,
+        " OFFSET $1 LIMIT $2",
+    }) catch unreachable;
+    defer self.allocator.free(query);
+
     var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
@@ -108,39 +136,39 @@ pub fn delete(self: *Self, req: zap.Request) void {
     defer ids.deinit();
 
     if (strings.eql(req.method.?, "POST")) {
-        req.parseBody() catch return;
-        if (req.body == null) return;
-        var params = req.parametersToOwnedStrList(
-            self.allocator,
-            true,
-        ) catch return;
+        req.parseBody() catch {};
+        if (req.body) |_| {
+            var params = req.parametersToOwnedStrList(
+                self.allocator,
+                true,
+            ) catch return;
 
-        defer params.deinit();
-        for (params.items) |item| {
-            if (strings.eql("id", item.key.str)) {
-                const items = strings.split(self.allocator, item.value.str, ",") catch return;
-                defer self.allocator.free(items);
-                for (items) |value| {
-                    ids.append(strings.to_number(value) catch |e| return base.send_error(
-                        req,
-                        e,
-                    )) catch unreachable;
+            defer params.deinit();
+            for (params.items) |item| {
+                if (strings.eql("id", item.key.str)) {
+                    const items = strings.split(self.allocator, item.value.str, ",") catch return;
+                    defer self.allocator.free(items);
+                    for (items) |value| {
+                        ids.append(strings.to_number(value) catch |e| return base.send_error(
+                            req,
+                            e,
+                        )) catch unreachable;
+                    }
                 }
             }
         }
-    } else {
-        req.parseQuery();
-        if (req.getParamSlice("id")) |id| {
-            const id_num = strings.to_number(id) catch return base.send_failed(req, "缺少参数");
-            ids.append(id_num) catch unreachable;
-        }
+    }
+    req.parseQuery();
+    if (req.getParamSlice("id")) |id| {
+        const id_num = strings.to_number(id) catch return base.send_failed(req, "缺少参数");
+        ids.append(id_num) catch unreachable;
     }
 
     if (ids.capacity == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
     const sql = "DELETE FROM zigcms.article WHERE id = $1";
     for (ids.items) |id| {
-        pool.exec(sql, .{id}) catch |e| return base.send_error(
+        _ = pool.exec(sql, .{id}) catch |e| return base.send_error(
             req,
             e,
         );
@@ -152,12 +180,18 @@ pub fn save(self: *Self, req: zap.Request) void {
     req.parseBody() catch |e| return base.send_error(req, e);
     var dto: models.Article = undefined;
     if (req.body) |body| {
-        std.log.debug("body = {s}", .{body});
         dto = std.json.parseFromSliceLeaky(models.Article, self.allocator, body, .{
             .ignore_unknown_fields = true,
-        }) catch return base.send_failed(req, "解析参数错误");
+        }) catch return base.send_failed(req, "参数类型错误");
+    } else {
+        return base.send_failed(req, "缺少必要参数");
     }
-    dto.update_time = std.time.microTimestamp();
+
+    if (dto.create_time == null) {
+        dto.create_time = std.time.milliTimestamp();
+    }
+
+    dto.update_time = std.time.milliTimestamp();
 
     var row: ?i64 = 0;
     var pool = global.get_pg_pool();
@@ -183,7 +217,6 @@ pub fn save(self: *Self, req: zap.Request) void {
     };
 
     if (dto.id) |id| {
-        dto.create_time = std.time.microTimestamp();
         const sql = base.build_update_sql(
             models.Article,
             self.allocator,

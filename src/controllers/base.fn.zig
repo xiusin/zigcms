@@ -2,6 +2,7 @@ const zap = @import("zap");
 const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
+const strings = @import("../modules/strings.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Response = struct {
@@ -75,17 +76,15 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
         tablename = v;
     }
     const output: []u8 = undefined;
+    const table = std.ascii.lowerString(output, tablename);
+
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     const values_arg = try std.mem.join(allocator, ", ", values.items);
     defer allocator.free(fields_arg);
     defer allocator.free(values_arg);
 
     const query = "INSERT INTO zigcms.{s} ({s}) VALUES ({s})";
-    return try std.fmt.allocPrint(allocator, query, .{
-        std.ascii.lowerString(output, tablename),
-        fields_arg,
-        values_arg,
-    });
+    return try std.fmt.allocPrint(allocator, query, .{ table, fields_arg, values_arg });
 }
 
 // build_update_sql 构建更新sql语句, 仅支持简单语句生成
@@ -115,4 +114,13 @@ pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
 
     const query = "UPDATE zigcms.{s} SET {s} WHERE id = ${d}";
     return try std.fmt.allocPrint(allocator, query, .{ low_tablename, fields_arg, index + 1 });
+}
+
+pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
+    if (str) |field| {
+        if (strings.starts_with(field, "sort[") and strings.ends_with(field, "]")) {
+            return field[5 .. field.len - 1];
+        }
+    }
+    return str;
 }

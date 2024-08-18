@@ -39,6 +39,10 @@ pub fn main() !void {
     try simpleRouter.handle_func("/article/save", &article, &controllers.Article.save);
     try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
 
+    var upload = controllers.Upload.init(allocator);
+    try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
+    try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);
+
     var listener = zap.HttpListener.init(.{
         .port = 3000,
         .on_request = simpleRouter.on_request_handler(),

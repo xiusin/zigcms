@@ -4289,7 +4289,7 @@
     outline: 0;
     border-radius: 10px;
     background-color: #EBECF0;
-    text-shadow: 1px 1px 0 #FFF;
+    /* text-shadow: 1px 1px 0 #FFF; */
     color: #61677C;
     box-shadow: -5px -5px 20px #FFF, 5px 5px 20px #BABECC;
     transition: all 0.2s ease-in-out;
@@ -4334,7 +4334,7 @@
 }
 
 .elem-style-neomorphic .layuimini-main {
-    text-shadow: 0.5px 0.5px 0 #fff;
+    /* text-shadow: 0.5px 0.5px 0 #fff; */
 }
 
 .elem-style-neomorphic .layui-layer-easy .layui-layer-title {

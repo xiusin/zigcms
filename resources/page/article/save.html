@@ -7,14 +7,11 @@
     <meta name="renderer" content="webkit">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-    <link rel="stylesheet" href="../../lib/layui/css/layui.css" media="all">
-    <link rel="stylesheet" href="../../css/layuimini.css" media="all">
-    <link rel="stylesheet" href="../../css/themes/theme.css" media="all">
     <link rel="stylesheet" href="../../lib/jq-module/zyupload/zyupload-1.0.0.min.css" media="all">
-    <link rel="stylesheet" href="../../css/public.css" media="all">
     <link rel="stylesheet" href="../../js/lay-module/inputTags/inputTag.css" media="all">
-    <link rel="stylesheet" href="../../lib/font-awesome-4.7.0/css/font-awesome.min.css" media="all">
     <link href="https://unpkg.com/@wangeditor/editor@latest/dist/css/style.css" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/public.css" media="all">
+    <link rel="stylesheet" href="../../css/themes/theme.css" media="all">
 
     <script src="https://cdn.jsdelivr.net/gh/kirakiray/ofa.js/dist/ofa.min.js"></script>
     <script src="https://unpkg.com/@wangeditor/editor@latest/dist/index.js"></script>
@@ -24,130 +21,129 @@
 </head>
 
 <body class="elem-style-neomorphic">
-    <div class="layui-form layuimini-form" lay-filter="form">
-        <div class="layui-form-item">
-            <label class="layui-form-label required">标题</label>
-            <div class="layui-input-block">
-                <input type="hidden" name="id" value="" />
-                <input name="title" lay-verify="required" lay-reqtext="标题不能为空" placeholder="请输入标题"
-                    class="layui-input" />
-            </div>
-        </div>
-        <div class="layui-form-item">
-            <label class="layui-form-label">关键字</label>
-            <div class="layui-input-block">
-                <input name="keyword" placeholder="请输入关键字" class="layui-input">
-            </div>
-        </div>
-        <div class="layui-form-item layui-form-text">
-            <label class="layui-form-label">描述</label>
-            <div class="layui-input-block">
-                <textarea name="description" class="layui-textarea" placeholder="描述"></textarea>
-            </div>
-        </div>
-
-        <div class="layui-form-item layui-form-text">
-            <label class="layui-form-label">内容</label>
-            <div class="layui-input-block">
-                <div style="border-bottom: 1px solid #e8e8e8;">
-                    <div id="editor-toolbar"></div>
+    <div class="layuimini-container">
+        <div id="app-form" class="layui-form layuimini-form " lay-filter="form">
+            <div class="layui-form-item">
+                <label class="layui-form-label required">标题</label>
+                <div class="layui-input-block">
+                    <input type="hidden" name="id" value="" />
+                    <input name="title" lay-verify="required" lay-reqtext="标题不能为空" placeholder="请输入标题"
+                        class="layui-input" />
                 </div>
-                <div id="content">
-                    <div id="editor-container">
-                        <div id="editor-text-area" style="min-height: 400px;"></div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">关键字</label>
+                <div class="layui-input-block">
+                    <input name="keyword" placeholder="请输入关键字" class="layui-input">
+                </div>
+            </div>
+            <div class="layui-form-item layui-form-text">
+                <label class="layui-form-label">描述</label>
+                <div class="layui-input-block">
+                    <textarea name="description" class="layui-textarea" placeholder="描述"></textarea>
+                </div>
+            </div>
+
+            <div class="layui-form-item layui-form-text full-line">
+                <label class="layui-form-label ">内容</label>
+                <div class="layui-input-block">
+                    <div style="border-bottom: 1px solid #e8e8e8;">
+                        <div id="editor-toolbar"></div>
+                    </div>
+                    <div id="content">
+                        <div id="editor-container">
+                            <div id="editor-text-area" style="min-height: 400px;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="layui-form-item layui-form-text">
-            <label class="layui-form-label">封面图</label>
-            <div class="layui-input-block ">
-                <div class="img-content">
-                    <input type="hidden" id="upload-file-input" name="image_url" value="" />
-                    <!-- <div class="upload-image-div" id="ID-upload-demo-btn">
-                        <img class="layui-upload-img" id="ID-upload-demo-img" style=" height: 92px;">
-                        <a class="upload-image-a"> + 添加图片</a>
-                    </div> -->
-                    <div class="img-container">
-                        <img class="img-src"
-                            src="https://php-b2c-demo.likeshop.cn/uploads/images/202104011043284d5fe5125.png"><a
-                            class="img-del-x">x</a>
+            <div class="layui-form-item full-line">
+                <label class="layui-form-label required">文章图片</label>
+                <div class="layui-input-block layuimini-upload">
+                    <input name="image_url" class="layui-input layui-col-xs6" lay-verify="required"
+                        placeholder="请上传商品图片">
+                    <div class="layuimini-upload-btn">
+                        <span><a class="layui-btn" data-upload="images" data-upload-number="more"
+                                data-upload-exts="*image" data-upload-icon="image"><i class="fa fa-upload"></i>
+                                上传</a></span>
+                        <span><a class="layui-btn layui-btn-normal" id="select_images" data-upload-select="images"
+                                data-upload-number="more" data-upload-mimetype="image/*"><i class="fa fa-list"></i>
+                                选择</a></span>
                     </div>
                 </div>
             </div>
-        </div>
 
-
-        <div class="layui-form-item">
-            <label class="layui-form-label">视频链接</label>
-            <div class="layui-input-block">
-                <input name="video_url" placeholder="请输入视频链接" class="layui-input" />
+            <div class="layui-form-item">
+                <label class="layui-form-label">视频链接</label>
+                <div class="layui-input-block">
+                    <input name="video_url" placeholder="请输入视频链接" class="layui-input" />
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">文章分类</label>
-            <div class="layui-input-block ">
-                <select name="category_id" lay-filter="category_id">
-                    <option value="">请选择</option>
-                    <option value="1">选项 A</option>
-                    <option value="2">选项 B</option>
-                    <option value="3">选项 C</option>
-                </select>
+            <div class="layui-form-item">
+                <label class="layui-form-label">文章分类</label>
+                <div class="layui-input-block ">
+                    <select name="category_id" lay-filter="category_id">
+                        <option value="0">请选择</option>
+                        <option value="1">选项 A</option>
+                        <option value="2">选项 B</option>
+                        <option value="3">选项 C</option>
+                    </select>
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">文章类型</label>
-            <div class="layui-input-block">
-                <input type="radio" name="article_type" value="article_type_original" title="原创" checked>
-                <input type="radio" name="article_type" value="article_type_reprint" title="转载">
+            <div class="layui-form-item">
+                <label class="layui-form-label">文章类型</label>
+                <div class="layui-input-block">
+                    <input type="radio" name="article_type" value="article_type_original" title="原创" checked>
+                    <input type="radio" name="article_type" value="article_type_reprint" title="转载">
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">评论</label>
-            <div class="layui-input-block">
-                <input type="radio" name="comment_switch" value="1" title="开启">
-                <input type="radio" name="comment_switch" value="0" title="关闭" checked>
+            <div class="layui-form-item">
+                <label class="layui-form-label">评论</label>
+                <div class="layui-input-block">
+                    <input type="radio" name="comment_switch" value="1" title="开启">
+                    <input type="radio" name="comment_switch" value="0" title="关闭" checked>
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">推荐</label>
-            <div class="layui-input-block">
-                <input type="radio" name="recomment_type" value="1" title="开启">
-                <input type="radio" name="recomment_type" value="0" title="关闭" checked>
+            <div class="layui-form-item">
+                <label class="layui-form-label">推荐</label>
+                <div class="layui-input-block">
+                    <input type="radio" name="recomment_type" value="1" title="开启">
+                    <input type="radio" name="recomment_type" value="0" title="关闭" checked>
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">文章标签</label>
-            <div class="layui-input-block fairy-tag-container">
-                <input type="text" class="fairy-tag-input tag1" autocomplete="off" value="">
+            <div class="layui-form-item">
+                <label class="layui-form-label">文章标签</label>
+                <div class="layui-input-block fairy-tag-container">
+                    <input type="text" class="fairy-tag-input tag1" autocomplete="off" value="">
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">观看数</label>
-            <div class="layui-input-block">
-                <input name="view_count" placeholder="请输入观看数" class="layui-input">
+            <div class="layui-form-item">
+                <label class="layui-form-label">观看数</label>
+                <div class="layui-input-block">
+                    <input name="view_count" placeholder="请输入观看数" class="layui-input">
+                </div>
             </div>
-        </div>
 
 
-        <div class="layui-form-item">
-            <label class="layui-form-label">状态</label>
-            <div class="layui-input-block">
-                <input type="radio" name="status" value="1" title="发布" checked>
-                <input type="radio" name="status" value="0" title="草稿">
+            <div class="layui-form-item">
+                <label class="layui-form-label">状态</label>
+                <div class="layui-input-block">
+                    <input type="radio" name="status" value="1" title="发布" checked>
+                    <input type="radio" name="status" value="0" title="草稿">
+                </div>
             </div>
-        </div>
 
-        <div class="layui-form-item">
-            <div class="layui-input-block">
-                <button class="layui-btn layui-btn-normal" lay-submit lay-filter="save">确认保存</button>
+            <div class="layui-form-item">
+                <div class="layui-input-block">
+                    <button class="layui-btn layui-btn-normal" lay-submit lay-filter="save">确认保存</button>
+                </div>
             </div>
         </div>
     </div>

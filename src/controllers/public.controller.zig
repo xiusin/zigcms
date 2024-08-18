@@ -3,6 +3,8 @@ const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 const strings = @import("zig-strings");
 const base = @import("base.fn.zig");
+const models = @import("../models/models.zig");
+const global = @import("../global/global.zig");
 
 const Self = @This();
 
@@ -67,7 +69,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     const url = std.mem.concat(
                         self.allocator,
                         u8,
-                        &[_][]const u8{ "https://dev.xiusin.cn/", filename[ResourceBaseDir.len..] },
+                        &[_][]const u8{filename[ResourceBaseDir.len..]}, //  "https://dev.xiusin.cn/",
                     ) catch return base.send_failed(req, "生成对象地址错误:URL");
                     defer self.allocator.free(url);
 
@@ -81,6 +83,15 @@ pub fn upload(self: *Self, req: zap.Request) void {
                         }) catch |e| return base.send_error(req, e);
                         cache = false;
                     };
+
+                    const sql = base.build_insert_sql(
+                        models.Upload,
+                        self.allocator,
+                    ) catch return base.send_failed(req, "上传失败");
+                    defer self.allocator.free(sql);
+
+                    const dto = .{ origin_filename, filename, md5, ext, 0, 0, url, std.time.milliTimestamp(), std.time.milliTimestamp(), 0 };
+                    _ = global.get_pg_pool().exec(sql, dto) catch |e| return base.send_error(req, e);
 
                     return base.send_ok(req, .{
                         .path = filename,

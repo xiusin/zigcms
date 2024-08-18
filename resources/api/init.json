@@ -69,6 +69,12 @@
                             "href": "page/article/list.html",
                             "icon": "fa fa-navicon",
                             "target": "_self"
+                        },
+                        {
+                            "title": "文件管理",
+                            "href": "page/upload/list.html",
+                            "icon": "fa fa-upload",
+                            "target": "_self"
                         }
                     ]
                 },
