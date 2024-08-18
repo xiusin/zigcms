@@ -34,12 +34,13 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
 }
 
 //  send_response 响应成功消息
-pub fn send_response(req: zap.Request, v: anytype, count: u64) void {
+pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
         .count = count,
         .msg = "获取列表成功",
         .data = v,
+        .extra = extra,
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;

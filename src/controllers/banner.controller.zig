@@ -67,7 +67,7 @@ pub fn list(self: *Self, req: zap.Request) void {
     while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
         banners.append(article) catch {};
     }
-    base.send_response(req, banners, @as(u64, @intCast(total.total)));
+    base.send_layui_table_response(req, banners, @as(u64, @intCast(total.total)), .{});
 }
 
 pub fn get(_: *Self, req: zap.Request) void {

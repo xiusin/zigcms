@@ -4,7 +4,8 @@
 }
 
 /*紊顔��劽唱��筝㊧������ headerRightBgThis */
-.layui-layout-admin .layui-header .layuimini-header-content > ul > .layui-nav-item.layui-this, .layuimini-tool i:hover {
+.layui-layout-admin .layui-header .layuimini-header-content>ul>.layui-nav-item.layui-this,
+.layuimini-tool i:hover {
     background-color: #e4e4e4 !important;
 }
 
@@ -19,7 +20,8 @@
 }
 
 /*紊顔��劽唱藜�����筝� headerRightColorThis */
-.layui-header .layuimini-menu-header-pc.layui-nav .layui-nav-item a:hover, .layui-header .layuimini-header-menu.layuimini-pc-show.layui-nav .layui-this a {
+.layui-header .layuimini-menu-header-pc.layui-nav .layui-nav-item a:hover,
+.layui-header .layuimini-header-menu.layuimini-pc-show.layui-nav .layui-this a {
     color: #565656 !important;
 }
 
@@ -29,12 +31,15 @@
 }
 
 /*紊顔��劽唱�翫�筝���蘂��� headerRightNavMore */
-.layui-header .layui-nav .layui-nav-mored, .layui-header .layui-nav-itemed > a .layui-nav-more {
+.layui-header .layui-nav .layui-nav-mored,
+.layui-header .layui-nav-itemed>a .layui-nav-more {
     border-color: transparent transparent rgba(160, 160, 160, 0.7) !important;
 }
 
 /**紊顔��劽唱�翫�筝�����臀��� headerRightNavMoreBg headerRightNavMoreColor */
-.layui-header .layui-nav .layui-nav-child dd.layui-this a, .layui-header .layui-nav-child dd.layui-this, .layui-layout-admin .layui-header .layui-nav .layui-nav-item .layui-nav-child .layui-this a {
+.layui-header .layui-nav .layui-nav-child dd.layui-this a,
+.layui-header .layui-nav-child dd.layui-this,
+.layui-layout-admin .layui-header .layui-nav .layui-nav-item .layui-nav-child .layui-this a {
     background-color: #1E9FFF !important;
     color: #ffffff !important;
 }
@@ -55,37 +60,54 @@
 }
 
 /*綏�唱�����翫�筝����桁� leftMenuNavMore */
-.layuimini-menu-left .layui-nav .layui-nav-more, .layuimini-menu-left-zoom.layui-nav .layui-nav-more {
+.layuimini-menu-left .layui-nav .layui-nav-more,
+.layuimini-menu-left-zoom.layui-nav .layui-nav-more {
     border-top-color: rgb(191, 187, 187);
 }
 
 /*綏�唱�����翫�筝����桁� leftMenuNavMore */
-.layuimini-menu-left .layui-nav .layui-nav-mored, .layuimini-menu-left .layui-nav-itemed > a .layui-nav-more, .layuimini-menu-left-zoom.layui-nav .layui-nav-mored, .layuimini-menu-left-zoom.layui-nav-itemed > a .layui-nav-more {
+.layuimini-menu-left .layui-nav .layui-nav-mored,
+.layuimini-menu-left .layui-nav-itemed>a .layui-nav-more,
+.layuimini-menu-left-zoom.layui-nav .layui-nav-mored,
+.layuimini-menu-left-zoom.layui-nav-itemed>a .layui-nav-more {
     border-color: transparent transparent rgb(191, 187, 187) !important;
 }
 
 /*綏�唱�������� leftMenuBg */
-.layui-side.layui-bg-black, .layui-side.layui-bg-black > .layuimini-menu-left > ul, .layuimini-menu-left-zoom > ul {
+.layui-side.layui-bg-black,
+.layui-side.layui-bg-black>.layuimini-menu-left>ul,
+.layuimini-menu-left-zoom>ul {
     background-color: #28333E !important;
 }
 
 /*綏�唱������筝㊧���� leftMenuBgThis */
-.layuimini-menu-left .layui-nav-tree .layui-this, .layuimini-menu-left .layui-nav-tree .layui-this > a, .layuimini-menu-left .layui-nav-tree .layui-nav-child dd.layui-this, .layuimini-menu-left .layui-nav-tree .layui-nav-child dd.layui-this a, .layuimini-menu-left-zoom.layui-nav-tree .layui-this, .layuimini-menu-left-zoom.layui-nav-tree .layui-this > a, .layuimini-menu-left-zoom.layui-nav-tree .layui-nav-child dd.layui-this, .layuimini-menu-left-zoom.layui-nav-tree .layui-nav-child dd.layui-this a {
+.layuimini-menu-left .layui-nav-tree .layui-this,
+.layuimini-menu-left .layui-nav-tree .layui-this>a,
+.layuimini-menu-left .layui-nav-tree .layui-nav-child dd.layui-this,
+.layuimini-menu-left .layui-nav-tree .layui-nav-child dd.layui-this a,
+.layuimini-menu-left-zoom.layui-nav-tree .layui-this,
+.layuimini-menu-left-zoom.layui-nav-tree .layui-this>a,
+.layuimini-menu-left-zoom.layui-nav-tree .layui-nav-child dd.layui-this,
+.layuimini-menu-left-zoom.layui-nav-tree .layui-nav-child dd.layui-this a {
     background-color: #1E9FFF !important
 }
 
 /*綏�唱����絖��������� leftMenuChildBg */
-.layuimini-menu-left .layui-nav-itemed > .layui-nav-child {
+.layuimini-menu-left .layui-nav-itemed>.layui-nav-child {
     background-color: #0c0f13 !important;
 }
 
 /*綏�唱����絖�篏�蘂��� leftMenuColor */
-.layuimini-menu-left .layui-nav .layui-nav-item a, .layuimini-menu-left-zoom.layui-nav .layui-nav-item a {
+.layuimini-menu-left .layui-nav .layui-nav-item a,
+.layuimini-menu-left-zoom.layui-nav .layui-nav-item a {
     color: rgb(191, 187, 187) !important;
 }
 
 /*綏�唱������筝㊤�篏�蘂��� leftMenuColorThis */
-.layuimini-menu-left .layui-nav .layui-nav-item a:hover, .layuimini-menu-left .layui-nav .layui-this a, .layuimini-menu-left-zoom.layui-nav .layui-nav-item a:hover, .layuimini-menu-left-zoom.layui-nav .layui-this a {
+.layuimini-menu-left .layui-nav .layui-nav-item a:hover,
+.layuimini-menu-left .layui-nav .layui-this a,
+.layuimini-menu-left-zoom.layui-nav .layui-nav-item a:hover,
+.layuimini-menu-left-zoom.layui-nav .layui-this a {
     color: #ffffff !important;
 }
 

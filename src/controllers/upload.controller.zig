@@ -82,7 +82,7 @@ pub fn list(self: *Self, req: zap.Request) void {
     while (mapper.next() catch |e| return base.send_error(req, e)) |item| {
         items.append(item) catch {};
     }
-    base.send_response(req, items, @as(u64, @intCast(total.total)));
+    base.send_layui_table_response(req, items, @as(u64, @intCast(total.total)), .{});
 }
 
 pub fn delete(self: *Self, req: zap.Request) void {

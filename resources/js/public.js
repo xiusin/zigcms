@@ -359,7 +359,6 @@ layui.use(['form', 'table'], function () {
                 // 判断是否有操作列表权限
                 options.cols = admin.table.renderTrueHide(options.cols, options);
 
-
                 var parseData = function (res) { return res; };
 
                 if (typeof options.parseData === 'function') {
@@ -1533,7 +1532,7 @@ layui.use(['form', 'table'], function () {
             admin.api.upload();
 
             // 监听富文本初始化
-            // admin.api.editor();
+            admin.api.editor();
 
             // 监听下拉选择生成
             admin.api.select();
@@ -1559,6 +1558,9 @@ layui.use(['form', 'table'], function () {
 
             // 初始化layui表单
             form.render();
+
+
+
 
             // 表格修改
             $("body").on("mouseenter", ".table-edit-tips", function () {

@@ -5,9 +5,8 @@ layui.$(function () {
         toolbar: ['refresh', 'delete'],
         cols: [[
             { type: "checkbox", width: 80 },
-            { field: 'id', width: 80, title: 'ID' },
-            // { field: 'upload_type', minWidth: 80, title: '存储位置', search: 'select', selectList: { 'local': '本地', 'alioss': '阿里云', 'qnoss': '七牛云', ',txcos': '腾讯云' } },
-            { field: 'url', minWidth: 80, search: false, title: '文件预览', templet: za.table.filePreview, },
+            { field: 'upload_type', minWidth: 80, title: '存储位置', search: 'select', selectList: { 'local': '本地', 'alioss': '阿里云', 'qnoss': '七牛云', ',txcos': '腾讯云' } },
+            { field: 'url', minWidth: 120, search: false, title: '文件预览', templet: za.table.filePreview, },
             {
                 field: 'url', minWidth: 120, title: '保存地址', templet: za.table.url, urlNameField: function (data) {
                     return data.url;

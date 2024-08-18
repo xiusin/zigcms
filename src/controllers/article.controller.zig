@@ -71,13 +71,15 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     defer result.deinit();
 
-    const mapper = result.mapper(models.Article, .{ .allocator = self.allocator });
     var articles = std.ArrayList(models.Article).init(self.allocator);
     defer articles.deinit();
-    while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
-        articles.append(article) catch {};
+    {
+        const mapper = result.mapper(models.Article, .{ .allocator = self.allocator });
+        while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
+            articles.append(article) catch {};
+        }
     }
-    base.send_response(req, articles, @as(u64, @intCast(total.total)));
+    base.send_layui_table_response(req, articles, @as(u64, @intCast(total.total)), .{});
 }
 
 pub fn get(_: *Self, req: zap.Request) void {
