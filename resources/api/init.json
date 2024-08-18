@@ -60,7 +60,7 @@
                     "child": [
                         {
                             "title": "分类管理",
-                            "href": "page/form.html",
+                            "href": "page/category/list.html",
                             "icon": "fa fa-list-alt",
                             "target": "_self"
                         },

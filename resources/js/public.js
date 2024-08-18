@@ -5,21 +5,18 @@ layui.use(['form', 'table'], function () {
         upload = layui.upload,
         laytpl = layui.laytpl,
         $ = layui.$,
+        // miniTheme = layui.miniTheme,
         util = layui.util;
 
-    // console.log(miniTheme);
-
-    // try {
-    //     window.onInitElemStyle = function () {
-    //         miniTheme.renderElemStyle();
-    //         $('iframe').each(function (index, iframe) {
-    //             if (typeof iframe.contentWindow.onInitElemStyle == "function") {
-    //                 iframe.contentWindow.onInitElemStyle();
-    //             }
-    //         });
-    //     };
-    //     window.onInitElemStyle();
-    // } catch (e) { }
+    // window.onInitElemStyle = function () {
+    //     miniTheme.renderElemStyle();
+    //     $('iframe').each(function (index, iframe) {
+    //         if (typeof iframe.contentWindow.onInitElemStyle == "function") {
+    //             iframe.contentWindow.onInitElemStyle();
+    //         }
+    //     });
+    // };
+    // window.onInitElemStyle(); TODO 后期优化
 
     var lastTableWhere = {};
 
@@ -2494,8 +2491,5 @@ layui.use(['form', 'table'], function () {
             return pwd;
         }
     };
-
-
-
     window.zigAdmin = window.za = admin;
 });

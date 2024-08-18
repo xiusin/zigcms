@@ -39,6 +39,13 @@ pub fn main() !void {
     try simpleRouter.handle_func("/article/save", &article, &controllers.Article.save);
     try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
 
+    var category = controllers.Category.init(allocator);
+    try simpleRouter.handle_func("/category/get", &category, &controllers.Category.get);
+    try simpleRouter.handle_func("/category/list", &category, &controllers.Category.list);
+    try simpleRouter.handle_func("/category/delete", &category, &controllers.Category.delete);
+    try simpleRouter.handle_func("/category/save", &category, &controllers.Category.save);
+    try simpleRouter.handle_func("/category/modify", &category, &controllers.Category.modify);
+
     var upload = controllers.Upload.init(allocator);
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
     try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);

@@ -9,7 +9,6 @@ layui.define(["jquery", "layer"], function (exports) {
         layer = layui.layer;
 
     var miniTheme = {
-
         /**
          * 主题配置项
          * @param bgcolorId
@@ -256,30 +255,74 @@ layui.define(["jquery", "layer"], function (exports) {
                     leftMenuColor: 'rgb(191, 187, 187)', //左侧菜单字体颜色,
                     leftMenuColorThis: '#ffffff', //左侧菜单选中字体颜色,
                     tabActiveColor: '#963885', //tab选项卡选中颜色,
-                }
+                },
+                {
+                    headerRightBg: '#ffffff', //头部右侧背景色
+                    headerRightBgThis: '#e4e4e4', //头部右侧选中背景色,
+                    headerRightColor: 'rgba(0,0,0, 0.7)', //头部右侧字体颜色,
+                    headerRightChildColor: 'rgba(0,0,0, 0.7)', //头部右侧下拉字体颜色,
+                    headerRightColorThis: '#000', //头部右侧鼠标选中,
+                    headerRightNavMore: 'rgba(160, 160, 160, 0.7)', //头部右侧更多下拉颜色,
+                    headerRightNavMoreBg: '#1E9FFF', //头部右侧更多下拉列表选中背景色,
+                    headerRightNavMoreColor: '#ffffff', //头部右侧更多下拉列表字体色,
+                    headerRightToolColor: '#000', //头部缩放按钮样式,
+                    headerLogoBg: '#f3f3f3', //logo背景颜色,
+                    headerLogoColor: '#000', //logo字体颜色,
+                    leftMenuNavMore: 'rgb(191, 187, 187)', //左侧菜单更多下拉样式,
+                    leftMenuBg: '#ffffff', //左侧菜单背景,
+                    leftMenuBgThis: '#bbb', //左侧菜单选中背景,
+                    leftMenuChildBg: '#f3f3f3', //左侧菜单子菜单背景,
+                    leftMenuColor: '#000', //左侧菜单字体颜色,
+                    leftMenuColorThis: '#000', //左侧菜单选中字体颜色,
+                    tabActiveColor: '#1e9fff', //tab选项卡选中颜色,
+                },
             ];
-            if (bgcolorId === undefined) {
+
+            if (bgcolorId == undefined) {
                 return bgColorConfig;
             } else {
                 return bgColorConfig[bgcolorId];
             }
         },
 
+
+
         /**
-         * 初始化
-         * @param options
-         */
+        * 初始化
+        * @param options
+        */
         render: function (options) {
-            options.bgColorDefault = options.bgColorDefault || false;
+            options.bgColorDefault = options.bgColorDefault || 0;
+            options.elemStyleDefault = options.elemStyleDefault || 'index';
             options.listen = options.listen || false;
-            var bgcolorId = sessionStorage.getItem('layuiminiBgcolorId');
+            var bgcolorId = localStorage.getItem('layuiminiBgcolorId');
             if (bgcolorId === null || bgcolorId === undefined || bgcolorId === '') {
                 bgcolorId = options.bgColorDefault;
             }
             miniTheme.buildThemeCss(bgcolorId);
+
+            var elemStyleName = localStorage.getItem('layuiminiElemStyleName');
+            if (!elemStyleName) elemStyleName = options.elemStyleDefault;
+
+            miniTheme.buildBodyElemStyle(elemStyleName);
+
+            if (typeof window.onInitElemStyle == 'function') {
+                window.onInitElemStyle()
+            }
+
             if (options.listen) miniTheme.listen(options);
         },
 
+        renderElemStyle(elemStyleDefault) {
+
+            elemStyleDefault = elemStyleDefault || 'index';
+
+            var elemStyleName = localStorage.getItem('layuiminiElemStyleName');
+            if (!elemStyleName) elemStyleName = elemStyleDefault;
+
+            miniTheme.buildBodyElemStyle(elemStyleName);
+
+        },
         /**
          * 构建主题样式
          * @param bgcolorId
@@ -290,6 +333,7 @@ layui.define(["jquery", "layer"], function (exports) {
                 return false;
             }
             var bgcolorData = miniTheme.config(bgcolorId);
+
             var styleHtml = '/*头部右侧背景色 headerRightBg */\n' +
                 '.layui-layout-admin .layui-header {\n' +
                 '    background-color: ' + bgcolorData.headerRightBg + ' !important;\n' +
@@ -307,7 +351,7 @@ layui.define(["jquery", "layer"], function (exports) {
                 '/**头部右侧下拉字体颜色 headerRightChildColor */\n' +
                 '.layui-layout-admin .layui-header .layui-nav .layui-nav-item .layui-nav-child a {\n' +
                 '    color:  ' + bgcolorData.headerRightChildColor + '!important;\n' +
-                '}\n'+
+                '}\n' +
                 '\n' +
                 '/*头部右侧鼠标选中 headerRightColorThis */\n' +
                 '.layui-header .layuimini-menu-header-pc.layui-nav .layui-nav-item a:hover, .layui-header .layuimini-header-menu.layuimini-pc-show.layui-nav .layui-this a {\n' +
@@ -393,8 +437,7 @@ layui.define(["jquery", "layer"], function (exports) {
          * @returns {string}
          */
         buildBgColorHtml: function (options) {
-            options.bgColorDefault = options.bgColorDefault || 0;
-            var bgcolorId = parseInt(sessionStorage.getItem('layuiminiBgcolorId'));
+            var bgcolorId = parseInt(localStorage.getItem('layuiminiBgcolorId'));
             if (isNaN(bgcolorId)) bgcolorId = options.bgColorDefault;
             var bgColorConfig = miniTheme.config();
             var html = '';
@@ -412,6 +455,79 @@ layui.define(["jquery", "layer"], function (exports) {
             });
             return html;
         },
+        configElemStyle() {
+            var listElemStyle = [
+                {
+                    title: '标准',
+                    className: 'normal'
+                },
+                {
+                    title: '原型',
+                    className: 'demo',
+                    defaultColorConfig: '12'
+                },
+                {
+                    title: '科幻',
+                    className: 'sicfi'
+                },
+                {
+                    title: 'GTK',
+                    className: 'gtk'
+                },
+                {
+                    title: '像素',
+                    className: 'nes',
+                    defaultColorConfig: '12'
+                },
+                {
+                    title: 'WIN7',
+                    className: 'win7',
+                    defaultColorConfig: '12'
+                },
+                {
+                    title: '拟物',
+                    className: 'neomorphic',
+
+                },
+            ]
+            return listElemStyle;
+        },
+        buildBodyElemStyle(className) {
+            var listElemStyle = miniTheme.configElemStyle()
+
+            $.each(listElemStyle, function (index, item) {
+                var classNameReal = 'elem-style-' + item.className;
+
+                if ($('body').hasClass(classNameReal)) {
+                    $('body').removeClass(classNameReal);
+                }
+            })
+
+            $('body').addClass('elem-style-' + className)
+        },
+        buildElemStyleHtml(options) {
+            var elemStyleName = localStorage.getItem('layuiminiElemStyleName');
+            if (!elemStyleName) elemStyleName = options.elemStyleDefault;
+            var listElemStyle = miniTheme.configElemStyle()
+            var html = '';
+            $.each(listElemStyle, function (key, val) {
+
+                if (typeof val.defaultColorConfig == 'undefined') {
+                    val.defaultColorConfig = '0'
+                }
+
+                if (val.className === elemStyleName) {
+                    html += '<li class="layui-this style-item" data-select-style="' + val.className + '" data-default-color-config="' + val.defaultColorConfig + '">\n';
+                } else {
+                    html += '<li class="style-item"  data-select-style="' + val.className + '" data-default-color-config="' + val.defaultColorConfig + '">\n';
+                }
+                html +=
+                    val.title +
+
+                    '</li>';
+            });
+            return html;
+        },
 
         /**
          * 监听
@@ -419,9 +535,10 @@ layui.define(["jquery", "layer"], function (exports) {
          */
         listen: function (options) {
             $('body').on('click', '[data-bgcolor]', function () {
-                var loading = layer.load(0, {shade: false, time: 2 * 1000});
+                var loading = layer.load(0, { shade: false, time: 2 * 1000 });
                 var clientHeight = (document.documentElement.clientHeight) - 60;
                 var bgColorHtml = miniTheme.buildBgColorHtml(options);
+                var elemStyleHtml = miniTheme.buildElemStyleHtml(options);
                 var html = '<div class="layuimini-color">\n' +
                     '<div class="color-title">\n' +
                     '<span>配色方案</span>\n' +
@@ -429,10 +546,16 @@ layui.define(["jquery", "layer"], function (exports) {
                     '<div class="color-content">\n' +
                     '<ul>\n' + bgColorHtml + '</ul>\n' +
                     '</div>\n' +
+                    '<div class="elem-title">\n' +
+                    '<span>元素风格</span>\n' +
+                    '</div>\n' +
+                    '<div class="elem-content">\n' +
+                    '<ul>\n' + elemStyleHtml + '</ul>\n' +
+                    '</div>\n' +
                     '<div class="more-menu-list">\n' +
-                    '<a class="more-menu-item" href="http://layuimini.99php.cn/docs/index.html" target="_blank"><i class="layui-icon layui-icon-read" style="font-size: 19px;"></i> 开发文档</a>\n' +
-                    '<a class="more-menu-item" href="https://github.com/zhongshaofa/layuimini" target="_blank"><i class="layui-icon layui-icon-tabs" style="font-size: 16px;"></i> 开源地址</a>\n' +
-                    '<a class="more-menu-item" href="http://layuimini.99php.cn" target="_blank"><i class="layui-icon layui-icon-theme"></i> 官方网站</a>\n' +
+                    '<a class="more-menu-item" href="http://doc.ulthon.com/home/read/ulthon_admin/home.html" target="_blank"><i class="layui-icon layui-icon-read" style="font-size: 19px;"></i> 开发文档</a>\n' +
+                    '<a class="more-menu-item" href="https://gitee.com/ulthon/ulthon_admin" target="_blank"><i class="layui-icon layui-icon-tabs" style="font-size: 16px;"></i> 开源地址</a>\n' +
+                    '<a class="more-menu-item" href="http://admin.demo.ulthon.com/" target="_blank"><i class="layui-icon layui-icon-theme"></i> 官方网站</a>\n' +
                     '</div>' +
                     '</div>';
                 layer.open({
@@ -442,7 +565,7 @@ layui.define(["jquery", "layer"], function (exports) {
                     shade: 0.2,
                     anim: 2,
                     shadeClose: true,
-                    id: 'layuiminiBgColor',
+                    id: 'layuimini-bg-color',
                     area: ['340px', clientHeight + 'px'],
                     offset: 'rb',
                     content: html,
@@ -457,18 +580,34 @@ layui.define(["jquery", "layer"], function (exports) {
 
             $('body').on('click', '[data-select-bgcolor]', function () {
                 var bgcolorId = $(this).attr('data-select-bgcolor');
-                $('.layuimini-color .color-content ul .layui-this').attr('class', '');
-                $(this).attr('class', 'layui-this');
-                sessionStorage.setItem('layuiminiBgcolorId', bgcolorId);
+
+                $(this).attr('class', 'layui-this').siblings().removeClass('layui-this');
+                localStorage.setItem('layuiminiBgcolorId', bgcolorId);
                 miniTheme.render({
-                    bgColorDefault: bgcolorId,
+                    listen: false,
+                });
+            });
+            $('body').on('click', '[data-select-style]', function () {
+                var elemStyleName = $(this).attr('data-select-style');
+
+                $(this).attr('class', 'layui-this').siblings().removeClass('layui-this');
+
+                var defaultColorConfig = $(this).attr('data-default-color-config');
+
+                if (defaultColorConfig && defaultColorConfig.length > 0) {
+                    localStorage.setItem('layuiminiBgcolorId', defaultColorConfig);
+
+                }
+
+                localStorage.setItem('layuiminiElemStyleName', elemStyleName);
+                miniTheme.render({
                     listen: false,
                 });
             });
         }
     };
 
+    window.miniTheme = miniTheme;
     exports("miniTheme", miniTheme);
 
-})
-;
+});
