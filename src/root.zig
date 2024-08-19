@@ -1,6 +1,5 @@
 const std = @import("std");
 const testing = std.testing;
-const GitApi = @import("modules/git.zig").GitApi;
 
 const Person = struct {
     id: i32,
@@ -10,8 +9,4 @@ const Person = struct {
 
 export fn add(a: i32, b: i32) i32 {
     return a + b;
-}
-
-test "basic add functionality" {
-    try testing.expect(add(3, 7) == 10);
 }

@@ -10,6 +10,8 @@ const strings = @import("../modules/strings.zig");
 
 const Self = @This();
 
+const table = "zigcms.category";
+
 allocator: Allocator,
 pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
@@ -53,7 +55,7 @@ pub fn list(self: *Self, req: zap.Request) void {
     var pool = global.get_pg_pool();
 
     var row = (global.get_pg_pool().rowOpts(
-        "SELECT COUNT(*) AS total FROM zigcms.category",
+        "SELECT COUNT(*) AS total FROM " ++ table,
         .{},
         .{},
     ) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
@@ -61,8 +63,8 @@ pub fn list(self: *Self, req: zap.Request) void {
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
     const query = std.mem.join(self.allocator, "", &[_][]const u8{
-        "SELECT * FROM zigcms.category ",
-        "ORDER BY ",
+        "SELECT * FROM " ++ table,
+        " ORDER BY ",
         dto.field,
         " ",
         dto.sort,
@@ -92,7 +94,7 @@ pub fn get(_: *Self, req: zap.Request) void {
     const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
     if (id.len == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    var row = (pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
+    var row = (pool.rowOpts("SELECT * FROM zigcms." ++ table ++ " WHERE id = $1", .{id}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "文章不存在");
 
@@ -123,7 +125,7 @@ pub fn modify(self: *Self, req: zap.Request) void {
     }
 
     const sql = strings.join(self.allocator, " ", &[_][]const u8{
-        "UPDATE zigcms.article SET ",
+        "UPDATE " ++ table ++ " SET ",
         dto.field,
         "=$2 WHERE id = $1",
     }) catch return;
@@ -173,7 +175,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
 
     if (ids.capacity == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    const sql = "DELETE FROM zigcms.article WHERE id = $1";
+    const sql = "DELETE FROM " ++ table ++ " WHERE id = $1";
     for (ids.items) |id| {
         _ = pool.exec(sql, .{id}) catch |e| return base.send_error(
             req,
@@ -201,7 +203,6 @@ pub fn save(self: *Self, req: zap.Request) void {
     dto.update_time = std.time.milliTimestamp();
 
     var row: ?i64 = 0;
-    var pool = global.get_pg_pool();
 
     const update = .{
         dto.title,
@@ -230,7 +231,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
 
-        row = pool.exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
+        row = global.get_pg_pool().exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
     } else {
         const sql = base.build_insert_sql(
             models.Article,
@@ -238,7 +239,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
 
-        row = pool.exec(sql, update) catch |e| return base.send_error(req, e);
+        row = global.get_pg_pool().exec(sql, update) catch |e| return base.send_error(req, e);
     }
 
     if (row == null or row == 0) {

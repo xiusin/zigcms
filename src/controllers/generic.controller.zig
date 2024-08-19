@@ -16,6 +16,8 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
+        pub fn tablename() []const u8 {}
+
         pub fn list(self: *Self, req: zap.Request) void {
             var dto = dtos.Page{};
 

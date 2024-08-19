@@ -10,6 +10,8 @@ const strings = @import("../modules/strings.zig");
 
 const Self = @This();
 
+pub const table = "upload";
+
 allocator: Allocator,
 pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
@@ -57,12 +59,12 @@ pub fn list(self: *Self, req: zap.Request) void {
 
     var pool = global.get_pg_pool();
 
-    var row = (global.get_pg_pool().rowOpts("SELECT COUNT(*) AS total FROM zigcms.upload", .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
+    var row = (global.get_pg_pool().rowOpts("SELECT COUNT(*) AS total FROM zigcms." ++ table, .{}, .{}) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
     defer row.deinit() catch {};
     const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
     const query = std.mem.join(self.allocator, "", &[_][]const u8{
-        "SELECT * FROM zigcms.upload ",
-        "ORDER BY ",
+        "SELECT * FROM zigcms." ++ table,
+        " ORDER BY ",
         dto.field,
         " ",
         dto.sort,
@@ -125,7 +127,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
 
     std.log.debug("ids = {any}", .{ids.items});
 
-    const sql = "DELETE FROM zigcms.upload WHERE id = $1";
+    const sql = "DELETE FROM zigcms." ++ table ++ " WHERE id = $1";
     for (ids.items) |id| {
         _ = global.get_pg_pool().exec(sql, .{id}) catch |e| return base.send_error(
             req,

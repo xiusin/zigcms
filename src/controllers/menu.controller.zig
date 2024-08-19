@@ -4,9 +4,10 @@ const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
 const models = @import("../models/menu.model.zig");
 const dtos = @import("../dto/dtos.zig");
+const Allocator = std.mem.Allocator;
 
 const Self = @This();
-const Allocator = std.mem.Allocator;
+const table = "zigcms.menu";
 
 allocator: Allocator,
 pub fn init(allocator: Allocator) Self {
@@ -17,7 +18,7 @@ pub fn init(allocator: Allocator) Self {
 
 pub fn list(self: *Self, req: zap.Request) void {
     var pool = global.get_pg_pool();
-    var result = pool.queryOpts("SELECT * FROM zigcms.menu", .{}, .{
+    var result = pool.queryOpts("SELECT * FROM " ++ table, .{}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e);
 

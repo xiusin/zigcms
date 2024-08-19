@@ -33,7 +33,7 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
     req.sendJson(ser) catch return;
 }
 
-//  send_response 响应成功消息
+//  send_layui_table_response 响应前端table结构
 pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
@@ -56,6 +56,7 @@ pub fn send_failed(req: zap.Request, message: []const u8) void {
     req.sendJson(ser) catch return;
 }
 
+/// build_insert_sql 通过结构体构建insert语句
 pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
@@ -71,13 +72,6 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
             index += 1;
         }
     }
-    var iter = std.mem.split(u8, @typeName(T), ".");
-    var tablename: []const u8 = undefined;
-    while (iter.next()) |v| {
-        tablename = v;
-    }
-    const output: []u8 = undefined;
-    const table = std.ascii.lowerString(output, tablename);
 
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     const values_arg = try std.mem.join(allocator, ", ", values.items);
@@ -85,10 +79,10 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     defer allocator.free(values_arg);
 
     const query = "INSERT INTO zigcms.{s} ({s}) VALUES ({s})";
-    return try std.fmt.allocPrint(allocator, query, .{ table, fields_arg, values_arg });
+    return try std.fmt.allocPrint(allocator, query, .{ get_table_name(T), fields_arg, values_arg });
 }
 
-// build_update_sql 构建更新sql语句, 仅支持简单语句生成
+/// build_update_sql 构建更新sql语句, 仅支持简单语句生成
 pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
@@ -102,21 +96,14 @@ pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
         }
     }
 
-    var iter = std.mem.split(u8, @typeName(T), ".");
-    var tablename: []const u8 = undefined;
-    while (iter.next()) |v| {
-        tablename = v;
-    }
-    const output: []u8 = undefined;
-    const low_tablename = std.ascii.lowerString(output, tablename);
-
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     defer allocator.free(fields_arg);
 
     const query = "UPDATE zigcms.{s} SET {s} WHERE id = ${d}";
-    return try std.fmt.allocPrint(allocator, query, .{ low_tablename, fields_arg, index + 1 });
+    return try std.fmt.allocPrint(allocator, query, .{ get_table_name(T), fields_arg, index + 1 });
 }
 
+/// get_sort_field 获取请求中的排序字段
 pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     if (str) |field| {
         if (strings.starts_with(field, "sort[") and strings.ends_with(field, "]")) {
@@ -124,4 +111,19 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
         }
     }
     return str;
+}
+
+/// get_table_name 获取表名
+pub fn get_table_name(comptime T: type) []u8 {
+    var iter = std.mem.split(u8, @typeName(T), ".");
+    var tablename: []const u8 = undefined;
+    while (iter.next()) |v| {
+        tablename = v;
+    }
+    const output: []u8 = undefined;
+    const op: []u8 = undefined;
+
+    return std.fmt.bufPrint(output, "zigcms.{s}", .{
+        std.ascii.lowerString(op, tablename),
+    }) catch unreachable;
 }

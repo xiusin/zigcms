@@ -66,12 +66,51 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
     return error.SettingNotFound;
 }
 
+// 动态结构体定义 https://github.com/ziglang/zig/issues/12330
+// https://github.com/ziglang/zig/issues/4335 提案
+// const T = @Type(.{
+//     .Struct = .{
+//         .layout = .Packed,
+//         .fields = &.{
+//             .{ .name = "0", .field_type = u2, .default_value = null, .is_comptime = false, .alignment = 0 },
+//             .{ .name = "1", .field_type = u2, .default_value = null, .is_comptime = false, .alignment = 0 },
+//             .{ .name = "2", .field_type = u2, .default_value = null, .is_comptime = false, .alignment = 0 },
+//             .{ .name = "3", .field_type = u2, .default_value = null, .is_comptime = false, .alignment = 0 },
+//         },
+//         .decls = &.{},
+//         .is_tuple = true,
+//     },
+// });
+//
+//
+//
+
+// const ArgTuple = struct {
+//     tuple: anytype = .{},
+// };
+// var arg_list = ArgTuple{};
+// for (args) |arg| {
+//     if (@TypeOf(arg) == ?u21) {
+//         if (arg) |cp| {
+//             arg_list.tuple = arg_list.tuple ++ .{ctUtf8EncodeChar(cp)};
+//         } else {
+//             arg_list.tuple = arg_list.tuple ++ .{"null"};
+//         }
+//     } else if (@TypeOf(arg) == u21) {
+//         arg_list.tuple = arg_list.tuple ++ .{ctUtf8EncodeChar(arg)};
+//     } else {
+//         arg_list.tuple = arg_list.tuple ++ .{arg};
+//     }
+// }
+
+// const tuple = Struct2Tuple(Person){ 1, "xiusin", 2}; 动态构建
 pub fn Struct2Tuple(comptime T: anytype) type {
     const Type = std.builtin.Type;
     const fields: [std.meta.fields(T).len]Type.StructField = blk: {
         var res: [std.meta.fields(T).len]Type.StructField = undefined;
 
-        inline for (std.meta.fields(T), 0..) |field, i| {
+        var i = 0;
+        inline for (std.meta.fields(T)) |field| {
             res[i] = Type.StructField{
                 .type = field.type,
                 .alignment = @alignOf(field.type),
@@ -79,6 +118,7 @@ pub fn Struct2Tuple(comptime T: anytype) type {
                 .is_comptime = false,
                 .name = std.fmt.comptimePrint("{}", .{i}),
             };
+            i += 1;
         }
         break :blk res;
     };
