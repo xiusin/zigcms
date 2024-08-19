@@ -110,12 +110,6 @@
                             "target": "_self"
                         },
                         {
-                            "title": "邮箱配置",
-                            "href": "page/email.html",
-                            "icon": "fa fa-envelope-o",
-                            "target": "_self"
-                        },
-                        {
                             "title": "对象存储",
                             "href": "page/tos.html",
                             "icon": "fa fa-envelope-o",

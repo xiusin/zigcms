@@ -148,10 +148,10 @@ layui.use(['form', 'table'], function () {
                 $.ajax({
                     url: option.url,
                     type: type,
-                    contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+                    contentType: "application/json",
                     dataType: "json",
                     headers: admin.headers(),
-                    data: option.data,
+                    data: JSON.stringify(option.data),
                     timeout: 60000,
                     success: function (res) {
                         admin.msg.close(index);

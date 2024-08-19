@@ -9,7 +9,6 @@ const dtos = @import("../dto/dtos.zig");
 const strings = @import("../modules/strings.zig");
 
 const Self = @This();
-
 const table = "zigcms.category";
 
 allocator: Allocator,
@@ -94,7 +93,7 @@ pub fn get(_: *Self, req: zap.Request) void {
     const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
     if (id.len == 0) return base.send_failed(req, "缺少ID参数");
     var pool = global.get_pg_pool();
-    var row = (pool.rowOpts("SELECT * FROM zigcms." ++ table ++ " WHERE id = $1", .{id}, .{
+    var row = (pool.rowOpts("SELECT * FROM " ++ table ++ " WHERE id = $1", .{id}, .{
         .column_names = true,
     }) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "文章不存在");
 
@@ -187,9 +186,9 @@ pub fn delete(self: *Self, req: zap.Request) void {
 
 pub fn save(self: *Self, req: zap.Request) void {
     req.parseBody() catch |e| return base.send_error(req, e);
-    var dto: models.Article = undefined;
+    var dto: models.Category = undefined;
     if (req.body) |body| {
-        dto = std.json.parseFromSliceLeaky(models.Article, self.allocator, body, .{
+        dto = std.json.parseFromSliceLeaky(models.Category, self.allocator, body, .{
             .ignore_unknown_fields = true,
         }) catch return base.send_failed(req, "参数类型错误");
     } else {
@@ -206,27 +205,17 @@ pub fn save(self: *Self, req: zap.Request) void {
 
     const update = .{
         dto.title,
-        dto.keyword,
-        dto.description,
-        dto.content,
-        dto.image_url,
-        dto.video_url,
-        dto.category_id,
-        dto.article_type,
-        dto.comment_switch,
-        dto.recomment_type,
-        dto.tags,
+        dto.image,
+        dto.remark,
         dto.status,
         dto.sort,
-        dto.view_count,
         dto.create_time,
         dto.update_time,
-        dto.is_delete,
     };
 
     if (dto.id) |id| {
         const sql = base.build_update_sql(
-            models.Article,
+            models.Category,
             self.allocator,
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
@@ -234,7 +223,7 @@ pub fn save(self: *Self, req: zap.Request) void {
         row = global.get_pg_pool().exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
     } else {
         const sql = base.build_insert_sql(
-            models.Article,
+            models.Category,
             self.allocator,
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
