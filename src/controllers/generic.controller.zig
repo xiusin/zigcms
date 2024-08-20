@@ -47,6 +47,7 @@ pub fn Generic(comptime T: type) type {
                     dto.sort = value.value.str;
                 }
             }
+
             if (dto.field.len == 0) {
                 dto.field = "id";
                 dto.sort = "desc";

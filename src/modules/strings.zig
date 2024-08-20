@@ -14,6 +14,14 @@ pub inline fn to_number(str: []const u8) !usize {
     return try std.fmt.parseInt(usize, str, 10);
 }
 
+pub fn to_bool(str: ?[]const u8) bool {
+    if (str == null) return false;
+    if (str.len == 0 or eql(str, "false") or eql(str, "0") or eql(str, " ")) {
+        return false;
+    }
+    return true;
+}
+
 pub inline fn eql(str1: []const u8, str2: []const u8) bool {
     return std.mem.eql(u8, str1, str2);
 }
@@ -22,14 +30,28 @@ pub inline fn join(allocator: Allocator, separator: []const u8, parts: []const [
     return try std.mem.join(allocator, separator, parts);
 }
 
+/// str_replace 字符串替换
+pub fn str_replace(search: []const u8, replace: []const u8, subject: []const u8) []const u8 {
+    var output: [40960000]u8 = undefined;
+    const len = std.mem.replace(u8, subject, search, replace, output[0..]);
+    return output[0..len];
+}
+
+pub fn ucwords() void {}
+
+pub fn ucfrist() void {}
+
+pub fn lcfrist() void {}
+
+/// strtolower 全小写转换
 pub inline fn strtolower(str: []const u8) ![]const u8 {
-    const output: []u8 = undefined;
-    return try std.ascii.lowerString(output, str);
+    var output: [40960000]u8 = undefined;
+    return try std.ascii.lowerString(output[0..], str);
 }
 
 pub inline fn strtoupper(str: []const u8) ![]const u8 {
-    const output: []u8 = undefined;
-    return try std.ascii.upperString(output, str);
+    const output: [40960000]u8 = undefined;
+    return try std.ascii.upperString(output[0..], str);
 }
 
 pub inline fn contains(haystack: []const u8, needle: []const u8) bool {
@@ -44,6 +66,7 @@ pub fn ends_with(haystack: []const u8, needle: []const u8) bool {
     return std.mem.endsWith(u8, haystack, needle);
 }
 
+/// includes 判断是否包含某个字符串
 pub fn includes(haystacks: [][]const u8, needle: []const u8) bool {
     for (haystacks) |haystack| {
         if (std.mem.eql(u8, haystack, needle)) {
@@ -53,30 +76,33 @@ pub fn includes(haystacks: [][]const u8, needle: []const u8) bool {
     return false;
 }
 
+/// strpos 判断字符串位置
 pub inline fn strpos(haystack: []const u8, needle: []const u8) usize {
     return std.mem.indexOfAny(u8, haystack, needle) orelse return -1;
 }
 
+/// strrev 翻转字符串
 pub inline fn strrev(str: []const u8) ![]const u8 {
     return std.mem.reverse(u8, str);
 }
 
+/// strlen 字节长度
 pub inline fn strlen(str: []const u8) usize {
     return str.len;
 }
 
+/// mb_strlen 多字节字符串长度
 pub inline fn mb_strlen(str: []const u8) !usize {
     return try std.unicode.utf8CountCodepoints(str);
 }
 
+/// substr_count 判断子串个数
 pub inline fn substr_count(str: []const u8, needle: []const u8) usize {
     return std.mem.count(u8, str, needle);
 }
 
+/// sprinf 返回格式化字符串
 pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
-    if (format.len == 0) {
-        return format;
-    }
     var buf: [409600]u8 = undefined;
     return try std.fmt.bufPrint(buf[0..], format, args);
 }
