@@ -50,6 +50,14 @@ pub fn main() !void {
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
     try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);
 
+    const generic = controllers.Generic.Generic(models.Banner);
+
+    var generics = generic.init(allocator);
+    try simpleRouter.handle_func("/generic/get", &generics, &generic.get);
+    try simpleRouter.handle_func("/generic/list", &generics, &generic.list);
+    try simpleRouter.handle_func("/generic/delete", &generics, &generic.delete);
+    try simpleRouter.handle_func("/generic/save", &generics, &generic.save);
+
     var listener = zap.HttpListener.init(.{
         .port = 3000,
         .on_request = simpleRouter.on_request_handler(),

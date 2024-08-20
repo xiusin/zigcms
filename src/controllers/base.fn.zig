@@ -78,8 +78,13 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     defer allocator.free(fields_arg);
     defer allocator.free(values_arg);
 
-    const query = "INSERT INTO zigcms.{s} ({s}) VALUES ({s})";
-    return try std.fmt.allocPrint(allocator, query, .{ get_table_name(T), fields_arg, values_arg });
+    const query = "INSERT INTO {s} ({s}) VALUES ({s})";
+
+    return try std.fmt.allocPrint(allocator, query, .{
+        get_table_name(T),
+        fields_arg,
+        values_arg,
+    });
 }
 
 /// build_update_sql 构建更新sql语句, 仅支持简单语句生成
@@ -99,8 +104,13 @@ pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);
     defer allocator.free(fields_arg);
 
-    const query = "UPDATE zigcms.{s} SET {s} WHERE id = ${d}";
-    return try std.fmt.allocPrint(allocator, query, .{ get_table_name(T), fields_arg, index + 1 });
+    const query = "UPDATE {s} SET {s} WHERE id = ${d}";
+
+    return try std.fmt.allocPrint(allocator, query, .{
+        get_table_name(T),
+        fields_arg,
+        index + 1,
+    });
 }
 
 /// get_sort_field 获取请求中的排序字段
@@ -120,10 +130,7 @@ pub fn get_table_name(comptime T: type) []u8 {
     while (iter.next()) |v| {
         tablename = v;
     }
-    const output: []u8 = undefined;
-    const op: []u8 = undefined;
-
-    return std.fmt.bufPrint(output, "zigcms.{s}", .{
-        std.ascii.lowerString(op, tablename),
-    }) catch unreachable;
+    var buffer = std.mem.zeroes([100]u8);
+    const tbl = std.ascii.lowerString(buffer[0..], tablename);
+    return std.fmt.bufPrint(buffer[0..], "zigcms.{s}", .{tbl}) catch unreachable;
 }

@@ -41,3 +41,7 @@ Content-Type: application/json
   "view_count": "0",
   "content": "asdasdasd"
 }
+
+
+### 文章列表
+GET http://localhost:3000/generic/list?page=1&limit=100

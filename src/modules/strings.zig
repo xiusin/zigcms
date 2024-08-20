@@ -73,6 +73,11 @@ pub inline fn substr_count(str: []const u8, needle: []const u8) usize {
     return std.mem.count(u8, str, needle);
 }
 
+pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
+    var buf: [40960]u8 = undefined;
+    return try std.fmt.bufPrint(buf[0..], format, args);
+}
+
 // pub inline fn substr(str: []const u8, start: usize, end: usize) ![]const u8 {
 //     const view = try std.unicode.Utf8View.init(str);
 //     var iter = view.iterator();

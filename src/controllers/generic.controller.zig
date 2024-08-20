@@ -6,6 +6,7 @@ const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
 const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
+const strings = @import("../modules/strings.zig");
 
 pub fn Generic(comptime T: type) type {
     return struct {
@@ -16,7 +17,9 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        pub fn tablename() []const u8 {}
+        pub fn tablename(_: *Self) []const u8 {
+            return base.get_table_name(T);
+        }
 
         pub fn list(self: *Self, req: zap.Request) void {
             var dto = dtos.Page{};
@@ -38,10 +41,12 @@ pub fn Generic(comptime T: type) type {
                 ) catch return base.send_failed(req, "limit参数类型错误");
             }
 
-            var pool = global.get_pg_pool();
+            const query = strings.sprinf(
+                "SELECT * FROM {s} ORDER BY id DESC OFFSET $1 LIMIT $2",
+                .{self.tablename()},
+            ) catch unreachable;
 
-            const query = "SELECT * FROM zigcms.article ORDER BY id DESC OFFSET $1 LIMIT $2";
-            var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+            var result = global.get_pg_pool().queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
                 .column_names = true,
             }) catch |e| return base.send_error(req, e);
 
@@ -53,39 +58,74 @@ pub fn Generic(comptime T: type) type {
             while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
                 articles.append(article) catch {};
             }
-            base.send_list_ok(req, articles, 100);
+            base.send_layui_table_response(req, articles, 100, .{});
         }
 
-        pub fn get(_: *Self, req: zap.Request) void {
+        pub fn get(self: *Self, req: zap.Request) void {
             req.parseQuery();
-            const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
-            if (id.len == 0) return base.send_failed(req, "缺少ID参数");
+            const id_ = req.getParamSlice("id") orelse return;
+            if (id_.len == 0) return;
             var pool = global.get_pg_pool();
-            var row = pool.rowOpts("SELECT * FROM zigcms.article WHERE id = $1", .{id}, .{
-                .column_names = true,
-            }) catch |e| return base.send_error(req, e);
-            if (row == null) {
-                return base.send_failed(req, "文章不存在");
+            const id = strings.to_number(id_) catch return base.send_failed(req, "缺少必要参数");
+
+            const query = strings.sprinf(
+                "SELECT * FROM {s} WHERE id = $1",
+                .{self.tablename()},
+            ) catch unreachable;
+
+            var row = (pool.rowOpts(
+                query,
+                .{id},
+                .{ .column_names = true },
+            ) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "记录不存在");
+
+            defer row.deinit() catch {};
+            const item = row.to(T, .{ .map = .name }) catch |e| return base.send_error(req, e);
+            return base.send_ok(req, item);
+        }
+
+        pub fn delete(self: *Self, req: zap.Request) void {
+            var ids = std.ArrayList(usize).init(self.allocator);
+            defer ids.deinit();
+
+            if (strings.eql(req.method.?, "POST")) {
+                req.parseBody() catch {};
+                if (req.body) |_| {
+                    var params = req.parametersToOwnedStrList(
+                        self.allocator,
+                        true,
+                    ) catch return;
+
+                    defer params.deinit();
+                    for (params.items) |item| {
+                        if (strings.eql("id", item.key.str)) {
+                            const items = strings.split(self.allocator, item.value.str, ",") catch return;
+                            defer self.allocator.free(items);
+                            for (items) |value| {
+                                ids.append(strings.to_number(value) catch |e| return base.send_error(
+                                    req,
+                                    e,
+                                )) catch unreachable;
+                            }
+                        }
+                    }
+                }
+            }
+            req.parseQuery();
+
+            if (req.getParamSlice("id")) |id| {
+                const id_num = strings.to_number(id) catch return;
+                ids.append(id_num) catch unreachable;
             }
 
-            defer row.?.deinit() catch {};
-            const article = row.?.to(T, .{ .map = .name }) catch |e| return base.send_error(req, e);
-            return base.send_ok(req, article);
-        }
+            if (ids.capacity == 0) return base.send_failed(req, "缺少参数");
 
-        pub fn delete(_: *Self, req: zap.Request) void {
-            req.parseQuery();
-            const id = req.getParamSlice("id") orelse return base.send_failed(req, "缺少ID参数");
-            if (id.len == 0) return base.send_failed(req, "缺少ID参数");
-            var pool = global.get_pg_pool();
-            const row_num = (pool.exec("DELETE FROM zigcms.article WHERE id = $1", .{
-                id,
-            }) catch |e| return base.send_error(
-                req,
-                e,
-            )) orelse return base.send_ok(req, "删除失败");
-            if (row_num == 0) {
-                return base.send_failed(req, "文章不存在");
+            const sql = strings.sprinf("DELETE FROM {s} WHERE id = $1", .{self.tablename()}) catch return;
+            for (ids.items) |id| {
+                _ = global.get_pg_pool().exec(sql, .{id}) catch |e| return base.send_error(
+                    req,
+                    e,
+                );
             }
             return base.send_ok(req, "删除成功");
         }
@@ -104,24 +144,9 @@ pub fn Generic(comptime T: type) type {
             var row: ?i64 = 0;
             var pool = global.get_pg_pool();
 
+            // TODO 切换为动态元祖内容
             const update = .{
                 dto.title,
-                dto.keyword,
-                dto.description,
-                dto.content,
-                dto.image_url,
-                dto.video_url,
-                dto.category_id,
-                dto.article_type,
-                dto.comment_switch,
-                dto.recomment_type,
-                dto.tags,
-                dto.status,
-                dto.sort,
-                dto.view_count,
-                dto.create_time,
-                dto.update_time,
-                dto.is_delete,
             };
 
             if (dto.id) |id| {
