@@ -126,12 +126,13 @@ pub fn modify(self: *Self, req: zap.Request) void {
     const sql = strings.join(self.allocator, " ", &[_][]const u8{
         "UPDATE " ++ table ++ " SET ",
         dto.field,
-        "=$2 WHERE id = $1",
+        "=$2, update_time = $3 WHERE id = $1",
     }) catch return;
     defer self.allocator.free(sql);
     _ = (global.get_pg_pool().exec(sql, .{
         dto.id,
         dto.value.?,
+        std.time.milliTimestamp(),
     }) catch |e| return base.send_error(
         req,
         e,
@@ -227,7 +228,6 @@ pub fn save(self: *Self, req: zap.Request) void {
             self.allocator,
         ) catch return base.send_failed(req, "保存失败");
         defer self.allocator.free(sql);
-
         row = global.get_pg_pool().exec(sql, update) catch |e| return base.send_error(req, e);
     }
 

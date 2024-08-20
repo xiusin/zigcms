@@ -43,6 +43,49 @@ pub fn ucfrist() void {}
 
 pub fn lcfrist() void {}
 
+pub inline fn repeat(substr: []const u8, count: usize) []const u8 {
+    return substr ** count;
+}
+
+pub fn md5(str: []const u8) []const u8 {
+    const Md5 = std.crypto.hash.Md5;
+    var out: [Md5.digest_length]u8 = undefined;
+    var h = Md5.init(.{});
+    h.update(str);
+    h.final(out[0..]);
+    return out[0..];
+}
+
+pub inline fn trim(str: []const u8, chars: []const u8) []const u8 {
+    return std.mem.trim(u8, str, chars);
+}
+
+pub fn shuffle(allocator: Allocator, str: []const u8) ![]const u8 {
+    const view = try std.unicode.Utf8View.init(str);
+    var iter = view.iterator();
+
+    var arr = std.ArrayList([]u8).init(allocator);
+    defer arr.deinit();
+
+    while (iter.nextCodepointSlice()) |chars| {
+        try arr.append(chars);
+    }
+
+    // 随机打乱
+    // var rand = std.rand.DefaultPrng.init(std.time.milliTimestamp());
+    // std.rand.shuffle(r: Random, comptime T: type, buf: []T)
+
+    return arr.toOwnedSlice();
+}
+
+pub inline fn ltrim(str: []const u8, chars: []const u8) []const u8 {
+    return std.mem.trimLeft(u8, str, chars);
+}
+
+pub inline fn rtrim(str: []const u8, chars: []const u8) []const u8 {
+    return std.mem.trimRight(u8, str, chars);
+}
+
 /// strtolower 全小写转换
 pub inline fn strtolower(str: []const u8) ![]const u8 {
     var output: [40960000]u8 = undefined;

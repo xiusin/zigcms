@@ -53,8 +53,6 @@ pub fn Generic(comptime T: type) type {
                 dto.sort = "desc";
             }
 
-            var pool = global.get_pg_pool();
-
             var row = (global.get_pg_pool().row(
                 strings.sprinf("SELECT COUNT(*) AS total FROM {s}", .{
                     base.get_table_name(T),
@@ -72,7 +70,7 @@ pub fn Generic(comptime T: type) type {
 
             defer self.allocator.free(query);
 
-            var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+            var result = global.get_pg_pool().queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
                 .column_names = true,
             }) catch |e| return base.send_error(req, e);
 

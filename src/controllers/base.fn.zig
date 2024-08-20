@@ -124,13 +124,13 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
 }
 
 /// get_table_name 获取表名
-pub fn get_table_name(comptime T: type) []u8 {
+pub fn get_table_name(comptime T: type) []const u8 {
     var iter = std.mem.split(u8, @typeName(T), ".");
     var tablename: []const u8 = undefined;
     while (iter.next()) |v| {
         tablename = v;
     }
-    var buffer = std.mem.zeroes([100]u8);
+    var buffer: [100]u8 = undefined; // std.mem.zeroes([100]u8);
     const tbl = std.ascii.lowerString(buffer[0..], tablename);
-    return std.fmt.bufPrint(buffer[0..], "zigcms.{s}", .{tbl}) catch unreachable;
+    return strings.sprinf("zigcms.{s}", .{tbl}) catch unreachable;
 }
