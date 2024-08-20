@@ -74,7 +74,10 @@ pub inline fn substr_count(str: []const u8, needle: []const u8) usize {
 }
 
 pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
-    var buf: [40960]u8 = undefined;
+    if (format.len == 0) {
+        return format;
+    }
+    var buf: [409600]u8 = undefined;
     return try std.fmt.bufPrint(buf[0..], format, args);
 }
 

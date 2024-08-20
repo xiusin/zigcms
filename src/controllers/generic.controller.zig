@@ -17,51 +17,78 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        pub fn tablename(_: *Self) []const u8 {
-            return base.get_table_name(T);
-        }
-
         pub fn list(self: *Self, req: zap.Request) void {
             var dto = dtos.Page{};
 
             req.parseQuery();
-            if (req.getParamSlice("page")) |page| {
-                dto.page = std.fmt.parseInt(
-                    u32,
-                    page,
-                    10,
-                ) catch return base.send_failed(req, "page参数类型错误");
+
+            var params = req.parametersToOwnedStrList(self.allocator, true) catch unreachable;
+            defer params.deinit();
+
+            for (params.items) |value| {
+                if (strings.eql(value.key.str, "page")) {
+                    dto.page = std.fmt.parseInt(
+                        u32,
+                        value.value.str,
+                        10,
+                    ) catch return base.send_failed(req, "page参数类型错误");
+                }
+
+                if (strings.eql(value.key.str, "limit")) {
+                    dto.limit = std.fmt.parseInt(
+                        u32,
+                        value.value.str,
+                        10,
+                    ) catch return base.send_failed(req, "limit参数类型错误");
+                }
+
+                if (strings.starts_with(value.key.str, "sort[")) {
+                    dto.field = base.get_sort_field(value.key.str).?;
+                    dto.sort = value.value.str;
+                }
+            }
+            if (dto.field.len == 0) {
+                dto.field = "id";
+                dto.sort = "desc";
             }
 
-            if (req.getParamSlice("limit")) |limit| {
-                dto.limit = std.fmt.parseInt(
-                    u32,
-                    limit,
-                    10,
-                ) catch return base.send_failed(req, "limit参数类型错误");
-            }
+            var pool = global.get_pg_pool();
 
-            const query = strings.sprinf(
-                "SELECT * FROM {s} ORDER BY id DESC OFFSET $1 LIMIT $2",
-                .{self.tablename()},
-            ) catch unreachable;
+            var row = (global.get_pg_pool().row(
+                strings.sprinf("SELECT COUNT(*) AS total FROM {s}", .{
+                    base.get_table_name(T),
+                }) catch unreachable,
+                .{},
+            ) catch |e| return base.send_error(req, e)) orelse return base.send_ok(req, "数据异常");
 
-            var result = global.get_pg_pool().queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
+            defer row.deinit() catch {};
+            const total = row.to(struct { total: i64 = 0 }, .{}) catch |e| return base.send_error(req, e);
+            const query = strings.sprinf("SELECT * FROM {s} ORDER BY {s} {s} OFFSET $1 LIMIT $2", .{
+                base.get_table_name(T),
+                dto.field,
+                dto.sort,
+            }) catch unreachable;
+
+            defer self.allocator.free(query);
+
+            var result = pool.queryOpts(query, .{ (dto.page - 1) * dto.limit, dto.limit }, .{
                 .column_names = true,
             }) catch |e| return base.send_error(req, e);
 
             defer result.deinit();
 
-            const mapper = result.mapper(T, .{ .allocator = self.allocator });
-            var articles = std.ArrayList(T).init(self.allocator);
-            defer articles.deinit();
-            while (mapper.next() catch |e| return base.send_error(req, e)) |article| {
-                articles.append(article) catch {};
+            var items = std.ArrayList(T).init(self.allocator);
+            defer items.deinit();
+            {
+                const mapper = result.mapper(T, .{ .allocator = self.allocator });
+                while (mapper.next() catch |e| return base.send_error(req, e)) |item| {
+                    items.append(item) catch {};
+                }
             }
-            base.send_layui_table_response(req, articles, 100, .{});
+            base.send_layui_table_response(req, items, @as(u64, @intCast(total.total)), .{});
         }
 
-        pub fn get(self: *Self, req: zap.Request) void {
+        pub fn get(_: *Self, req: zap.Request) void {
             req.parseQuery();
             const id_ = req.getParamSlice("id") orelse return;
             if (id_.len == 0) return;
@@ -70,7 +97,7 @@ pub fn Generic(comptime T: type) type {
 
             const query = strings.sprinf(
                 "SELECT * FROM {s} WHERE id = $1",
-                .{self.tablename()},
+                .{base.get_table_name(T)},
             ) catch unreachable;
 
             var row = (pool.rowOpts(
@@ -120,7 +147,10 @@ pub fn Generic(comptime T: type) type {
 
             if (ids.capacity == 0) return base.send_failed(req, "缺少参数");
 
-            const sql = strings.sprinf("DELETE FROM {s} WHERE id = $1", .{self.tablename()}) catch return;
+            const sql = strings.sprinf("DELETE FROM {s} WHERE id = $1", .{
+                base.get_table_name(T),
+            }) catch return;
+
             for (ids.items) |id| {
                 _ = global.get_pg_pool().exec(sql, .{id}) catch |e| return base.send_error(
                     req,
