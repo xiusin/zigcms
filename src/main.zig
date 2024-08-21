@@ -9,9 +9,13 @@ const base = @import("controllers/base.fn.zig");
 const models = @import("models/models.zig");
 const strings = @import("modules/strings.zig");
 
-pub fn main() !void {
-    // std.log.debug("{?}", Struct2Tuple(models.Admin));
+const cruds = .{
+    .admin = models.Admin,
+    .cate = models.Category,
+    .article = models.Article,
+};
 
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     global.set_allocator(allocator);
@@ -50,11 +54,6 @@ pub fn main() !void {
     var upload = controllers.Upload.init(allocator);
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
     try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);
-
-    const cruds = .{
-        .admin = models.Admin,
-        .cate = models.Category,
-    };
 
     inline for (std.meta.fields(@TypeOf(cruds))) |field| {
         const field_value = @field(cruds, field.name);
