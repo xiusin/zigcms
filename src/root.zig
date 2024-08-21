@@ -1,5 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
+const strings = @import("modules/strings.zig");
 
 const Person = struct {
     id: i32,

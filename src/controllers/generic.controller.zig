@@ -8,13 +8,37 @@ const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
 const strings = @import("../modules/strings.zig");
 
-pub fn Generic(comptime T: type) type {
+const ModelEnum = enum {
+    setting,
+    banner,
+};
+
+// comptime T: type, handleModel: ModelEnum
+pub fn Generic() type {
     return struct {
         const Self = @This();
 
         allocator: Allocator,
+
         pub fn init(allocator: Allocator) Self {
             return .{ .allocator = allocator };
+        }
+
+        fn get_model(_: *Self, model: ModelEnum) !type {
+            switch (model) {
+                .banner => return models.Banner,
+                .setting => return models.Setting,
+            }
+            return error.NotSupport;
+        }
+
+        fn resovle(self: *Self, req: zap.Request) !type {
+            if (req.getHeader("X-MODEL")) |model| {
+                @enumFromInt(integer: anytype)
+                return self.get_model(model: ModelEnum)
+            }
+
+            return error.NotSupport;
         }
 
         pub fn list(self: *Self, req: zap.Request) void {

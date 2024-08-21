@@ -43,6 +43,18 @@
             .url = "https://github.com/vrischmann/zig-sqlite/archive/master.tar.gz",
             .hash = "1220940ae067451e7e6824e9b92baceac93b0bd6fa9ffd315179cc9a7ce5430a46ac",
         },
+        .curl = .{
+            .url = "git+https://github.com/jiacai2050/zig-curl#7fc813629dd1f5ee29fbe1d7c2572b6186f13e4e",
+            .hash = "1220204a66c6ae12c5688edfa74091532b4a5243cb13c9bf5eca72b1d34ae511cd16",
+        },
+        .logz = .{
+            .url = "git+https://github.com/karlseguin/log.zig#0a8d45fe70f15615ee4251b0a84afa243f728d21",
+            .hash = "1220a267bbb2165749fd6574cd2729aa70dd3cbbf74c8825b97334b22d9b2385ec3f",
+        },
+        .zeit = .{
+            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.3.0.tar.gz",
+            .hash = "1220fb41de06f30dbb8ad57118fa72ddb9685c42b0353fe194e6eff555596b5e30d6",
+        },
     },
     .paths = .{
         "build.zig",

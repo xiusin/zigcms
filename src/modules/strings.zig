@@ -30,36 +30,61 @@ pub inline fn join(allocator: Allocator, separator: []const u8, parts: []const [
     return try std.mem.join(allocator, separator, parts);
 }
 
-/// str_replace 字符串替换
-pub fn str_replace(search: []const u8, replace: []const u8, subject: []const u8) []const u8 {
-    var output: [40960000]u8 = undefined;
-    const len = std.mem.replace(u8, subject, search, replace, output[0..]);
-    return output[0..len];
+/// 字符串替换
+pub inline fn str_replace(allocator: Allocator, search: []const u8, replace: []const u8, subject: []const u8) []const u8 {
+    return std.mem.replaceOwned(u8, allocator, subject, search, replace) catch unreachable;
 }
 
 pub fn ucwords() void {}
 
-pub fn ucfrist() void {}
+/// 首字母大写
+pub fn ucfrist(str: []const u8) []const u8 {
+    if (str.len > 0) {
+        str[0] = std.ascii.toUpper(str[0]);
+    }
+    return str;
+}
 
-pub fn lcfrist() void {}
+/// 首字母小写
+pub fn lcfrist(str: []u8) []const u8 {
+    if (str.len > 0) {
+        str[0] = std.ascii.toLower(str[0]);
+    }
+    return str;
+}
 
 pub inline fn repeat(substr: []const u8, count: usize) []const u8 {
     return substr ** count;
 }
 
-pub fn md5(str: []const u8) []const u8 {
+pub fn md5(allocator: Allocator, str: []const u8) ![]const u8 {
     const Md5 = std.crypto.hash.Md5;
     var out: [Md5.digest_length]u8 = undefined;
-    var h = Md5.init(.{});
-    h.update(str);
-    h.final(out[0..]);
-    return out[0..];
+    Md5.hash(str, &out, .{});
+    var buffer: [Md5.digest_length * 2]u8 = undefined;
+    var index: usize = 0;
+    for (out) |byte| {
+        var box: [2]u8 = undefined;
+        const hex_byte = try std.fmt.bufPrint(box[0..], "{x}", .{byte});
+        if (hex_byte.len == 1) {
+            buffer[index] = 0;
+            buffer[index + 1] = hex_byte[0];
+        } else {
+            buffer[index] = hex_byte[0];
+            buffer[index + 1] = hex_byte[1];
+        }
+        index += 2;
+    }
+
+    return try allocator.dupe(u8, buffer[0..]);
 }
 
+/// 去除字符串首尾指定字符串
 pub inline fn trim(str: []const u8, chars: []const u8) []const u8 {
-    return std.mem.trim(u8, str, chars);
+    return std.mem.trim(u8, str, chars); // inline 函数的不会被返回优化
 }
 
+/// 打乱字符串
 pub fn shuffle(allocator: Allocator, str: []const u8) ![]const u8 {
     const view = try std.unicode.Utf8View.init(str);
     var iter = view.iterator();
@@ -67,49 +92,71 @@ pub fn shuffle(allocator: Allocator, str: []const u8) ![]const u8 {
     var arr = std.ArrayList([]u8).init(allocator);
     defer arr.deinit();
 
+    var len: usize = 0;
     while (iter.nextCodepointSlice()) |chars| {
-        try arr.append(chars);
+        try arr.append(@constCast(chars));
+        len += 1;
     }
 
-    // 随机打乱
-    // var rand = std.rand.DefaultPrng.init(std.time.milliTimestamp());
-    // std.rand.shuffle(r: Random, comptime T: type, buf: []T)
+    var rng = std.rand.DefaultPrng.init(@as(u64, @intCast(std.time.milliTimestamp())));
+    for (0..len) |value| {
+        const seed = rng.random().uintLessThan(usize, len);
+        if (value != seed) {
+            const tmp = arr.items[value];
+            arr.items[value] = arr.items[seed];
+            arr.items[seed] = tmp;
+        }
+    }
 
-    return arr.toOwnedSlice();
+    var result = try std.ArrayList(u8).initCapacity(allocator, str.len);
+    defer result.deinit();
+
+    for (arr.items) |value| {
+        try result.appendSlice(value[0..]);
+    }
+    arr.clearAndFree();
+
+    return result.toOwnedSlice();
 }
 
+/// 去除左边字符
 pub inline fn ltrim(str: []const u8, chars: []const u8) []const u8 {
     return std.mem.trimLeft(u8, str, chars);
 }
 
+/// 去除右边字符
 pub inline fn rtrim(str: []const u8, chars: []const u8) []const u8 {
     return std.mem.trimRight(u8, str, chars);
 }
 
-/// strtolower 全小写转换
-pub inline fn strtolower(str: []const u8) ![]const u8 {
-    var output: [40960000]u8 = undefined;
-    return try std.ascii.lowerString(output[0..], str);
+/// 全小写转换
+pub inline fn strtolower(str: []const u8) []const u8 {
+    var output = [_]u8{0} ** str.len;
+    return std.ascii.lowerString(output[0..], str);
 }
 
-pub inline fn strtoupper(str: []const u8) ![]const u8 {
-    const output: [40960000]u8 = undefined;
-    return try std.ascii.upperString(output[0..], str);
+/// 全大写转换
+pub inline fn strtoupper(str: []const u8) []const u8 {
+    var output = [_]u8{0} ** str.len;
+    return std.ascii.upperString(output[0..], str);
 }
 
+/// 判断是否包含某个子串
 pub inline fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack[0..], needle[0..]) != null;
 }
 
+/// 判断是否以某个字符串开始
 pub inline fn starts_with(haystack: []const u8, needle: []const u8) bool {
     return std.mem.startsWith(u8, haystack, needle);
 }
 
+/// 判断是否以某个字符串结束
 pub fn ends_with(haystack: []const u8, needle: []const u8) bool {
     return std.mem.endsWith(u8, haystack, needle);
 }
 
-/// includes 判断是否包含某个字符串
+/// 判断是否包含某个字符串
 pub fn includes(haystacks: [][]const u8, needle: []const u8) bool {
     for (haystacks) |haystack| {
         if (std.mem.eql(u8, haystack, needle)) {

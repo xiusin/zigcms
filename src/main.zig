@@ -7,13 +7,22 @@ const global = @import("global/global.zig");
 const controllers = @import("controllers/controllers.zig");
 const base = @import("controllers/base.fn.zig");
 const models = @import("models/models.zig");
+const strings = @import("modules/strings.zig");
 
 pub fn main() !void {
     // std.log.debug("{?}", Struct2Tuple(models.Admin));
+    const model = try controllers.Generic.get_model("banner");
+    std.log.debug("model = {s}", .{@typeName(model)});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     global.set_allocator(allocator);
+
+    // std.log.debug("repeat = {s}", .{strings.trim("hello wosld ", "hd ")});
+    // std.log.debug("repeat = {s}", .{strings.strtolower("HELLO world")});
+    // std.log.debug("shuffle = {s}", .{try strings.shuffle(allocator, "HELLO world,你好,我的世界")});
+    // std.log.debug("shuffle = {s}", .{strings.lcfrist(@constCast("HELLO world,你好,我的世界"))});
+    // std.log.debug("lcfrist 世界 = {s}", .{strings.lcfrist("你好,我的世界")});
 
     var simpleRouter = zap.Router.init(allocator, .{});
     defer simpleRouter.deinit();
@@ -66,5 +75,5 @@ pub fn main() !void {
         .max_clients = 10000,
     });
     try listener.listen();
-    zap.start(.{ .threads = 2, .workers = 2 });
+    zap.start(.{ .threads = 1, .workers = 1 });
 }
