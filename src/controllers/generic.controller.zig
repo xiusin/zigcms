@@ -8,7 +8,6 @@ const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
 const strings = @import("../modules/strings.zig");
 
-// comptime T: type, handleModel: ModelEnum
 pub fn Generic(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -19,24 +18,7 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        // fn get_model(_: *Self, model: ModelEnum) !type {
-        //     switch (model) {
-        //         .banner => return models.Banner,
-        //         .setting => return models.Setting,
-        //     }
-        //     return error.NotSupport;
-        // }
-
-        // fn resovle(self: *Self, req: zap.Request) !type {
-        //     if (req.getHeader("X-MODEL")) |model| {
-        //         return @Type(self.get_model(@enumFromInt(try strings.to_number(model))));
-        //     }
-        //     return error.NotSupport;
-        // }
-
         pub fn list(self: *Self, req: zap.Request) void {
-            // const model = self.resovle(req) catch return;
-
             var dto = dtos.Page{};
             req.parseQuery();
 
@@ -178,7 +160,7 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn save(self: *Self, req: zap.Request) void {
-            req.parseBody() catch |e| return base.send_error(req, e);
+            req.parseBody() catch unreachable;
             var dto: T = undefined;
             if (req.body) |body| {
                 std.log.debug("body = {s}", .{body});
@@ -191,10 +173,18 @@ pub fn Generic(comptime T: type) type {
             var row: ?i64 = 0;
             var pool = global.get_pg_pool();
 
-            // TODO 切换为动态元祖内容
-            const update = .{
-                // dto.title,
-            };
+            // // TODO 切换为动态元祖内容
+
+            var update = std.mem.zeroes(global.Struct2Tuple(dto));
+            std.log.debug("update = {}", .{update});
+
+            inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
+                if (!std.mem.eql(u8, field.name, "id")) {
+                    update[index] = @field(dto, field.name);
+                }
+            }
+
+            std.log.debug("update = {}", .{update});
 
             if (dto.id) |id| {
                 dto.create_time = std.time.microTimestamp();
@@ -218,7 +208,7 @@ pub fn Generic(comptime T: type) type {
             if (row == null or row == 0) {
                 return base.send_failed(req, "保存失败");
             }
-            return base.send_ok(req, .{});
+            return base.send_ok(req, dto);
         }
     };
 }

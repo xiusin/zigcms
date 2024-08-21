@@ -10,15 +10,15 @@ const models = @import("models/models.zig");
 const strings = @import("modules/strings.zig");
 
 const cruds = .{
-    .admin = models.Admin,
+    // .admin = models.Admin,
     .cate = models.Category,
-    .article = models.Article,
+    // .article = models.Article,
 };
 
-fn auth(instance: *anyopaque, handler: anytype) fn (req: zap.Request) void {
-    // TODO 鉴权
-    //    @call(.auto, @as(zap.BoundHandler, @ptrFromInt(b.handler)), .{ @as(*anyopaque, @ptrFromInt(b.instance)), r })
-}
+// fn auth(instance: *anyopaque, handler: anytype) fn (req: zap.Request) void {
+//     // TODO 鉴权
+//     //    @call(.auto, @as(zap.BoundHandler, @ptrFromInt(b.handler)), .{ @as(*anyopaque, @ptrFromInt(b.instance)), r })
+// }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
@@ -56,7 +56,7 @@ pub fn main() !void {
     try simpleRouter.handle_func("/category/save", &category, &controllers.Category.save);
     try simpleRouter.handle_func("/category/modify", &category, &controllers.Category.modify);
 
-    simpleRouter.handle_func_unbound("/xxx", fn (req: zap.Request) void{});
+    // simpleRouter.handle_func_unbound("/xxx", fn (req: zap.Request) void{});
 
     var upload = controllers.Upload.init(allocator);
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);

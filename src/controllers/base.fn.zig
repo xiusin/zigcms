@@ -65,12 +65,12 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
 
     var index: usize = 0;
     inline for (std.meta.fields(T)) |field| {
-        if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
-            try fields.append(field.name);
-            var buf: [1024]u8 = undefined;
-            try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
-            index += 1;
-        }
+        // if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
+        try fields.append(field.name);
+        var buf: [1024]u8 = undefined;
+        try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
+        index += 1;
+        // }
     }
 
     const fields_arg = try std.mem.join(allocator, ", ", fields.items);

@@ -44,4 +44,18 @@ Content-Type: application/json
 
 
 ### 文章列表
-GET http://localhost:3000/generic/list?page=1&limit=100
+POST http://localhost:3000/cate/save
+Content-Type: application/json
+
+{
+  "title": "123213213",
+  "keyword": "",
+  "description": "",
+  "file": "",
+  "video_url": "",
+  "article_type": "article_type_original",
+  "comment_switch": "0",
+  "recomment_type": "0",
+  "view_count": "0",
+  "content": "asdasdasd"
+}

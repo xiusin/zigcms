@@ -104,21 +104,26 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
 // }
 
 // const tuple = Struct2Tuple(Person){ 1, "xiusin", 2}; 动态构建
-pub fn Struct2Tuple(comptime T: anytype) type {
+pub inline fn Struct2Tuple(T: type) type {
     const Type = std.builtin.Type;
-    const fields: [std.meta.fields(T).len]Type.StructField = blk: {
-        var res: [std.meta.fields(T).len]Type.StructField = undefined;
+
+    const len = std.meta.fields(T).len - 1;
+
+    const fields: [len]Type.StructField = blk: {
+        var res: [len]Type.StructField = undefined;
 
         var i = 0;
         inline for (std.meta.fields(T)) |field| {
-            res[i] = Type.StructField{
-                .type = field.type,
-                .alignment = @alignOf(field.type),
-                .default_value = null,
-                .is_comptime = false,
-                .name = std.fmt.comptimePrint("{}", .{i}),
-            };
-            i += 1;
+            if (!std.mem.eql(u8, field.name, "id")) {
+                res[i] = Type.StructField{
+                    .type = field.type,
+                    .alignment = @alignOf(field.type),
+                    .default_value = field.default_value,
+                    .is_comptime = false,
+                    .name = std.fmt.comptimePrint("{}", .{i}),
+                };
+                i += 1;
+            }
         }
         break :blk res;
     };
