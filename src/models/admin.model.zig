@@ -5,5 +5,6 @@ pub const Admin = struct {
     phone: []const u8 = "",
     email: []const u8 = "",
     password: []const u8 = "",
-    created_at: i64 = 0,
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
 };

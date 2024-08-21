@@ -8,13 +8,8 @@ const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
 const strings = @import("../modules/strings.zig");
 
-const ModelEnum = enum {
-    setting,
-    banner,
-};
-
 // comptime T: type, handleModel: ModelEnum
-pub fn Generic() type {
+pub fn Generic(comptime T: type) type {
     return struct {
         const Self = @This();
 
@@ -24,26 +19,25 @@ pub fn Generic() type {
             return .{ .allocator = allocator };
         }
 
-        fn get_model(_: *Self, model: ModelEnum) !type {
-            switch (model) {
-                .banner => return models.Banner,
-                .setting => return models.Setting,
-            }
-            return error.NotSupport;
-        }
+        // fn get_model(_: *Self, model: ModelEnum) !type {
+        //     switch (model) {
+        //         .banner => return models.Banner,
+        //         .setting => return models.Setting,
+        //     }
+        //     return error.NotSupport;
+        // }
 
-        fn resovle(self: *Self, req: zap.Request) !type {
-            if (req.getHeader("X-MODEL")) |model| {
-                @enumFromInt(integer: anytype)
-                return self.get_model(model: ModelEnum)
-            }
-
-            return error.NotSupport;
-        }
+        // fn resovle(self: *Self, req: zap.Request) !type {
+        //     if (req.getHeader("X-MODEL")) |model| {
+        //         return @Type(self.get_model(@enumFromInt(try strings.to_number(model))));
+        //     }
+        //     return error.NotSupport;
+        // }
 
         pub fn list(self: *Self, req: zap.Request) void {
-            var dto = dtos.Page{};
+            // const model = self.resovle(req) catch return;
 
+            var dto = dtos.Page{};
             req.parseQuery();
 
             var params = req.parametersToOwnedStrList(self.allocator, true) catch unreachable;
@@ -199,7 +193,7 @@ pub fn Generic() type {
 
             // TODO 切换为动态元祖内容
             const update = .{
-                dto.title,
+                // dto.title,
             };
 
             if (dto.id) |id| {

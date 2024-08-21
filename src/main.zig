@@ -11,18 +11,10 @@ const strings = @import("modules/strings.zig");
 
 pub fn main() !void {
     // std.log.debug("{?}", Struct2Tuple(models.Admin));
-    const model = try controllers.Generic.get_model("banner");
-    std.log.debug("model = {s}", .{@typeName(model)});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     global.set_allocator(allocator);
-
-    // std.log.debug("repeat = {s}", .{strings.trim("hello wosld ", "hd ")});
-    // std.log.debug("repeat = {s}", .{strings.strtolower("HELLO world")});
-    // std.log.debug("shuffle = {s}", .{try strings.shuffle(allocator, "HELLO world,你好,我的世界")});
-    // std.log.debug("shuffle = {s}", .{strings.lcfrist(@constCast("HELLO world,你好,我的世界"))});
-    // std.log.debug("lcfrist 世界 = {s}", .{strings.lcfrist("你好,我的世界")});
 
     var simpleRouter = zap.Router.init(allocator, .{});
     defer simpleRouter.deinit();
@@ -59,13 +51,21 @@ pub fn main() !void {
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
     try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);
 
-    const generic = controllers.Generic.Generic(models.Banner);
+    const cruds = .{
+        .admin = models.Admin,
+        .cate = models.Category,
+    };
 
-    var generics = generic.init(allocator);
-    try simpleRouter.handle_func("/generic/get", &generics, &generic.get);
-    try simpleRouter.handle_func("/generic/list", &generics, &generic.list);
-    try simpleRouter.handle_func("/generic/delete", &generics, &generic.delete);
-    try simpleRouter.handle_func("/generic/save", &generics, &generic.save);
+    inline for (std.meta.fields(@TypeOf(cruds))) |field| {
+        const field_value = @field(cruds, field.name);
+        const generic = controllers.Generic.Generic(field_value);
+
+        var generics = generic.init(allocator);
+        try simpleRouter.handle_func("/" ++ field.name ++ "/get", &generics, &generic.get);
+        try simpleRouter.handle_func("/" ++ field.name ++ "/list", &generics, &generic.list);
+        try simpleRouter.handle_func("/" ++ field.name ++ "/delete", &generics, &generic.delete);
+        try simpleRouter.handle_func("/" ++ field.name ++ "/save", &generics, &generic.save);
+    }
 
     var listener = zap.HttpListener.init(.{
         .port = 3000,
@@ -75,5 +75,5 @@ pub fn main() !void {
         .max_clients = 10000,
     });
     try listener.listen();
-    zap.start(.{ .threads = 1, .workers = 1 });
+    zap.start(.{ .threads = 2, .workers = 2 });
 }
