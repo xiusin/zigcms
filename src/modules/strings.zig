@@ -220,7 +220,7 @@ pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
 }
 
 /// 剪切子字符串
-pub inline fn substr(allocator: Allocator, str: []const u8, start: usize, end: usize) ![]const u8 {
+pub fn substr(allocator: Allocator, str: []const u8, start: usize, end: usize) ![]const u8 {
     const view = try std.unicode.Utf8View.init(str);
     var iter = view.iterator();
 
