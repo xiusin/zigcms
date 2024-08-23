@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// 将字符串分割为字符串切片
 pub fn split(allocator: Allocator, str: []const u8, delimiter: []const u8) ![][]const u8 {
     var parts = std.ArrayList([]const u8).init(allocator);
     var iter = std.mem.split(u8, str, delimiter);
@@ -10,10 +11,17 @@ pub fn split(allocator: Allocator, str: []const u8, delimiter: []const u8) ![][]
     return try parts.toOwnedSlice();
 }
 
-pub inline fn to_number(str: []const u8) !usize {
+/// 将字符串转换为数字类型
+pub inline fn to_int(str: []const u8) !usize {
     return try std.fmt.parseInt(usize, str, 10);
 }
 
+/// 将字符串转为浮点类型
+pub inline fn to_float(comptime T: type, str: []const u8) !T {
+    return try std.fmt.parseFloat(T, str);
+}
+
+/// 将字符串简单转换为bool值
 pub fn to_bool(str: ?[]const u8) bool {
     if (str == null) return false;
     if (str.len == 0 or eql(str, "false") or eql(str, "0") or eql(str, " ")) {
@@ -22,10 +30,12 @@ pub fn to_bool(str: ?[]const u8) bool {
     return true;
 }
 
+/// 判断字符串是否相等
 pub inline fn eql(str1: []const u8, str2: []const u8) bool {
     return std.mem.eql(u8, str1, str2);
 }
 
+/// 将字符串切片合并为字符串
 pub inline fn join(allocator: Allocator, separator: []const u8, parts: []const []const u8) ![]const u8 {
     return try std.mem.join(allocator, separator, parts);
 }
@@ -35,11 +45,21 @@ pub inline fn str_replace(allocator: Allocator, search: []const u8, replace: []c
     return std.mem.replaceOwned(u8, allocator, subject, search, replace) catch unreachable;
 }
 
-pub fn ucwords() void {}
+/// 单词首字母大写
+pub fn ucwords(str: []const u8) []const u8 {
+    for (str, 0..) |char, index| {
+        if (char >= 97 and char <= 122) {
+            if (index == 0 or str[index - 1] == ' ') {
+                str[index] = std.ascii.toUpper(char);
+            }
+        }
+    }
+    return str;
+}
 
 /// 首字母大写
 pub fn ucfrist(str: []const u8) []const u8 {
-    if (str.len > 0) {
+    if (str.len > 0 and str[0] >= 97 and str[0] <= 122) {
         str[0] = std.ascii.toUpper(str[0]);
     }
     return str;
@@ -53,10 +73,12 @@ pub fn lcfrist(str: []u8) []const u8 {
     return str;
 }
 
-pub inline fn repeat(substr: []const u8, count: usize) []const u8 {
-    return substr ** count;
+/// 重复字符串
+pub inline fn repeat(str: []const u8, count: usize) []const u8 {
+    return str ** count;
 }
 
+/// 加密字符串md5
 pub fn md5(allocator: Allocator, str: []const u8) ![]const u8 {
     const Md5 = std.crypto.hash.Md5;
     var out: [Md5.digest_length]u8 = undefined;
@@ -197,10 +219,30 @@ pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
     return try std.fmt.bufPrint(buf[0..], format, args);
 }
 
-// pub inline fn substr(str: []const u8, start: usize, end: usize) ![]const u8 {
-//     const view = try std.unicode.Utf8View.init(str);
-//     var iter = view.iterator();
+/// 剪切子字符串
+pub inline fn substr(allocator: Allocator, str: []const u8, start: usize, end: usize) ![]const u8 {
+    const view = try std.unicode.Utf8View.init(str);
+    var iter = view.iterator();
 
-//     var i: usize = 0;
-//     while (iter.nextCodepointSlice()) |char| {}
-// }
+    var arr = std.ArrayList([]u8).init(allocator);
+    defer arr.deinit();
+
+    var len: usize = 0;
+    var char_len: usize = 0;
+    while (iter.nextCodepointSlice()) |chars| {
+        if (len >= start and len < end) {
+            char_len += chars.len;
+            try arr.append(@constCast(chars));
+        }
+        len += 1;
+    }
+    var result = try std.ArrayList(u8).initCapacity(allocator, char_len);
+    defer result.deinit();
+
+    for (arr.items) |value| {
+        try result.appendSlice(value[0..]);
+    }
+    arr.clearAndFree();
+
+    return result.toOwnedSlice();
+}

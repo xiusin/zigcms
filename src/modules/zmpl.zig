@@ -1,6 +1,7 @@
 const std = @import("std");
 const zmpl = @import("zmpl");
 
+const Allocator = std.mem.Allocator;
 pub fn start(allocator: Allocator) !void {
     var data = zmpl.Data.init(allocator);
     defer data.deinit();

@@ -56,8 +56,6 @@ pub fn main() !void {
     try simpleRouter.handle_func("/category/save", &category, &controllers.Category.save);
     try simpleRouter.handle_func("/category/modify", &category, &controllers.Category.modify);
 
-    // simpleRouter.handle_func_unbound("/xxx", fn (req: zap.Request) void{});
-
     var upload = controllers.Upload.init(allocator);
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
     try simpleRouter.handle_func("/upload/delete", &upload, &controllers.Upload.delete);

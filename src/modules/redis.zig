@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const DataType = enum { SimpleString, Integer, Bulk, Array, Error };
+const Allocator = std.mem.Allocator;
 
 pub const Config = struct {
     host: []const u8 = "127.0.0.1",
