@@ -92,7 +92,7 @@ pub fn Generic(comptime T: type) type {
             const id_ = req.getParamSlice("id") orelse return;
             if (id_.len == 0) return;
             var pool = global.get_pg_pool();
-            const id = strings.to_number(id_) catch return base.send_failed(req, "缺少必要参数");
+            const id = strings.to_int(id_) catch return base.send_failed(req, "缺少必要参数");
 
             const query = strings.sprinf(
                 "SELECT * FROM {s} WHERE id = $1",
@@ -128,7 +128,7 @@ pub fn Generic(comptime T: type) type {
                             const items = strings.split(self.allocator, item.value.str, ",") catch return;
                             defer self.allocator.free(items);
                             for (items) |value| {
-                                ids.append(strings.to_number(value) catch |e| return base.send_error(
+                                ids.append(strings.to_int(value) catch |e| return base.send_error(
                                     req,
                                     e,
                                 )) catch unreachable;
@@ -140,7 +140,7 @@ pub fn Generic(comptime T: type) type {
             req.parseQuery();
 
             if (req.getParamSlice("id")) |id| {
-                const id_num = strings.to_number(id) catch return;
+                const id_num = strings.to_int(id) catch return;
                 ids.append(id_num) catch unreachable;
             }
 

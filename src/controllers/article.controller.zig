@@ -107,7 +107,7 @@ pub fn modify(self: *Self, req: zap.Request) void {
 
     for (params.items) |item| {
         if (strings.eql("id", item.key.str)) {
-            dto.id = @as(u32, @intCast(strings.to_number(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
+            dto.id = @as(u32, @intCast(strings.to_int(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
         } else if (strings.eql("field", item.key.str)) {
             dto.field = item.value.str;
         } else if (strings.eql("value", item.key.str)) {
@@ -153,7 +153,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
                     const items = strings.split(self.allocator, item.value.str, ",") catch return;
                     defer self.allocator.free(items);
                     for (items) |value| {
-                        ids.append(strings.to_number(value) catch |e| return base.send_error(
+                        ids.append(strings.to_int(value) catch |e| return base.send_error(
                             req,
                             e,
                         )) catch unreachable;
@@ -164,7 +164,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
     }
     req.parseQuery();
     if (req.getParamSlice("id")) |id| {
-        const id_num = strings.to_number(id) catch return base.send_failed(req, "缺少参数");
+        const id_num = strings.to_int(id) catch return base.send_failed(req, "缺少参数");
         ids.append(id_num) catch unreachable;
     }
 

@@ -107,7 +107,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
                     const items = strings.split(self.allocator, item.value.str, ",") catch return;
                     defer self.allocator.free(items);
                     for (items) |value| {
-                        ids.append(strings.to_number(value) catch |e| return base.send_error(
+                        ids.append(strings.to_int(value) catch |e| return base.send_error(
                             req,
                             e,
                         )) catch unreachable;
@@ -119,7 +119,7 @@ pub fn delete(self: *Self, req: zap.Request) void {
     req.parseQuery();
 
     if (req.getParamSlice("id")) |id| {
-        const id_num = strings.to_number(id) catch return base.send_failed(req, "缺少参数");
+        const id_num = strings.to_int(id) catch return base.send_failed(req, "缺少参数");
         ids.append(id_num) catch unreachable;
     }
 
