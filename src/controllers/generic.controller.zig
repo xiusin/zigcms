@@ -173,18 +173,11 @@ pub fn Generic(comptime T: type) type {
             var row: ?i64 = 0;
             var pool = global.get_pg_pool();
 
-            // // TODO 切换为动态元祖内容
-
-            var update = std.mem.zeroes(global.Struct2Tuple(dto));
-            std.log.debug("update = {}", .{update});
+            var update = std.mem.zeroes(global.Struct2Tuple(T));
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
-                if (!std.mem.eql(u8, field.name, "id")) {
-                    update[index] = @field(dto, field.name);
-                }
+                @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
             }
-
-            std.log.debug("update = {}", .{update});
 
             if (dto.id) |id| {
                 dto.create_time = std.time.microTimestamp();
@@ -194,6 +187,10 @@ pub fn Generic(comptime T: type) type {
                 ) catch return base.send_failed(req, "保存失败");
                 defer self.allocator.free(sql);
 
+                inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
+                    @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
+                }
+
                 row = pool.exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
             } else {
                 const sql = base.build_insert_sql(
@@ -202,6 +199,9 @@ pub fn Generic(comptime T: type) type {
                 ) catch return base.send_failed(req, "保存失败");
                 defer self.allocator.free(sql);
 
+                inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
+                    @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
+                }
                 row = pool.exec(sql, update) catch |e| return base.send_error(req, e);
             }
 

@@ -107,23 +107,17 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
 pub inline fn Struct2Tuple(T: type) type {
     const Type = std.builtin.Type;
 
-    const len = std.meta.fields(T).len - 1;
+    const fields: [std.meta.fields(T).len]Type.StructField = blk: {
+        var res: [std.meta.fields(T).len]Type.StructField = undefined;
 
-    const fields: [len]Type.StructField = blk: {
-        var res: [len]Type.StructField = undefined;
-
-        var i = 0;
-        inline for (std.meta.fields(T)) |field| {
-            if (!std.mem.eql(u8, field.name, "id")) {
-                res[i] = Type.StructField{
-                    .type = field.type,
-                    .alignment = @alignOf(field.type),
-                    .default_value = field.default_value,
-                    .is_comptime = false,
-                    .name = std.fmt.comptimePrint("{}", .{i}),
-                };
-                i += 1;
-            }
+        inline for (std.meta.fields(T), 0..) |field, i| {
+            res[i] = Type.StructField{
+                .type = field.type,
+                .alignment = @alignOf(field.type),
+                .default_value = field.default_value,
+                .is_comptime = false,
+                .name = std.fmt.comptimePrint("{}", .{i}),
+            };
         }
         break :blk res;
     };
