@@ -55,6 +55,10 @@
             .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.3.0.tar.gz",
             .hash = "1220fb41de06f30dbb8ad57118fa72ddb9685c42b0353fe194e6eff555596b5e30d6",
         },
+        .smtp_client = .{
+            .url = "git+https://github.com/karlseguin/smtp_client.zig#54013303e7cfc99c3a8a063a7bdf930a61689adb",
+            .hash = "1220f62a6a96f596a9c26219f00817dbe0e25dd2e4bfebc2d93d093f0999a7c47f7e",
+        },
     },
     .paths = .{
         "build.zig",
