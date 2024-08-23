@@ -11,7 +11,7 @@ const strings = @import("modules/strings.zig");
 
 const cruds = .{
     // .admin = models.Admin,
-    .cate = models.Category,
+    .category = models.Category,
     // .article = models.Article,
 };
 
@@ -49,12 +49,12 @@ pub fn main() !void {
     try simpleRouter.handle_func("/article/save", &article, &controllers.Article.save);
     try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
 
-    var category = controllers.Category.init(allocator);
-    try simpleRouter.handle_func("/category/get", &category, &controllers.Category.get);
-    try simpleRouter.handle_func("/category/list", &category, &controllers.Category.list);
-    try simpleRouter.handle_func("/category/delete", &category, &controllers.Category.delete);
-    try simpleRouter.handle_func("/category/save", &category, &controllers.Category.save);
-    try simpleRouter.handle_func("/category/modify", &category, &controllers.Category.modify);
+    // var category = controllers.Category.init(allocator);
+    // try simpleRouter.handle_func("/category/get", &category, &controllers.Category.get);
+    // try simpleRouter.handle_func("/category/list", &category, &controllers.Category.list);
+    // try simpleRouter.handle_func("/category/delete", &category, &controllers.Category.delete);
+    // try simpleRouter.handle_func("/category/save", &category, &controllers.Category.save);
+    // try simpleRouter.handle_func("/category/modify", &category, &controllers.Category.modify);
 
     var upload = controllers.Upload.init(allocator);
     try simpleRouter.handle_func("/upload/list", &upload, &controllers.Upload.list);
@@ -69,6 +69,7 @@ pub fn main() !void {
         try simpleRouter.handle_func("/" ++ field.name ++ "/list", &generics, &generic.list);
         try simpleRouter.handle_func("/" ++ field.name ++ "/delete", &generics, &generic.delete);
         try simpleRouter.handle_func("/" ++ field.name ++ "/save", &generics, &generic.save);
+        try simpleRouter.handle_func("/" ++ field.name ++ "/modify", &generics, &generic.modify);
     }
 
     var listener = zap.HttpListener.init(.{

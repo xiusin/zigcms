@@ -1,5 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
+const pretty = @import("pretty");
 const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
@@ -169,6 +170,7 @@ pub fn Generic(comptime T: type) type {
                 }) catch return base.send_failed(req, "解析参数错误");
             }
             dto.update_time = std.time.microTimestamp();
+            if (dto.create_time == null) dto.create_time = std.time.microTimestamp();
 
             var row: ?i64 = 0;
             var pool = global.get_pg_pool();
@@ -176,32 +178,21 @@ pub fn Generic(comptime T: type) type {
             var update = std.mem.zeroes(global.Struct2Tuple(T));
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
-                @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
+                if (index >= 1 and !std.mem.eql(u8, field.name, "id")) { // 绕过编译期
+                    @field(update, std.fmt.comptimePrint("{d}", .{index - 1})) = @field(dto, field.name);
+                }
             }
 
-            if (dto.id) |id| {
-                dto.create_time = std.time.microTimestamp();
-                const sql = base.build_update_sql(
-                    T,
-                    self.allocator,
-                ) catch return base.send_failed(req, "保存失败");
-                defer self.allocator.free(sql);
+            pretty.print(self.allocator, .{update}, .{}) catch unreachable;
 
-                inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
-                    @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
-                }
+            if (dto.id) |id| {
+                const sql = base.build_update_sql(T, self.allocator) catch return base.send_failed(req, "保存失败");
+                defer self.allocator.free(sql);
 
                 row = pool.exec(sql, update ++ .{id}) catch |e| return base.send_error(req, e);
             } else {
-                const sql = base.build_insert_sql(
-                    T,
-                    self.allocator,
-                ) catch return base.send_failed(req, "保存失败");
+                const sql = base.build_insert_sql(T, self.allocator) catch return base.send_failed(req, "保存失败");
                 defer self.allocator.free(sql);
-
-                inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
-                    @field(update, std.fmt.comptimePrint("{d}", .{index})) = @field(dto, field.name);
-                }
                 row = pool.exec(sql, update) catch |e| return base.send_error(req, e);
             }
 
@@ -209,6 +200,44 @@ pub fn Generic(comptime T: type) type {
                 return base.send_failed(req, "保存失败");
             }
             return base.send_ok(req, dto);
+        }
+
+        pub fn modify(self: *Self, req: zap.Request) void {
+            var dto = dtos.Modify{};
+            req.parseBody() catch |e| return base.send_error(req, e);
+            if (req.body == null) return base.send_failed(req, "缺少必要参数");
+            var params = req.parametersToOwnedStrList(self.allocator, true) catch return base.send_failed(req, "解析参数错误");
+            defer params.deinit();
+
+            for (params.items) |item| {
+                if (strings.eql("id", item.key.str)) {
+                    dto.id = @as(u32, @intCast(strings.to_int(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
+                } else if (strings.eql("field", item.key.str)) {
+                    dto.field = item.value.str;
+                } else if (strings.eql("value", item.key.str)) {
+                    dto.value.? = item.value.str;
+                }
+            }
+
+            if (dto.id == 0 or dto.field.len == 0 or dto.value == null) {
+                return base.send_failed(req, "缺少必要参数");
+            }
+
+            const sql = strings.join(self.allocator, " ", &[_][]const u8{
+                "UPDATE " ++ base.get_table_name(T) ++ " SET ",
+                dto.field,
+                "=$2, update_time = $3 WHERE id = $1",
+            }) catch return;
+            defer self.allocator.free(sql);
+            _ = (global.get_pg_pool().exec(sql, .{
+                dto.id,
+                dto.value.?,
+                std.time.milliTimestamp(),
+            }) catch |e| return base.send_error(
+                req,
+                e,
+            )) orelse return base.send_failed(req, "更新失败");
+            return base.send_ok(req, "更新成功");
         }
     };
 }
