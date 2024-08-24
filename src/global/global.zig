@@ -13,18 +13,20 @@ fn init_pg() !void {
         inited = true;
         const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
         defer _allocator.free(password);
-        std.log.debug("DB_PASSWORD = {s}", .{password});
 
-        _pool = try pg.Pool.init(_allocator, .{ .size = 5, .connect = .{
-            .port = 5432,
-            .host = "124.222.103.232",
-        }, .auth = .{
-            .username = "postgres",
-            .database = "postgres",
-            .application_name = "zigcms",
-            .password = password,
-            .timeout = 10_0000,
-        } });
+        _pool = try pg.Pool.init(_allocator, .{
+            .size = 5,
+            .connect = .{
+                .port = 5432,
+                .host = "124.222.103.232",
+            },
+            .auth = .{
+                .username = "postgres",
+                .database = "postgres",
+                .application_name = "zigcms",
+                .password = password,
+            },
+        });
     }
 }
 
@@ -104,7 +106,7 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
 // }
 
 // const tuple = Struct2Tuple(Person){ 1, "xiusin", 2}; 动态构建
-pub inline fn Struct2Tuple(T: type) type {
+pub inline fn struct_2_tuple(T: type) type {
     const Type = std.builtin.Type;
 
     const fields: [std.meta.fields(T).len - 1]Type.StructField = blk: {

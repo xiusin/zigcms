@@ -28,19 +28,11 @@ pub fn Generic(comptime T: type) type {
 
             for (params.items) |value| {
                 if (strings.eql(value.key.str, "page")) {
-                    dto.page = std.fmt.parseInt(
-                        u32,
-                        value.value.str,
-                        10,
-                    ) catch return base.send_failed(req, "page参数类型错误");
+                    dto.limit = @as(u32, @intCast(strings.to_int(value.key.str) catch return base.send_failed(req, "page参数错误")));
                 }
 
                 if (strings.eql(value.key.str, "limit")) {
-                    dto.limit = std.fmt.parseInt(
-                        u32,
-                        value.value.str,
-                        10,
-                    ) catch return base.send_failed(req, "limit参数类型错误");
+                    dto.limit = @as(u32, @intCast(strings.to_int(value.value.str) catch return base.send_failed(req, "limit参数失败")));
                 }
 
                 if (strings.starts_with(value.key.str, "sort[")) {
@@ -175,7 +167,7 @@ pub fn Generic(comptime T: type) type {
             var row: ?i64 = 0;
             var pool = global.get_pg_pool();
 
-            var update = std.mem.zeroes(global.Struct2Tuple(T));
+            var update = std.mem.zeroes(global.struct_2_tuple(T));
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
                 if (index >= 1 and !std.mem.eql(u8, field.name, "id")) { // 绕过编译期
@@ -223,11 +215,11 @@ pub fn Generic(comptime T: type) type {
                 return base.send_failed(req, "缺少必要参数");
             }
 
-            const sql = strings.join(self.allocator, " ", &[_][]const u8{
-                "UPDATE " ++ base.get_table_name(T) ++ " SET ",
+            const sql = strings.sprinf("UPDATE {s} SET {s}=$2, update_time = $3 WHERE id = $1", .{
+                base.get_table_name(T),
                 dto.field,
-                "=$2, update_time = $3 WHERE id = $1",
-            }) catch return;
+            }) catch unreachable;
+
             defer self.allocator.free(sql);
             _ = (global.get_pg_pool().exec(sql, .{
                 dto.id,
