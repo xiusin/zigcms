@@ -22,7 +22,7 @@ const TagModel = struct { repository_id: ?i32 = null, author: ?[]u8 = null, name
 const RepositoryModel = struct { id: ?i32 = null, name: ?[]u8 = null, full_name: ?[]u8 = null, author: ?[]u8 = null, avatar: ?[]u8 = null, login: ?[]u8 = null, description: ?[]u8 = null, forks_count: ?i32 = 0, stargazers_count: ?i32 = 0, watchers_count: ?i32 = 0, default_branch: ?[]u8 = null, open_issues_count: ?i32 = 0, language: ?[]u8 = null, url: ?[]u8 = null, readme: ?[]u8 = null, created_at: ?[]u8 = null, updated_at: ?[]u8 = null, pushed_at: ?[]u8 = null };
 const LanguageCountModel = struct { language: []u8 = "", count: i32 = 0 };
 
-// GitApi对象
+/// GitApi对象
 pub const GitApi = struct {
     base_url: []const u8 = "https://api.github.com",
     token: []const u8 = undefined,
@@ -69,6 +69,7 @@ pub const GitApi = struct {
         return git_api;
     }
 
+    /// 解构对象
     pub fn deinit(self: *GitApi) void {
         self.allocator.free(self.token);
         if (self.last_error_message) |_| {
@@ -162,12 +163,14 @@ pub const GitApi = struct {
         return try self.allocator.dupe(u8, markdown_resp.body.?);
     }
 
+    /// 获取语言总数
     pub fn get_languages_count(self: *GitApi) ![]LanguageCountModel {
         var stmt = try self.db.prepare("SELECT language, count(*) AS count FROM repos GROUP BY \"language\" order by COUNT(*) DESC");
         defer stmt.deinit();
         return stmt.all(LanguageCountModel, self.allocator, .{}, .{});
     }
 
+    /// star仓库按页码查询
     pub fn list_starred_repo_with_page(self: *GitApi, page: usize) !usize {
         const uri = try std.fmt.allocPrint(self.allocator, "/user/starred?pre_page=100&page={d}", .{page});
         defer self.allocator.free(uri);
@@ -242,7 +245,7 @@ pub const GitApi = struct {
         return resp;
     }
 
-    /// get_trending_html 获取趋势html
+    /// 获取趋势html
     pub fn get_trending_html(self: *GitApi, lang: []const u8, since: []const u8) ![]const u8 {
         const url = try std.fmt.allocPrint(self.allocator, "https://github.com/trending/{s}?since={s}", .{ lang, since });
         defer self.allocator.free(url);
@@ -252,7 +255,7 @@ pub const GitApi = struct {
         return try self.allocator.dupe(u8, resp.body.?);
     }
 
-    /// get_trending_api_leaky 通过第三方接口获取趋势榜单， 无需手动释放内存
+    /// 通过第三方接口获取趋势榜单， 无需手动释放内存
     pub fn get_trending_api_leaky(self: *GitApi, lang: []const u8, since: []const u8) ![]GTrendItem {
         const url = try std.fmt.allocPrint(self.allocator, "https://gtrend.yapie.me/repositories?since={s}&language={s}", .{ since, lang });
         defer self.allocator.free(url);
@@ -272,7 +275,7 @@ pub const GitApi = struct {
         );
     }
 
-    // 根据内容解析趋势信息后再存储到数据库内 @ref get_trend_html
+    /// 根据内容解析趋势信息后再存储到数据库内 @ref get_trend_html
     pub fn set_trend_repos(self: *GitApi, date: []const u8, lang: []const u8, repos: []RepositoryModel) void {
         _ = self;
         _ = date;
@@ -283,21 +286,21 @@ pub const GitApi = struct {
         // }
     }
 
-    /// star 添加仓库星标
+    /// 添加仓库星标
     pub fn star(self: *GitApi, owner: []const u8, repo: []const u8) !void {
         const path = try std.fmt.allocPrint(self.allocator, "/user/starred/{s}/{s}", .{ owner, repo });
         var resp = try self.request(path, .PUT);
         resp.deinit();
     }
 
-    /// unstar 取消仓库星标
+    /// 取消仓库星标
     pub fn unstar(self: *GitApi, owner: []const u8, repo: []const u8) !void {
         const path = try std.fmt.allocPrint(self.allocator, "/user/starred/{s}/{s}", .{ owner, repo });
         var resp = try self.request(path, .DELETE);
         resp.deinit();
     }
 
-    /// followers 获取关注我
+    /// 获取关注我
     pub fn followers(self: *GitApi) ![]FollowUser {
         var page: usize = 1;
         var items = std.ArrayList(FollowUser).init(self.allocator);
@@ -310,7 +313,7 @@ pub const GitApi = struct {
         return items.toOwnedSlice();
     }
 
-    /// following 我关注的人
+    /// 我关注的人
     pub fn following(self: *GitApi) ![]FollowUser {
         var page: usize = 1;
         var items = std.ArrayList(FollowUser).init(self.allocator);
@@ -323,7 +326,7 @@ pub const GitApi = struct {
         return items.toOwnedSlice();
     }
 
-    /// follow_page 分页数据
+    /// 分页数据
     fn follow_page(self: *GitApi, comptime T: type, uri_: []const u8, page: usize) ![]T {
         const uri = try std.fmt.allocPrint(self.allocator, "/user/{s}?pre_page=100&page={d}", .{ uri_, page });
         defer self.allocator.free(uri);
@@ -337,7 +340,7 @@ pub const GitApi = struct {
         return collection.toOwnedSlice();
     }
 
-    /// get_repository_by_id 根据Id获取仓库信息
+    /// 根据Id获取仓库信息
     pub fn get_repository_by_id(self: *GitApi, repository_id: i32) !?RepositoryModel {
         var stmt = try self.db.prepare("SELECT * FROM repositories WHERE id = ?");
         defer stmt.deinit();
@@ -345,7 +348,7 @@ pub const GitApi = struct {
         return try stmt.one(RepositoryModel, .{}, .{ .id = repository_id });
     }
 
-    /// add_tag 添加标签
+    /// 添加标签
     pub fn add_tag(self: *GitApi, repository_id: i32, author: []const u8, repo: []const u8, language: []const u8, tag: []const u8) !void {
         if (try self.get_repository_by_id(repository_id)) |_| {
             const tag_model: TagModel = .{ .repository_id = repository_id, .author = author, .name = repo, .language = language, .tag = tag };
@@ -353,12 +356,12 @@ pub const GitApi = struct {
         }
     }
 
-    /// delete_tag 删除标签
+    /// 删除标签
     pub fn delete_tag(self: *GitApi, repository_id: i32, tag: []const u8) !void {
         try self.db.exec("DELETE FROM tags WHERE repository_id = ? AND tag = ?", .{}, .{ repository_id, tag });
     }
 
-    /// list_repo_by_tag 根据标签获取仓库列表
+    /// 根据标签获取仓库列表
     pub fn list_repo_by_tag(self: GitApi, tag: []const u8) []RepositoryModel {
         var repos = std.ArrayList(RepositoryModel).init(self.allocator);
 
@@ -383,21 +386,21 @@ pub const GitApi = struct {
         return try stmt_repos.all(RepositoryModel, self.allocator, .{}, .{});
     }
 
-    /// follow 关注开发者
+    /// 关注开发者
     pub fn follow(self: *GitApi, username: []const u8) !void {
         const path = try std.fmt.allocPrint(self.allocator, "/user/following/{s}", .{username});
         var resp = try self.request(path, .PUT);
         resp.deinit();
     }
 
-    /// unfollow 取消关注开发者
+    /// 取消关注开发者
     pub fn unfollow(self: *GitApi, username: []const u8) !void {
         const path = try std.fmt.allocPrint(self.allocator, "/user/following/{s}", .{username});
         var resp = try self.request(path, .DELETE);
         resp.deinit();
     }
 
-    /// get_token_by_code 根据code获取token
+    /// 根据code获取token
     pub fn get_token_by_code(self: *GitApi, code: []const u8) ![]const u8 {
         const url = try std.fmt.allocPrint(self.allocator, "https://github.com/login/oauth/access_token", .{});
         defer self.allocator.free(url);

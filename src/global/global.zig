@@ -8,6 +8,8 @@ var _allocator: Allocator = undefined;
 var _pool: *pg.Pool = undefined;
 var inited: bool = false;
 
+pub const JwtTokenSecret = "this is a secret";
+
 fn init_pg() !void {
     if (!inited) {
         inited = true;

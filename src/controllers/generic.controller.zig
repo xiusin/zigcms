@@ -1,5 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
+const jwt = @import("jwt");
 const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
@@ -18,14 +19,34 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        fn check_auth(req: zap.Request) !u32 {
+        fn check_auth(self: *Self, req: zap.Request) !u32 {
             if (req.method == null) return error.HttpMethodFailed;
+            if (req.getHeader("authorization")) |authorization| {
+                var token = authorization;
+                if (strings.starts_with(authorization, "Bearer ")) {
+                    token = authorization[7..];
+                }
 
-            return 0;
+                // 解析token
+                var decoded = jwt.decode(
+                    self.allocator,
+                    struct { sub: u32, name: []const u8, iat: i64 },
+                    token,
+                    .{ .secret = global.JwtTokenSecret },
+                    .{},
+                ) catch return error.@"token无效";
+                defer decoded.deinit();
+
+                if (decoded.claims.iat < std.time.timestamp()) {
+                    return error.@"token过期";
+                }
+                return decoded.claims.sub;
+            }
+            return error.@"缺少登录凭证";
         }
 
         pub fn list(self: *Self, req: zap.Request) void {
-            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             var dto = dtos.Page{};
             req.parseQuery();
 
@@ -88,8 +109,8 @@ pub fn Generic(comptime T: type) type {
             base.send_layui_table_response(req, items, @as(u64, @intCast(total.total)), .{});
         }
 
-        pub fn get(_: *Self, req: zap.Request) void {
-            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
+        pub fn get(self: *Self, req: zap.Request) void {
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             req.parseQuery();
             const id_ = req.getParamSlice("id") orelse return;
             if (id_.len == 0) return;
@@ -107,7 +128,7 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn delete(self: *Self, req: zap.Request) void {
-            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             var ids = std.ArrayList(usize).init(self.allocator);
             defer ids.deinit();
 
@@ -154,7 +175,7 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn save(self: *Self, req: zap.Request) void {
-            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             req.parseBody() catch unreachable;
             var dto: T = undefined;
             if (req.body) |body| {

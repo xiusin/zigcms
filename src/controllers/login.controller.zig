@@ -77,14 +77,11 @@ pub fn login(self: *Self, req: zap.Request) void {
     if (!std.mem.eql(u8, user.password, dto.password)) {
         return base.send_failed(req, "密码错误, 请重试");
     }
+
     user.password = "";
     const payload = .{ .sub = user.id, .name = user.username, .iat = std.time.timestamp() + 3600 * 24 };
-    const token = jwt.encode(self.allocator, .HS256, payload, .{
-        .key = "secret",
-    }) catch |e| return base.send_error(req, e);
+    const token = jwt.encode(self.allocator, .{ .alg = .HS256 }, payload, .{ .secret = global.JwtTokenSecret }) catch unreachable;
     defer self.allocator.free(token);
-    base.send_ok(req, .{
-        .token = token,
-        .user = user,
-    });
+
+    base.send_ok(req, .{ .token = token, .user = user });
 }

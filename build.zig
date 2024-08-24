@@ -30,8 +30,8 @@ pub fn build(b: *std.Build) void {
     const json = b.dependency("json", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("json", json.module("json"));
 
-    const zig_jwt = b.dependency("zig-jwt", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("jwt", zig_jwt.module("jwt"));
+    const jwt = b.dependency("jwt", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("jwt", jwt.module("jwt"));
 
     const sqlite = b.dependency("sqlite", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("sqlite", sqlite.module("sqlite"));

@@ -35,10 +35,6 @@
             .url = "https://github.com/timfayz/pretty/archive/main.tar.gz",
             .hash = "1220309f083656d3e9b487a4c0f79f514b0fbc682dba717c294fb02ec2bfd7080850",
         },
-        .@"zig-jwt" = .{
-            .url = "https://github.com/leroycep/zig-jwt/archive/master.tar.gz",
-            .hash = "12206d9432ca7a6d186f82f9e8b661ba5bdc860a18e818f09f8c42b2f77474a43d9b",
-        },
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/master.tar.gz",
             .hash = "1220940ae067451e7e6824e9b92baceac93b0bd6fa9ffd315179cc9a7ce5430a46ac",
@@ -58,6 +54,10 @@
         .smtp_client = .{
             .url = "git+https://github.com/karlseguin/smtp_client.zig#54013303e7cfc99c3a8a063a7bdf930a61689adb",
             .hash = "1220f62a6a96f596a9c26219f00817dbe0e25dd2e4bfebc2d93d093f0999a7c47f7e",
+        },
+        .jwt = .{
+            .url = "https://github.com/softprops/zig-jwt/archive/refs/tags/v0.1.0.tar.gz",
+            .hash = "12208cb520dabbb84d7ca2a91a3dacb2bc92ac6bb55eed367f05fa9351eff5832617",
         },
     },
     .paths = .{

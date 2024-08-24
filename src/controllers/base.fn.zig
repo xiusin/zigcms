@@ -12,17 +12,14 @@ pub const Response = struct {
     data: *void = null,
 };
 
-// send_error 响应异常信息
+/// 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
-    std.log.err("错误信息 = {?}", .{e});
-    req.sendError(
-        e,
-        if (@errorReturnTrace()) |t| t.* else null,
-        500,
-    );
+    var buf: [40960]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, "{?}", .{e}) catch return req.sendError(e, null, 500);
+    send_failed(req, msg);
 }
 
-//  send_ok 响应成功消息
+/// 响应成功消息
 pub fn send_ok(req: zap.Request, v: anytype) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
@@ -33,7 +30,7 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
     req.sendJson(ser) catch return;
 }
 
-//  send_layui_table_response 响应前端table结构
+/// 响应前端table结构
 pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 0,
@@ -46,7 +43,7 @@ pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra
     req.sendJson(ser) catch return;
 }
 
-// send_failed 响应失败消息
+/// 响应失败消息
 pub fn send_failed(req: zap.Request, message: []const u8) void {
     const ser = json.toSlice(global.get_allocator(), .{
         .code = 500,
@@ -56,7 +53,7 @@ pub fn send_failed(req: zap.Request, message: []const u8) void {
     req.sendJson(ser) catch return;
 }
 
-/// build_insert_sql 通过结构体构建insert语句
+/// 通过结构体构建insert语句
 pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
@@ -87,7 +84,7 @@ pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     });
 }
 
-/// build_update_sql 构建更新sql语句, 仅支持简单语句生成
+/// 构建更新sql语句, 仅支持简单语句生成
 pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     var fields = std.ArrayList([]const u8).init(allocator);
     defer fields.deinit();
@@ -113,7 +110,7 @@ pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
     });
 }
 
-/// get_sort_field 获取请求中的排序字段
+/// 获取请求中的排序字段
 pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     if (str) |field| {
         if (strings.starts_with(field, "sort[") and strings.ends_with(field, "]")) {
@@ -123,14 +120,14 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     return str;
 }
 
-/// get_table_name 获取表名
+/// 获取表名
 pub fn get_table_name(comptime T: type) []const u8 {
     var iter = std.mem.split(u8, @typeName(T), ".");
     var tablename: []const u8 = undefined;
     while (iter.next()) |v| {
         tablename = v;
     }
-    var buffer: [100]u8 = undefined; // std.mem.zeroes([100]u8);
+    var buffer: [512]u8 = undefined; // std.mem.zeroes([100]u8);
     const tbl = std.ascii.lowerString(buffer[0..], tablename);
     return strings.sprinf("zigcms.{s}", .{tbl}) catch unreachable;
 }
