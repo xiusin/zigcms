@@ -15,11 +15,6 @@ const cruds = .{
     // .article = models.Article,
 };
 
-// fn auth(instance: *anyopaque, handler: anytype) fn (req: zap.Request) void {
-//     // TODO 鉴权
-//     //    @call(.auto, @as(zap.BoundHandler, @ptrFromInt(b.handler)), .{ @as(*anyopaque, @ptrFromInt(b.instance)), r })
-// }
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();

@@ -1,6 +1,5 @@
 const std = @import("std");
 const zap = @import("zap");
-const pretty = @import("pretty");
 const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
@@ -19,7 +18,14 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
+        fn check_auth(req: zap.Request) !u32 {
+            if (req.method == null) return error.HttpMethodFailed;
+
+            return 0;
+        }
+
         pub fn list(self: *Self, req: zap.Request) void {
+            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
             var dto = dtos.Page{};
             req.parseQuery();
 
@@ -45,6 +51,8 @@ pub fn Generic(comptime T: type) type {
                 dto.field = "id";
                 dto.sort = "desc";
             }
+
+            // TODO 动态where处理
 
             var row = (global.get_pg_pool().row(
                 strings.sprinf("SELECT COUNT(*) AS total FROM {s}", .{
@@ -81,22 +89,17 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn get(_: *Self, req: zap.Request) void {
+            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
             req.parseQuery();
             const id_ = req.getParamSlice("id") orelse return;
             if (id_.len == 0) return;
             var pool = global.get_pg_pool();
             const id = strings.to_int(id_) catch return base.send_failed(req, "缺少必要参数");
 
-            const query = strings.sprinf(
-                "SELECT * FROM {s} WHERE id = $1",
-                .{base.get_table_name(T)},
-            ) catch unreachable;
+            const query = strings.sprinf("SELECT * FROM {s} WHERE id = $1", .{base.get_table_name(T)}) catch unreachable;
 
-            var row = (pool.rowOpts(
-                query,
-                .{id},
-                .{ .column_names = true },
-            ) catch |e| return base.send_error(req, e)) orelse return base.send_failed(req, "记录不存在");
+            var row = (pool.rowOpts(query, .{id}, .{ .column_names = true }) catch |e|
+                return base.send_error(req, e)) orelse return base.send_failed(req, "记录不存在");
 
             defer row.deinit() catch {};
             const item = row.to(T, .{ .map = .name }) catch |e| return base.send_error(req, e);
@@ -104,16 +107,14 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn delete(self: *Self, req: zap.Request) void {
+            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
             var ids = std.ArrayList(usize).init(self.allocator);
             defer ids.deinit();
 
             if (strings.eql(req.method.?, "POST")) {
                 req.parseBody() catch {};
                 if (req.body) |_| {
-                    var params = req.parametersToOwnedStrList(
-                        self.allocator,
-                        true,
-                    ) catch return;
+                    var params = req.parametersToOwnedStrList(self.allocator, true) catch return;
 
                     defer params.deinit();
                     for (params.items) |item| {
@@ -153,13 +154,14 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn save(self: *Self, req: zap.Request) void {
+            _ = check_auth(req) catch return base.send_failed(req, "校验权限失败");
             req.parseBody() catch unreachable;
             var dto: T = undefined;
             if (req.body) |body| {
                 std.log.debug("body = {s}", .{body});
                 dto = std.json.parseFromSliceLeaky(T, self.allocator, body, .{
                     .ignore_unknown_fields = true,
-                }) catch return base.send_failed(req, "解析参数错误");
+                }) catch return base.send_failed(req, "请求错误");
             }
             dto.update_time = std.time.microTimestamp();
             if (dto.create_time == null) dto.create_time = std.time.microTimestamp();
@@ -170,12 +172,10 @@ pub fn Generic(comptime T: type) type {
             var update = std.mem.zeroes(global.struct_2_tuple(T));
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, index| {
-                if (index >= 1 and !std.mem.eql(u8, field.name, "id")) { // 绕过编译期
+                if (index >= 1 and !std.mem.eql(u8, field.name, "id")) { // 绕过编译期 （）
                     @field(update, std.fmt.comptimePrint("{d}", .{index - 1})) = @field(dto, field.name);
                 }
             }
-
-            pretty.print(self.allocator, .{update}, .{}) catch unreachable;
 
             if (dto.id) |id| {
                 const sql = base.build_update_sql(T, self.allocator) catch return base.send_failed(req, "保存失败");
@@ -215,20 +215,16 @@ pub fn Generic(comptime T: type) type {
                 return base.send_failed(req, "缺少必要参数");
             }
 
-            const sql = strings.sprinf("UPDATE {s} SET {s}=$2, update_time = $3 WHERE id = $1", .{
+            const sql = strings.sprinf("UPDATE {s} SET {s}=$2,update_time = $3 WHERE id = $1", .{
                 base.get_table_name(T),
                 dto.field,
             }) catch unreachable;
-
             defer self.allocator.free(sql);
-            _ = (global.get_pg_pool().exec(sql, .{
-                dto.id,
-                dto.value.?,
-                std.time.milliTimestamp(),
-            }) catch |e| return base.send_error(
-                req,
-                e,
-            )) orelse return base.send_failed(req, "更新失败");
+
+            _ = (global.get_pg_pool().exec(sql, .{ dto.id, dto.value.?, std.time.milliTimestamp() }) catch |e|
+                return base.send_error(req, e)) orelse
+                return base.send_failed(req, "更新失败");
+
             return base.send_ok(req, "更新成功");
         }
     };
