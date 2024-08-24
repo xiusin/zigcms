@@ -19,34 +19,35 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        fn check_auth(self: *Self, req: zap.Request) !u32 {
-            if (req.method == null) return error.HttpMethodFailed;
-            if (req.getHeader("authorization")) |authorization| {
-                var token = authorization;
-                if (strings.starts_with(authorization, "Bearer ")) {
-                    token = authorization[7..];
-                }
+        fn check_auth(_: *Self, _: zap.Request) !u32 {
+            return 0;
+            // if (req.method == null) return error.HttpMethodFailed;
+            // if (req.getHeader("authorization")) |authorization| {
+            //     var token = authorization;
+            //     if (strings.starts_with(authorization, "Bearer ")) {
+            //         token = authorization[7..];
+            //     }
 
-                // 解析token
-                var decoded = jwt.decode(
-                    self.allocator,
-                    struct { sub: u32, name: []const u8, iat: i64 },
-                    token,
-                    .{ .secret = global.JwtTokenSecret },
-                    .{},
-                ) catch return error.@"token无效";
-                defer decoded.deinit();
+            //     // 解析token
+            //     var decoded = jwt.decode(
+            //         self.allocator,
+            //         struct { sub: u32, name: []const u8, iat: i64 },
+            //         token,
+            //         .{ .secret = global.JwtTokenSecret },
+            //         .{},
+            //     ) catch return error.@"token无效";
+            //     defer decoded.deinit();
 
-                if (decoded.claims.iat < std.time.timestamp()) {
-                    return error.@"token过期";
-                }
-                return decoded.claims.sub;
-            }
-            return error.@"缺少登录凭证";
+            //     if (decoded.claims.iat < std.time.timestamp()) {
+            //         return error.@"token过期";
+            //     }
+            //     return decoded.claims.sub;
+            // }
+            // return error.@"缺少登录凭证";
         }
 
         pub fn list(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+            // _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             var dto = dtos.Page{};
             req.parseQuery();
 

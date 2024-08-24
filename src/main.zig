@@ -11,7 +11,7 @@ const strings = @import("modules/strings.zig");
 
 const cruds = .{
     .category = models.Category,
-    .upload = models.Upload,
+    // .upload = models.Upload,
 };
 
 pub fn main() !void {
@@ -44,9 +44,7 @@ pub fn main() !void {
     try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
 
     inline for (std.meta.fields(@TypeOf(cruds))) |field| {
-        const field_value = @field(cruds, field.name);
-        const generic = controllers.Generic.Generic(field_value);
-
+        const generic = controllers.Generic.Generic(@field(cruds, field.name));
         var generics = generic.init(allocator);
         try simpleRouter.handle_func("/" ++ field.name ++ "/get", &generics, &generic.get);
         try simpleRouter.handle_func("/" ++ field.name ++ "/list", &generics, &generic.list);
