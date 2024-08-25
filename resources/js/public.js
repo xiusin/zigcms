@@ -5,18 +5,22 @@ layui.use(['form', 'table'], function () {
         upload = layui.upload,
         laytpl = layui.laytpl,
         $ = layui.$,
-        // miniTheme = layui.miniTheme,
         util = layui.util;
 
-    // window.onInitElemStyle = function () {
-    //     miniTheme.renderElemStyle();
-    //     $('iframe').each(function (index, iframe) {
-    //         if (typeof iframe.contentWindow.onInitElemStyle == "function") {
-    //             iframe.contentWindow.onInitElemStyle();
-    //         }
-    //     });
-    // };
-    // window.onInitElemStyle(); TODO 后期优化
+    try {
+        var miniTheme = layui.miniTheme;
+        window.onInitElemStyle = function () {
+            miniTheme.renderElemStyle();
+            $('iframe').each(function (index, iframe) {
+                if (typeof iframe.contentWindow.onInitElemStyle == "function") {
+                    iframe.contentWindow.onInitElemStyle();
+                }
+            });
+        };
+        window.onInitElemStyle(); // TODO 后期优化
+    } catch (e) {
+        console.error(e);
+    }
 
     var lastTableWhere = {};
 

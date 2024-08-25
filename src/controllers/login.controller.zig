@@ -82,6 +82,5 @@ pub fn login(self: *Self, req: zap.Request) void {
     const payload = .{ .sub = user.id, .name = user.username, .iat = std.time.timestamp() + 3600 * 24 };
     const token = jwt.encode(self.allocator, .{ .alg = .HS256 }, payload, .{ .secret = global.JwtTokenSecret }) catch unreachable;
     defer self.allocator.free(token);
-
     base.send_ok(req, .{ .token = token, .user = user });
 }

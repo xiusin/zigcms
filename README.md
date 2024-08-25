@@ -28,6 +28,7 @@ zig build -Doptimize=ReleaseSafe run
 https://y-admin.yijianku.com/#
 
 
+https://gitee.com/nbnat/layui-filemanage
 
 <script src="https://cdn.jsdelivr.net/gh/kirakiray/ofa.js/dist/ofa.min.js"></script>  前端mvvm组件
 

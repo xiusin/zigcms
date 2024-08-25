@@ -46,7 +46,7 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn list(self: *Self, req: zap.Request) void {
-            // _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             var dto = dtos.Page{};
             req.parseQuery();
 
@@ -214,6 +214,42 @@ pub fn Generic(comptime T: type) type {
         }
 
         pub fn modify(self: *Self, req: zap.Request) void {
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+            var dto = dtos.Modify{};
+            req.parseBody() catch |e| return base.send_error(req, e);
+            if (req.body == null) return base.send_failed(req, "缺少必要参数");
+            var params = req.parametersToOwnedStrList(self.allocator, true) catch return base.send_failed(req, "解析参数错误");
+            defer params.deinit();
+
+            for (params.items) |item| {
+                if (strings.eql("id", item.key.str)) {
+                    dto.id = @as(u32, @intCast(strings.to_int(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
+                } else if (strings.eql("field", item.key.str)) {
+                    dto.field = item.value.str;
+                } else if (strings.eql("value", item.key.str)) {
+                    dto.value.? = item.value.str;
+                }
+            }
+
+            if (dto.id == 0 or dto.field.len == 0 or dto.value == null) {
+                return base.send_failed(req, "缺少必要参数");
+            }
+
+            const sql = strings.sprinf("UPDATE {s} SET {s}=$2,update_time = $3 WHERE id = $1", .{
+                base.get_table_name(T),
+                dto.field,
+            }) catch unreachable;
+            defer self.allocator.free(sql);
+
+            _ = (global.get_pg_pool().exec(sql, .{ dto.id, dto.value.?, std.time.milliTimestamp() }) catch |e|
+                return base.send_error(req, e)) orelse
+                return base.send_failed(req, "更新失败");
+
+            return base.send_ok(req, "更新成功");
+        }
+
+        pub fn select(self: *Self, req: zap.Request) void {
+            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
             var dto = dtos.Modify{};
             req.parseBody() catch |e| return base.send_error(req, e);
             if (req.body == null) return base.send_failed(req, "缺少必要参数");

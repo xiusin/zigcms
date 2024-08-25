@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="format-detection" content="telephone=no">
-    <link rel="stylesheet" href="../lib/layui-v2.6.3/css/layui.css" media="all">
+    <link rel="stylesheet" href="../lib/layui/css/layui.css" media="all">
     <style>
         .main-body {
             top: 50%;
@@ -327,56 +327,8 @@
         </div>
     </div>
 
-    <script src="../lib/layui-v2.6.3/layui.js" charset="utf-8"></script>
-    <script>
-        layui.use(['form', 'jquery'], function () {
-            var $ = layui.jquery,
-                form = layui.form,
-                layer = layui.layer;
-
-            // 登录过期的时候，跳出ifram框架
-            if (top.location != self.location) top.location = self.location;
-
-            $('.bind-password').on('click', function () {
-                if ($(this).hasClass('icon-5')) {
-                    $(this).removeClass('icon-5');
-                    $("input[name='password']").attr('type', 'password');
-                } else {
-                    $(this).addClass('icon-5');
-                    $("input[name='password']").attr('type', 'text');
-                }
-            });
-
-            $('.icon-nocheck').on('click', function () {
-                if ($(this).hasClass('icon-check')) {
-                    $(this).removeClass('icon-check');
-                } else {
-                    $(this).addClass('icon-check');
-                }
-            });
-
-            // 进行登录操作
-            form.on('submit(login)', function (data) {
-                data = data.field;
-                if (data.username == '') {
-                    layer.msg('用户名不能为空');
-                    return false;
-                }
-                if (data.password == '') {
-                    layer.msg('密码不能为空');
-                    return false;
-                }
-                if (data.captcha == '') {
-                    layer.msg('验证码不能为空');
-                    return false;
-                }
-                layer.msg('登录成功', function () {
-                    window.location = '../index.html';
-                });
-                return false;
-            });
-        });
-    </script>
+    <script src="../lib/layui/layui.js" charset="utf-8"></script>
+    <script src="js/login.js" charset="utf-8"></script>
 </body>
 
 </html>

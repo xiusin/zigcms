@@ -12,6 +12,7 @@ const strings = @import("modules/strings.zig");
 const cruds = .{
     .category = models.Category,
     .upload = models.Upload,
+    .article = models.Article,
 };
 
 pub fn main() !void {
@@ -36,13 +37,6 @@ pub fn main() !void {
     try simpleRouter.handle_func("/setting/get", &setting, &controllers.Setting.get);
     try simpleRouter.handle_func("/setting/save", &setting, &controllers.Setting.save);
 
-    var article = controllers.Article.init(allocator);
-    try simpleRouter.handle_func("/article/get", &article, &controllers.Article.get);
-    try simpleRouter.handle_func("/article/list", &article, &controllers.Article.list);
-    try simpleRouter.handle_func("/article/delete", &article, &controllers.Article.delete);
-    try simpleRouter.handle_func("/article/save", &article, &controllers.Article.save);
-    try simpleRouter.handle_func("/article/modify", &article, &controllers.Article.modify);
-
     inline for (std.meta.fields(@TypeOf(cruds))) |field| {
         const generic = controllers.Generic.Generic(@field(cruds, field.name));
         var generics = generic.init(allocator);
@@ -56,9 +50,10 @@ pub fn main() !void {
     var listener = zap.HttpListener.init(.{
         .port = 3000,
         .on_request = simpleRouter.on_request_handler(),
-        .log = false,
+        .log = true,
         .public_folder = "resources",
         .max_clients = 10000,
+        .timeout = 3,
     });
     try listener.listen();
     zap.start(.{ .threads = 1, .workers = 1 });
