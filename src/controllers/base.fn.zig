@@ -16,7 +16,7 @@ pub const Response = struct {
 pub fn send_error(req: zap.Request, e: anyerror) void {
     var buf: [40960]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf, "{?}", .{e}) catch return req.sendError(e, null, 500);
-    send_failed(req, msg);
+    send_failed(req, msg[6..]);
 }
 
 /// 响应成功消息

@@ -4,8 +4,8 @@
     .minimum_zig_version = "0.13.0",
     .dependencies = .{
         .zap = .{
-            .url = "https://github.com/zigzap/zap/archive/refs/tags/v0.8.0.tar.gz",
-            .hash = "12209936c3333b53b53edcf453b1670babb9ae8c2197b1ca627c01e72670e20c1a21",
+            .url = "https://github.com/zigzap/zap/archive/master.tar.gz",
+            .hash = "122083ead09039a1ab0a322f6b8d9b87c2a6f487a8d63cde2ce889c8457138ae81ac",
         },
         .@"zig-webui" = .{
             .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
@@ -26,10 +26,6 @@
         .json = .{
             .url = "https://github.com/getty-zig/json/archive/main.tar.gz",
             .hash = "1220c7d749d83bcac8daecd67f1f78ee2762df10c9fef123bbf44c882965f644c1e5",
-        },
-        .pg = .{
-            .url = "https://github.com/karlseguin/pg.zig/archive/master.tar.gz",
-            .hash = "1220bd73cc6127dad105d12637dbbf0229515c8ec23199c9c8d9caa43cef2d91a8af",
         },
         .pretty = .{
             .url = "https://github.com/timfayz/pretty/archive/main.tar.gz",
@@ -54,6 +50,10 @@
         .smtp_client = .{
             .url = "git+https://github.com/karlseguin/smtp_client.zig#54013303e7cfc99c3a8a063a7bdf930a61689adb",
             .hash = "1220f62a6a96f596a9c26219f00817dbe0e25dd2e4bfebc2d93d093f0999a7c47f7e",
+        },
+        .pg = .{
+            .url = "git+https://github.com/karlseguin/pg.zig#dcb386cf2275b8660310bffc2304760301437615",
+            .hash = "1220b91cbba0d9c70f223aa434a395898673bbb11f199cc288411de2f752e8d6d896",
         },
         .jwt = .{
             .url = "https://github.com/softprops/zig-jwt/archive/refs/tags/v0.1.0.tar.gz",

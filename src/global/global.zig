@@ -16,8 +16,10 @@ fn init_pg() !void {
         const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
         defer _allocator.free(password);
 
+        var buf: [4096]u8 = undefined;
+        @memcpy(buf[0..password.len], password);
         _pool = try pg.Pool.init(_allocator, .{
-            .size = 5,
+            .size = 10,
             .connect = .{
                 .port = 5432,
                 .host = "124.222.103.232",
@@ -26,7 +28,8 @@ fn init_pg() !void {
                 .username = "postgres",
                 .database = "postgres",
                 .application_name = "zigcms",
-                .password = password,
+                .password = buf[0..password.len],
+                .timeout = std.time.ms_per_s,
             },
         });
     }

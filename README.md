@@ -22,6 +22,8 @@ https://github.com/timfayz/pretty/archive/main.tar.gz
 
 ### zig build run  -- debug
 
+zig build -Doptimize=ReleaseSafe run
+
 
 https://y-admin.yijianku.com/#
 

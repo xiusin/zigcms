@@ -11,7 +11,7 @@ const strings = @import("modules/strings.zig");
 
 const cruds = .{
     .category = models.Category,
-    // .upload = models.Upload,
+    .upload = models.Upload,
 };
 
 pub fn main() !void {
@@ -61,5 +61,5 @@ pub fn main() !void {
         .max_clients = 10000,
     });
     try listener.listen();
-    zap.start(.{ .threads = 2, .workers = 2 });
+    zap.start(.{ .threads = 1, .workers = 1 });
 }
