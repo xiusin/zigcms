@@ -3,40 +3,40 @@ const Allocator = std.mem.Allocator;
 const pg = @import("pg");
 const pretty = @import("pretty");
 const models = @import("../models/models.zig");
+const strings = @import("../modules/strings.zig");
+const base = @import("../controllers/base.fn.zig");
 
 var _allocator: Allocator = undefined;
 var _pool: *pg.Pool = undefined;
-var inited: bool = false;
 
 pub const JwtTokenSecret = "this is a secret";
+var init = std.once(init_some);
 
-fn init_pg() !void {
-    if (!inited) {
-        inited = true;
-        const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
-        defer _allocator.free(password);
+fn init_some() void {
+    const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
+    defer _allocator.free(password);
 
-        var buf: [4096]u8 = undefined;
-        @memcpy(buf[0..password.len], password);
-        _pool = try pg.Pool.init(_allocator, .{
-            .size = 10,
-            .connect = .{
-                .port = 5432,
-                .host = "124.222.103.232",
-            },
-            .auth = .{
-                .username = "postgres",
-                .database = "postgres",
-                .application_name = "zigcms",
-                .password = buf[0..password.len],
-                .timeout = std.time.ms_per_s,
-            },
-        });
-    }
+    var buf: [4096]u8 = undefined;
+    @memcpy(buf[0..password.len], password);
+    _pool = pg.Pool.init(_allocator, .{
+        .size = 10,
+        .connect = .{
+            .port = 5432,
+            .host = "124.222.103.232",
+        },
+        .auth = .{
+            .username = "postgres",
+            .database = "postgres",
+            .application_name = "zigcms",
+            .password = buf[0..password.len],
+            .timeout = std.time.ms_per_s,
+        },
+    }) catch unreachable;
 }
 
 pub fn set_allocator(allocator: Allocator) void {
     _allocator = allocator;
+    init.call();
 }
 
 pub fn get_allocator() Allocator {
@@ -44,7 +44,6 @@ pub fn get_allocator() Allocator {
 }
 
 pub fn get_pg_pool() *pg.Pool {
-    init_pg() catch {};
     return _pool;
 }
 
@@ -52,12 +51,12 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
     if (try get_pg_pool().exec(sql, values)) |result| {
         return result;
     }
-    return error.SqlExecFailed;
+    return error.@"sql执行错误";
 }
 
 pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
     var pool = try get_pg_pool();
-    const sql = "SELECT * FROM zigcms.setting";
+    const sql = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
     var result = try pool.queryOpts(sql, .{}, .{ .column_names = true });
 
     defer result.deinit();
@@ -70,7 +69,7 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
     if (config.get(key)) |val| {
         return val;
     }
-    return error.SettingNotFound;
+    return error.@"无法找到配置";
 }
 
 // 动态结构体定义 https://github.com/ziglang/zig/issues/12330
@@ -110,7 +109,7 @@ pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
 //     }
 // }
 
-// const tuple = Struct2Tuple(Person){ 1, "xiusin", 2}; 动态构建
+/// 动态将结构体转换为对应字段数量的元组
 pub inline fn struct_2_tuple(T: type) type {
     const Type = std.builtin.Type;
 
