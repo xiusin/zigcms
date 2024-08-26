@@ -37,8 +37,9 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
     exe.linkLibrary(sqlite.artifact("sqlite"));
 
-    // const string = b.dependency("zig-string", .{ .target = target, .optimize = optimize });
-    // exe.root_module.addImport("string", string.module("string"));
+    const curl = b.dependency("curl", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("curl", curl.module("curl"));
+    exe.linkLibC();
 
     b.installArtifact(exe);
 

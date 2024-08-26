@@ -13,7 +13,7 @@ pub const JwtTokenSecret = "this is a secret";
 var init = std.once(init_some);
 
 fn init_some() void {
-    const password = try std.process.getEnvVarOwned(_allocator, "DB_PASSWORD");
+    const password = std.process.getEnvVarOwned(_allocator, "DB_PASSWORD") catch unreachable;
     defer _allocator.free(password);
 
     var buf: [4096]u8 = undefined;

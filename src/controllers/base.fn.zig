@@ -3,6 +3,8 @@ const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
 const strings = @import("../modules/strings.zig");
+const curl = @import("curl");
+
 const Allocator = std.mem.Allocator;
 
 pub const Response = struct {
@@ -130,4 +132,15 @@ pub fn get_table_name(comptime T: type) []const u8 {
     var buffer: [512]u8 = undefined; // std.mem.zeroes([100]u8);
     const tbl = std.ascii.lowerString(buffer[0..], tablename);
     return strings.sprinf("zigcms.{s}", .{tbl}) catch unreachable;
+}
+
+/// 上传文件
+pub fn upload(allocator: Allocator, localpath: []const u8) !void {
+    const easy = try curl.Easy.init(allocator, .{});
+    defer easy.deinit();
+
+    // 生成签名
+
+    const resp = try easy.upload("http://httpbin.org/anything", localpath);
+    defer resp.deinit();
 }
