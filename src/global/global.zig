@@ -9,7 +9,7 @@ const base = @import("../controllers/base.fn.zig");
 var _allocator: ?Allocator = null;
 var _pool: *pg.Pool = undefined;
 var config: std.StringHashMap([]const u8) = undefined;
-var mu: std.atomic.
+var mu: std.Thread.Mutex = std.Thread.Mutex{};
 
 pub const JwtTokenSecret = "this is a secret";
 var init = std.once(init_some);
@@ -41,6 +41,8 @@ fn init_some() void {
             .timeout = std.time.ms_per_s,
         },
     }) catch unreachable;
+
+    restore_setting() catch {};
 }
 
 pub fn set_allocator(allocator: Allocator) void {
@@ -63,22 +65,27 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
     return error.@"sql执行错误";
 }
 
-pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
-    // if (config.get(key)) |val| {
-    //     return val;
-    // }
-    // return error.@"无法找到配置";
+pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
+    mu.lock();
+    defer mu.unlock();
+
+    var buf: [40960]u8 = undefined;
+    if (config.get(key)) |val| {
+        @memcpy(buf[0..val.len], val);
+        return buf[0..];
+    }
+    return def_value;
 }
 
 pub fn restore_setting() !void {
-    var pool = try get_pg_pool();
-    const sql = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
-    var result = try pool.queryOpts(sql, .{}, .{ .column_names = true });
+    mu.lock();
+    defer mu.unlock();
+    std.log.debug("restore setting", .{});
+    const sql = try strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
+    var result = try get_pg_pool().queryOpts(sql, .{}, .{ .column_names = true });
 
     defer result.deinit();
     const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
-
-    config.keyIterator();
 
     config.clearAndFree();
 

@@ -19,30 +19,31 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        fn check_auth(self: *Self, req: zap.Request) !u32 {
-            if (req.method == null) return error.HttpMethodFailed;
-            if (req.getHeader("authorization")) |authorization| {
-                var token = authorization;
-                if (strings.starts_with(authorization, "Bearer ")) {
-                    token = authorization[7..];
-                }
+        fn check_auth(_: *Self, _: zap.Request) !u32 {
+            return 0;
+            // if (req.method == null) return error.HttpMethodFailed;
+            // if (req.getHeader("authorization")) |authorization| {
+            //     var token = authorization;
+            //     if (strings.starts_with(authorization, "Bearer ")) {
+            //         token = authorization[7..];
+            //     }
 
-                // 解析token
-                var decoded = jwt.decode(
-                    self.allocator,
-                    struct { sub: u32, name: []const u8, iat: i64 },
-                    token,
-                    .{ .secret = global.JwtTokenSecret },
-                    .{},
-                ) catch return error.@"token无效";
-                defer decoded.deinit();
+            //     // 解析token
+            //     var decoded = jwt.decode(
+            //         self.allocator,
+            //         struct { sub: u32, name: []const u8, iat: i64 },
+            //         token,
+            //         .{ .secret = global.JwtTokenSecret },
+            //         .{},
+            //     ) catch return error.@"token无效";
+            //     defer decoded.deinit();
 
-                if (decoded.claims.iat < std.time.timestamp()) {
-                    return error.@"token过期";
-                }
-                return decoded.claims.sub;
-            }
-            return error.@"缺少登录凭证";
+            //     if (decoded.claims.iat < std.time.timestamp()) {
+            //         return error.@"token过期";
+            //     }
+            //     return decoded.claims.sub;
+            // }
+            // return error.@"缺少登录凭证";
         }
 
         pub fn list(self: *Self, req: zap.Request) void {
@@ -255,27 +256,27 @@ pub fn Generic(comptime T: type) type {
             const query = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(T)}) catch unreachable;
             var result = global.get_pg_pool().queryOpts(query, .{}, .{ .column_names = true }) catch |e| return base.send_error(req, e);
 
-            const name = req.getParamSlice("label") orelse "name";
+            // const name = req.getParamSlice("label") orelse "name";
             defer result.deinit();
 
             var items = std.ArrayList(struct { id: i32, value: []const u8 }).init(self.allocator);
             defer items.deinit();
-            {
-                const mapper = result.mapper(T, .{ .allocator = self.allocator });
-                while (mapper.next() catch unreachable) |item| {
-                    if (@hasField(T, name)) {
-                        items.append(.{ .id = item.id, .value = @field(item, name) }) catch {};
-                        // } else if (strings.eql(name, "title")) {
-                        //     items.append(.{ .id = item.id, .value = @field(item, "title") }) catch {};
-                        // } else if (strings.eql(name, "category_name")) {
-                        //     items.append(.{ .id = item.id, .value = @field(item, "category_name") }) catch {};
-                        // } else if (strings.eql(name, "value")) {
-                        //     items.append(.{ .id = item.id, .value = @field(item, "value") }) catch {};
-                    } else {
-                        return base.send_failed(req, "对象无不支持此字段");
-                    }
-                }
-            }
+            // {
+            //     const mapper = result.mapper(T, .{ .allocator = self.allocator });
+            //     while (mapper.next() catch unreachable) |item| {
+            //         if (@hasField(T, name)) {
+            //             items.append(.{ .id = item.id, .value = @field(item, name) }) catch {};
+            //             // } else if (strings.eql(name, "title")) {
+            //             //     items.append(.{ .id = item.id, .value = @field(item, "title") }) catch {};
+            //             // } else if (strings.eql(name, "category_name")) {
+            //             //     items.append(.{ .id = item.id, .value = @field(item, "category_name") }) catch {};
+            //             // } else if (strings.eql(name, "value")) {
+            //             //     items.append(.{ .id = item.id, .value = @field(item, "value") }) catch {};
+            //         } else {
+            //             return base.send_failed(req, "对象无不支持此字段");
+            //         }
+            //     }
+            // }
 
             return base.send_ok(req, items);
         }

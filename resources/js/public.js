@@ -2198,7 +2198,7 @@ layui.use(['form', 'table'], function () {
                                 title: '选择文件',
                                 type: 2,
                                 area: [clienWidth, clientHeight],
-                                content: '../upload/list.html?select_mode=' + selectCheck,
+                                content: '/page/upload/list.html?select_mode=' + selectCheck,
                                 success(layero, index) {
                                     window.onTableDataConfirm = function (data) {
                                         var currentUrl = $(elem).val();

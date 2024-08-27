@@ -1,14 +1,12 @@
 const std = @import("std");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;
-const strings = @import("zig-strings");
 const base = @import("base.fn.zig");
 const models = @import("../models/models.zig");
 const global = @import("../global/global.zig");
+const strings = @import("../modules/strings.zig");
 
 const Self = @This();
-
-const ResourceBaseDir = "resources";
 
 allocator: Allocator,
 pub fn init(allocator: Allocator) Self {
@@ -32,13 +30,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     const data = file.data orelse return base.send_failed(req, "文件上传失败");
                     const ext = std.fs.path.extension(origin_filename);
 
-                    const Md5 = std.crypto.hash.Md5;
-                    var out: [Md5.digest_length]u8 = undefined;
-                    Md5.hash(data, &out, .{});
-
-                    const md5 = std.fmt.allocPrint(self.allocator, "{s}", .{
-                        std.fmt.fmtSliceHexLower(out[0..]),
-                    }) catch return base.send_failed(req, "获取文件错误");
+                    const md5 = strings.md5(self.allocator, data) catch return;
                     defer self.allocator.free(md5);
 
                     // 文件目录分段
@@ -48,16 +40,17 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     }) catch return base.send_failed(req, "获取文件错误");
                     defer self.allocator.free(dir);
                     var path: [1024]u8 = undefined;
+
+                    const resources = global.get_setting("resources", "resources");
+
                     std.fs.cwd().makePath(std.fmt.bufPrint(path[0..], "{s}/{s}", .{
-                        ResourceBaseDir[0..],
+                        resources,
                         dir,
-                    }) catch return base.send_failed(
-                        req,
-                        "创建上传目录失败",
-                    )) catch return base.send_failed(req, "创建上传目录失败");
+                    }) catch
+                        return base.send_failed(req, "创建上传目录失败")) catch return;
 
                     // 创建目录
-                    const sd = &[_][]const u8{ ResourceBaseDir[0..], "/", dir };
+                    const sd = &[_][]const u8{ resources, "/", dir };
                     const savedir = std.mem.concat(self.allocator, u8, sd) catch return base.send_failed(req, "构建地址错误");
                     defer self.allocator.free(savedir);
 
@@ -66,12 +59,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
                     defer self.allocator.free(filename);
 
                     var cache = true;
-                    const url = std.mem.concat(
-                        self.allocator,
-                        u8,
-                        &[_][]const u8{filename[ResourceBaseDir.len..]}, //  "https://dev.xiusin.cn/",
-                    ) catch return base.send_failed(req, "生成对象地址错误:URL");
-                    defer self.allocator.free(url);
+                    const url = filename[resources.len..];
 
                     // 判断文件是否存在
                     _ = std.fs.cwd().statFile(filename) catch {
@@ -84,10 +72,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
                         cache = false;
                     };
 
-                    const sql = base.build_insert_sql(
-                        models.Upload,
-                        self.allocator,
-                    ) catch return base.send_failed(req, "上传失败");
+                    const sql = base.build_insert_sql(models.Upload, self.allocator) catch return;
                     defer self.allocator.free(sql);
 
                     const dto = .{ origin_filename, filename, md5, ext, 0, 0, url, std.time.milliTimestamp(), std.time.milliTimestamp(), 0 };

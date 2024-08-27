@@ -57,5 +57,7 @@ pub fn save(self: Self, req: zap.Request) void {
         }) catch {};
     }
 
+    global.restore_setting() catch {};
+
     return base.send_ok(req, "保存成功");
 }

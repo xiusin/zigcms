@@ -83,22 +83,14 @@ pub fn md5(allocator: Allocator, str: []const u8) ![]const u8 {
     const Md5 = std.crypto.hash.Md5;
     var out: [Md5.digest_length]u8 = undefined;
     Md5.hash(str, &out, .{});
-    var buffer: [Md5.digest_length * 2]u8 = undefined;
-    var index: usize = 0;
-    for (out) |byte| {
-        var box: [2]u8 = undefined;
-        const hex_byte = try std.fmt.bufPrint(box[0..], "{x}", .{byte});
-        if (hex_byte.len == 1) {
-            buffer[index] = 0;
-            buffer[index + 1] = hex_byte[0];
-        } else {
-            buffer[index] = hex_byte[0];
-            buffer[index + 1] = hex_byte[1];
-        }
-        index += 2;
-    }
+    const md5hex = try std.fmt.allocPrint(
+        allocator,
+        "{s}",
+        .{std.fmt.fmtSliceHexLower(out[0..])},
+    );
+    defer allocator.free(md5hex);
 
-    return try allocator.dupe(u8, buffer[0..]);
+    return try allocator.dupe(u8, md5hex[0..]);
 }
 
 /// 去除字符串首尾指定字符串

@@ -47,8 +47,7 @@
                             <div class="layui-form-item full-line">
                                 <label class="layui-form-label required">网站图标</label>
                                 <div class="layui-input-block layuimini-upload">
-                                    <input name="favicon_url" class="layui-input layui-col-xs6" lay-verify="required"
-                                        placeholder="请上传商品图片">
+                                    <input name="favicon_url" class="layui-input layui-col-xs6" placeholder="请上传网站图标">
                                     <div class="layuimini-upload-btn">
                                         <span><a class="layui-btn" data-upload="favicon_url" data-upload-number="more"
                                                 data-upload-exts="*image" data-upload-icon="image"><i
@@ -180,7 +179,8 @@
                 </div>
                 <div class="layui-form-item">
                     <div class="layui-input-block">
-                        <button class="layui-btn layui-btn-normal" lay-submit lay-filter="setting">确认保存</button>
+                        <button class="layui-btn layui-btn-normal" lay-submit="/setting/save"
+                            lay-filter="setting">确认保存</button>
                     </div>
                 </div>
             </form>
