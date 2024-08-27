@@ -6,19 +6,28 @@ const models = @import("../models/models.zig");
 const strings = @import("../modules/strings.zig");
 const base = @import("../controllers/base.fn.zig");
 
-var _allocator: Allocator = undefined;
+var _allocator: ?Allocator = null;
 var _pool: *pg.Pool = undefined;
+var config: std.StringHashMap([]const u8) = undefined;
+var mu: std.atomic.
 
 pub const JwtTokenSecret = "this is a secret";
 var init = std.once(init_some);
 
+pub fn deinit() void {
+    config.deinit();
+    config = undefined;
+    _allocator = undefined;
+}
+
 fn init_some() void {
-    const password = std.process.getEnvVarOwned(_allocator, "DB_PASSWORD") catch unreachable;
-    defer _allocator.free(password);
+    config = std.StringHashMap([]const u8).init(_allocator.?);
+    const password = std.process.getEnvVarOwned(_allocator.?, "DB_PASSWORD") catch unreachable;
+    defer _allocator.?.free(password);
 
     var buf: [4096]u8 = undefined;
     @memcpy(buf[0..password.len], password);
-    _pool = pg.Pool.init(_allocator, .{
+    _pool = pg.Pool.init(_allocator.?, .{
         .size = 10,
         .connect = .{
             .port = 5432,
@@ -40,7 +49,7 @@ pub fn set_allocator(allocator: Allocator) void {
 }
 
 pub fn get_allocator() Allocator {
-    return _allocator;
+    return _allocator.?;
 }
 
 pub fn get_pg_pool() *pg.Pool {
@@ -55,21 +64,25 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
 }
 
 pub fn get_setting(allocator: Allocator, key: []const u8) ![]const u8 {
+    // if (config.get(key)) |val| {
+    //     return val;
+    // }
+    // return error.@"无法找到配置";
+}
+
+pub fn restore_setting() !void {
     var pool = try get_pg_pool();
     const sql = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
     var result = try pool.queryOpts(sql, .{}, .{ .column_names = true });
 
     defer result.deinit();
-    const mapper = result.mapper(models.Setting, .{ .allocator = allocator });
-    var config = std.StringHashMap([]const u8).init(allocator);
-    defer config.deinit();
-    while (try mapper.next()) |item| {
-        try config.put(item.key, item.value);
-    }
-    if (config.get(key)) |val| {
-        return val;
-    }
-    return error.@"无法找到配置";
+    const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
+
+    config.keyIterator();
+
+    config.clearAndFree();
+
+    while (try mapper.next()) |item| try config.put(item.key, item.value);
 }
 
 // 动态结构体定义 https://github.com/ziglang/zig/issues/12330

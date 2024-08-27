@@ -50,6 +50,7 @@ pub fn main() !void {
         try router.handle_func("/" ++ field.name ++ "/delete", &generics, &generic.delete);
         try router.handle_func("/" ++ field.name ++ "/save", &generics, &generic.save);
         try router.handle_func("/" ++ field.name ++ "/modify", &generics, &generic.modify);
+        try router.handle_func("/" ++ field.name ++ "/select", &generics, &generic.select);
     }
 
     var listener = zap.HttpListener.init(.{

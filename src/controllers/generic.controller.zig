@@ -250,37 +250,34 @@ pub fn Generic(comptime T: type) type {
 
         pub fn select(self: *Self, req: zap.Request) void {
             _ = self.check_auth(req) catch |e| return base.send_error(req, e);
-            var dto = dtos.Modify{};
             req.parseBody() catch |e| return base.send_error(req, e);
-            if (req.body == null) return base.send_failed(req, "缺少必要参数");
-            var params = req.parametersToOwnedStrList(self.allocator, true) catch return base.send_failed(req, "解析参数错误");
-            defer params.deinit();
 
-            for (params.items) |item| {
-                if (strings.eql("id", item.key.str)) {
-                    dto.id = @as(u32, @intCast(strings.to_int(item.value.str) catch return base.send_failed(req, "无法解析ID参数")));
-                } else if (strings.eql("field", item.key.str)) {
-                    dto.field = item.value.str;
-                } else if (strings.eql("value", item.key.str)) {
-                    dto.value.? = item.value.str;
+            const query = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(T)}) catch unreachable;
+            var result = global.get_pg_pool().queryOpts(query, .{}, .{ .column_names = true }) catch |e| return base.send_error(req, e);
+
+            const name = req.getParamSlice("label") orelse "name";
+            defer result.deinit();
+
+            var items = std.ArrayList(struct { id: i32, value: []const u8 }).init(self.allocator);
+            defer items.deinit();
+            {
+                const mapper = result.mapper(T, .{ .allocator = self.allocator });
+                while (mapper.next() catch unreachable) |item| {
+                    if (@hasField(T, name)) {
+                        items.append(.{ .id = item.id, .value = @field(item, name) }) catch {};
+                        // } else if (strings.eql(name, "title")) {
+                        //     items.append(.{ .id = item.id, .value = @field(item, "title") }) catch {};
+                        // } else if (strings.eql(name, "category_name")) {
+                        //     items.append(.{ .id = item.id, .value = @field(item, "category_name") }) catch {};
+                        // } else if (strings.eql(name, "value")) {
+                        //     items.append(.{ .id = item.id, .value = @field(item, "value") }) catch {};
+                    } else {
+                        return base.send_failed(req, "对象无不支持此字段");
+                    }
                 }
             }
 
-            if (dto.id == 0 or dto.field.len == 0 or dto.value == null) {
-                return base.send_failed(req, "缺少必要参数");
-            }
-
-            const sql = strings.sprinf("UPDATE {s} SET {s}=$2,update_time = $3 WHERE id = $1", .{
-                base.get_table_name(T),
-                dto.field,
-            }) catch unreachable;
-            defer self.allocator.free(sql);
-
-            _ = (global.get_pg_pool().exec(sql, .{ dto.id, dto.value.?, std.time.milliTimestamp() }) catch |e|
-                return base.send_error(req, e)) orelse
-                return base.send_failed(req, "更新失败");
-
-            return base.send_ok(req, "更新成功");
+            return base.send_ok(req, items);
         }
     };
 }
