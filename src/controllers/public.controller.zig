@@ -92,3 +92,69 @@ pub fn upload(self: *Self, req: zap.Request) void {
         }
     }
 }
+
+pub fn folder(self: *Self, req: zap.Request) void {
+    req.parseBody() catch |e| return base.send_error(req, e);
+    if (req.body == null) return;
+    var params = req.parametersToOwnedStrList(self.allocator, true) catch return;
+    defer params.deinit();
+
+    var fold: ?[]const u8 = null;
+    var request_path: ?[]const u8 = null;
+
+    for (params.items) |item| {
+        if (strings.eql("folder", item.key.str)) {
+            fold = item.value.str;
+        } else if (strings.eql("path", item.key.str)) {
+            request_path = item.value.str;
+        }
+    }
+
+    if (fold == null or request_path == null) {
+        return base.send_failed(req, "缺少必要参数");
+    }
+
+    const basepath = global.get_setting("resources", "resources"); // 配置目录
+    const path = strings.sprinf("{s}/{s}", .{ basepath, request_path.? }) catch return;
+
+    if (strings.contains(path, "..") or
+        strings.contains(fold.?, "..") or
+        strings.contains(path, " ") or
+        strings.contains(fold.?, " ") or
+        strings.contains(fold.?, "\\") or
+        strings.contains(path, "\\") or
+        fold.?.len == 0)
+    {
+        return base.send_failed(req, "非法参数");
+    }
+    const dir = strings.rtrim(strings.sprinf("{s}/{s}/", .{ path, fold.? }) catch return, "/");
+    std.fs.cwd().makePath(dir) catch {};
+    std.log.debug("path: {s}", .{path});
+    return base.send_ok(req, .{});
+}
+
+pub fn files(self: *Self, req: zap.Request) void {
+    const basepath = global.get_setting("resources", "resources"); // 配置目录
+
+    var directories = std.ArrayList([]const u8).init(self.allocator);
+    defer directories.deinit();
+
+    var file_items = std.ArrayList([]const u8).init(self.allocator);
+    defer file_items.deinit();
+
+    const dir = std.fs.cwd().openDir(basepath, .{}) catch return base.send_failed(req, "权限不足");
+    var iter = dir.iterate();
+    while (iter.next() catch return) |it| {
+        if (it.kind == .directory) {
+            directories.append(it.name) catch {};
+        } else {
+            file_items.append(it.name) catch {};
+        }
+    }
+    directories.appendSlice(file_items.items) catch {};
+
+    base.send_ok(req, .{
+        .count = directories.items.len,
+        .images = directories.items,
+    });
+}

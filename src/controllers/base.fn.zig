@@ -3,7 +3,6 @@ const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
 const strings = @import("../modules/strings.zig");
-const curl = @import("curl");
 
 const Allocator = std.mem.Allocator;
 
@@ -135,12 +134,4 @@ pub fn get_table_name(comptime T: type) []const u8 {
 }
 
 /// 上传文件
-pub fn upload(allocator: Allocator, localpath: []const u8) !void {
-    const easy = try curl.Easy.init(allocator, .{});
-    defer easy.deinit();
-
-    // 生成签名
-
-    const resp = try easy.upload("http://httpbin.org/anything", localpath);
-    defer resp.deinit();
-}
+pub fn upload() void {}

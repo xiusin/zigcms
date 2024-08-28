@@ -59,3 +59,17 @@ Content-Type: application/json
   "view_count": "0",
   "content": "asdasdasd"
 }
+
+
+
+### 文章列表
+POST http://localhost:3000/public/folder
+Content-Type: application/json
+
+{
+  "path": "",
+  "folder": "asdasdasd"
+}
+
+### 文章列表
+GET http://localhost:3000/public/files
