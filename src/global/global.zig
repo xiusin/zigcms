@@ -80,14 +80,20 @@ pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
 pub fn restore_setting() !void {
     mu.lock();
     defer mu.unlock();
-    std.log.debug("restore setting", .{});
+
     const sql = try strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
     var result = try get_pg_pool().queryOpts(sql, .{}, .{ .column_names = true });
 
     defer result.deinit();
     const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
 
-    config.clearAndFree();
+    // var iter = config.iterator();
+
+    // for (iter.next()) |item| {
+    //     std.log.debug("config item = {any}", .{item});
+    // }
+
+    config.clearAndFree(); // TODO 是否存在内存泄漏
 
     while (try mapper.next()) |item| try config.put(item.key, item.value);
 }

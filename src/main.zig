@@ -8,6 +8,7 @@ const controllers = @import("controllers/controllers.zig");
 const base = @import("controllers/base.fn.zig");
 const models = @import("models/models.zig");
 const strings = @import("modules/strings.zig");
+const html = @embedFile("notfound.html");
 
 const cruds = .{
     .category = models.Category,
@@ -17,6 +18,11 @@ const cruds = .{
 
 fn not_found(req: zap.Request) void {
     req.setStatus(.not_found);
+    if (req.method) |method| {
+        if (strings.eql("GET", method)) {
+            req.sendBody(html[0..]) catch return;
+        }
+    }
     base.send_failed(req, "the url not found");
 }
 
