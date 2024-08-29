@@ -41,7 +41,7 @@ pub fn main() !void {
     var public = controllers.Public.init(allocator);
     try router.handle_func("/public/upload", &public, &controllers.Public.upload);
     try router.handle_func("/public/folder", &public, &controllers.Public.folder);
-    try router.handle_func("/public/files", &public, &controllers.Public.files);
+    try router.handle_func("/public/filelist", &public, &controllers.Public.filelist);
 
     var menu = controllers.Menu.init(allocator);
     try router.handle_func("/menu/list", &menu, &controllers.Menu.list);

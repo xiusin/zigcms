@@ -145,7 +145,7 @@ pub inline fn rtrim(str: []const u8, chars: []const u8) []const u8 {
 
 /// 全小写转换
 pub inline fn strtolower(str: []const u8) []const u8 {
-    var output = [_]u8{0} ** str.len;
+    var output: [40960]u8 = undefined;
     return std.ascii.lowerString(output[0..], str);
 }
 

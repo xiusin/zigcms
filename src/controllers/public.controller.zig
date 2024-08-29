@@ -19,47 +19,40 @@ pub fn upload(self: *Self, req: zap.Request) void {
     }
     if (req.body.?.len > 1024 * 1024 * 1024 * 20) return base.send_failed(req, "上传文件过大");
 
-    req.parseBody() catch return base.send_failed(req, "数据解析错误");
-    const params = req.parametersToOwnedList(self.allocator, false) catch return base.send_failed(req, "数据解析错误");
+    req.parseBody() catch return;
+    const params = req.parametersToOwnedList(self.allocator, false) catch return;
     defer params.deinit();
+
+    // TODO 读取path
+
     for (params.items) |kv| {
         if (kv.value) |v| {
             switch (v) {
                 zap.Request.HttpParam.Hash_Binfile => |*file| {
-                    const origin_filename = file.filename orelse return base.send_failed(req, "文件上传失败");
-                    const data = file.data orelse return base.send_failed(req, "文件上传失败");
+                    const origin_filename = file.filename orelse return;
+                    const data = file.data orelse return;
                     const ext = std.fs.path.extension(origin_filename);
 
                     const md5 = strings.md5(self.allocator, data) catch return;
                     defer self.allocator.free(md5);
 
                     // 文件目录分段
-                    const dir = std.fmt.allocPrint(self.allocator, "uploads/{s}/{s}", .{
-                        md5[0..3],
-                        md5[3..6],
-                    }) catch return base.send_failed(req, "获取文件错误");
-                    defer self.allocator.free(dir);
+                    const dir = strings.sprinf("uploads/{s}/{s}", .{ md5[0..3], md5[3..6] }) catch |e| return base.send_error(req, e);
+
+                    const basedir = self.upload_base_dir();
+
                     var path: [1024]u8 = undefined;
-
-                    const resources = global.get_setting("resources", "resources");
-
                     std.fs.cwd().makePath(std.fmt.bufPrint(path[0..], "{s}/{s}", .{
-                        resources,
+                        basedir,
                         dir,
-                    }) catch
-                        return base.send_failed(req, "创建上传目录失败")) catch return;
+                    }) catch return base.send_failed(req, "创建上传目录失败")) catch return;
 
                     // 创建目录
-                    const sd = &[_][]const u8{ resources, "/", dir };
-                    const savedir = std.mem.concat(self.allocator, u8, sd) catch return base.send_failed(req, "构建地址错误");
-                    defer self.allocator.free(savedir);
-
-                    const fd = &[_][]const u8{ savedir, "/", md5, ext };
-                    const filename = std.mem.concat(self.allocator, u8, fd) catch return base.send_failed(req, "上传失败");
-                    defer self.allocator.free(filename);
+                    const savedir = strings.sprinf("{s}/{s}", .{ basedir, dir }) catch |e| return base.send_error(req, e);
+                    const filename = strings.sprinf("{s}/{s}{s}", .{ savedir, md5, ext }) catch |e| return base.send_error(req, e);
 
                     var cache = true;
-                    const url = filename[resources.len..];
+                    const url = filename[basedir.len..];
 
                     // 判断文件是否存在
                     _ = std.fs.cwd().statFile(filename) catch {
@@ -114,7 +107,7 @@ pub fn folder(self: *Self, req: zap.Request) void {
         return base.send_failed(req, "缺少必要参数");
     }
 
-    const basepath = global.get_setting("resources", "resources"); // 配置目录
+    const basepath = self.upload_base_dir();
     const path = strings.sprinf("{s}/{s}", .{ basepath, request_path.? }) catch return;
 
     if (strings.contains(path, "..") or
@@ -133,28 +126,29 @@ pub fn folder(self: *Self, req: zap.Request) void {
     return base.send_ok(req, .{});
 }
 
-pub fn files(self: *Self, req: zap.Request) void {
-    const basepath = global.get_setting("resources", "resources"); // 配置目录
+pub fn filelist(self: *Self, req: zap.Request) void {
+    const basepath = self.upload_base_dir();
+    const FileItem = struct { type: []const u8 = "", thumb: []const u8 = "", name: []const u8, path: []const u8 = "" };
 
-    var directories = std.ArrayList([]const u8).init(self.allocator);
-    defer directories.deinit();
-
-    var file_items = std.ArrayList([]const u8).init(self.allocator);
-    defer file_items.deinit();
+    var items = std.ArrayList(FileItem).init(self.allocator);
+    defer items.deinit();
 
     const dir = std.fs.cwd().openDir(basepath, .{}) catch return base.send_failed(req, "权限不足");
     var iter = dir.iterate();
     while (iter.next() catch return) |it| {
+        var item: FileItem = .{ .name = it.name };
         if (it.kind == .directory) {
-            directories.append(it.name) catch {};
+            item.type = "directory";
         } else {
-            file_items.append(it.name) catch {};
+            item.type = strings.ltrim(std.fs.path.extension(it.name), ".");
         }
+        item.path = it.name;
+        items.append(item) catch {};
     }
-    directories.appendSlice(file_items.items) catch {};
 
-    base.send_ok(req, .{
-        .count = directories.items.len,
-        .images = directories.items,
-    });
+    base.send_ok(req, .{ .count = items.items.len, .images = items.items });
+}
+
+fn upload_base_dir(_: *Self) []const u8 {
+    return global.get_setting("resources", "resources");
 }
