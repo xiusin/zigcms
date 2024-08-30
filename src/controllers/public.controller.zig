@@ -17,6 +17,9 @@ pub fn upload(self: *Self, req: zap.Request) void {
     if (!std.mem.eql(u8, req.method.?, "POST")) {
         return base.send_failed(req, "不支持的请求方式");
     }
+
+    // global.get_setting("max_upload_file_size", "2");
+
     if (req.body.?.len > 1024 * 1024 * 1024 * 20) return base.send_failed(req, "上传文件过大");
 
     req.parseBody() catch return;
@@ -126,15 +129,22 @@ pub fn folder(self: *Self, req: zap.Request) void {
     return base.send_ok(req, .{});
 }
 
-pub fn filelist(self: *Self, req: zap.Request) void {
+pub fn files(self: *Self, req: zap.Request) void {
+    req.parseQuery();
+
+    var path: []const u8 = "";
+    if (req.getParamSlice("path")) |param| {
+        path = param;
+    }
+
     const basepath = self.upload_base_dir();
     const FileItem = struct { type: []const u8 = "", thumb: []const u8 = "", name: []const u8, path: []const u8 = "" };
 
     var items = std.ArrayList(FileItem).init(self.allocator);
     defer items.deinit();
 
-    const dir = std.fs.cwd().openDir(basepath, .{}) catch return base.send_failed(req, "权限不足");
-    var iter = dir.iterate();
+    const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
+    var iter = (std.fs.cwd().openDir(dir, .{}) catch return base.send_failed(req, "权限不足")).iterate();
     while (iter.next() catch return) |it| {
         var item: FileItem = .{ .name = it.name };
         if (it.kind == .directory) {
