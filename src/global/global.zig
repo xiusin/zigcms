@@ -12,12 +12,15 @@ var config: std.StringHashMap([]const u8) = undefined;
 var mu: std.Thread.Mutex = std.Thread.Mutex{};
 
 pub const JwtTokenSecret = "this is a secret";
-var init = std.once(init_some);
+var initOnce = std.once(init_some);
 
 pub fn deinit() void {
     config.deinit();
+    _pool.deinit();
+    std.log.debug("global deinit", .{});
     config = undefined;
     _allocator = undefined;
+    _pool = undefined;
 }
 
 fn init_some() void {
@@ -45,9 +48,9 @@ fn init_some() void {
     restore_setting() catch {};
 }
 
-pub fn set_allocator(allocator: Allocator) void {
+pub fn init(allocator: Allocator) void {
     _allocator = allocator;
-    init.call();
+    initOnce.call();
 }
 
 pub fn get_allocator() Allocator {
@@ -86,16 +89,14 @@ pub fn restore_setting() !void {
 
     defer result.deinit();
     const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
+    config.clearAndFree();
 
-    // var iter = config.iterator();
-
-    // for (iter.next()) |item| {
-    //     std.log.debug("config item = {any}", .{item});
-    // }
-
-    config.clearAndFree(); // TODO 是否存在内存泄漏
-
-    while (try mapper.next()) |item| try config.put(item.key, item.value);
+    while (try mapper.next()) |item| {
+        try config.put(
+            item.key,
+            item.value,
+        );
+    }
 }
 
 // 动态结构体定义 https://github.com/ziglang/zig/issues/12330

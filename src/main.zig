@@ -9,6 +9,7 @@ const base = @import("controllers/base.fn.zig");
 const models = @import("models/models.zig");
 const strings = @import("modules/strings.zig");
 const html = @embedFile("notfound.html");
+const color = @import("modules/color.zig");
 
 const cruds = .{
     .category = models.Category,
@@ -28,8 +29,16 @@ fn not_found(req: zap.Request) void {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+    defer {
+        const status = gpa.deinit();
+        // if (status == .leak) @panic("内存泄漏");
+        if (status == .ok) {
+            std.log.debug("关闭成功", .{});
+        }
+    }
     const allocator = gpa.allocator();
-    global.set_allocator(allocator);
+    global.init(allocator);
+    defer global.deinit();
 
     var router = zap.Router.init(allocator, .{ .not_found = not_found });
     defer router.deinit();
@@ -70,5 +79,6 @@ pub fn main() !void {
         .timeout = 3,
     });
     try listener.listen();
+    std.log.debug("{s}", .{try color.green_bg("the zap server is started", .{})});
     zap.start(.{ .threads = 1, .workers = 1 });
 }

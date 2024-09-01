@@ -130,11 +130,18 @@ pub fn folder(self: *Self, req: zap.Request) void {
 }
 
 pub fn files(self: *Self, req: zap.Request) void {
+    req.parseBody() catch return;
     req.parseQuery();
 
     var path: []const u8 = "";
-    if (req.getParamSlice("path")) |param| {
-        path = param;
+
+    var params = req.parametersToOwnedStrList(self.allocator, true) catch return;
+    defer params.deinit();
+
+    for (params.items) |item| {
+        if (strings.eql("path", item.key.str)) {
+            path = item.value.str;
+        }
     }
 
     const basepath = self.upload_base_dir();
@@ -144,7 +151,8 @@ pub fn files(self: *Self, req: zap.Request) void {
     defer items.deinit();
 
     const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
-    var iter = (std.fs.cwd().openDir(dir, .{}) catch return base.send_failed(req, "权限不足")).iterate();
+    std.log.debug("dir = {s}", .{dir});
+    var iter = (std.fs.cwd().openDir(dir, .{}) catch |e| return base.send_error(req, e)).iterate();
     while (iter.next() catch return) |it| {
         var item: FileItem = .{ .name = it.name };
         if (it.kind == .directory) {
@@ -152,9 +160,16 @@ pub fn files(self: *Self, req: zap.Request) void {
         } else {
             item.type = strings.ltrim(std.fs.path.extension(it.name), ".");
         }
-        item.path = it.name;
+        if (path.len == 0) {
+            item.path = it.name;
+        } else {
+            item.path = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, it.name }) catch |e| return base.send_error(req, e); // TODO 需要显式释放内存吗
+        }
+        item.thumb = std.fmt.allocPrint(self.allocator, "ico/{s}.png", .{item.type}) catch |e| return base.send_error(req, e);
+
         items.append(item) catch {};
     }
+    std.log.debug("{s}", .{"end"});
 
     base.send_ok(req, .{ .count = items.items.len, .images = items.items });
 }
