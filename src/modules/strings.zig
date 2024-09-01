@@ -208,7 +208,7 @@ pub inline fn substr_count(str: []const u8, needle: []const u8) usize {
 /// sprinf 返回格式化字符串
 pub inline fn sprinf(format: []const u8, args: anytype) ![]const u8 {
     var buf: [409600]u8 = undefined;
-    return try std.fmt.bufPrint(buf[0..], format, args);
+    return try std.fmt.bufPrint(&buf, format, args);
 }
 
 /// 剪切子字符串

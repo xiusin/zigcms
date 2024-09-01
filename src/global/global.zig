@@ -15,9 +15,9 @@ pub const JwtTokenSecret = "this is a secret";
 var initOnce = std.once(init_some);
 
 pub fn deinit() void {
+    std.log.debug("global module deinit ...", .{});
     config.deinit();
     _pool.deinit();
-    std.log.debug("global deinit", .{});
     config = undefined;
     _allocator = undefined;
     _pool = undefined;
@@ -83,20 +83,21 @@ pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
 pub fn restore_setting() !void {
     mu.lock();
     defer mu.unlock();
+    return;
 
-    const sql = try strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
-    var result = try get_pg_pool().queryOpts(sql, .{}, .{ .column_names = true });
+    // const sql = try strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(models.Setting)});
+    // var result = try get_pg_pool().queryOpts(sql, .{}, .{ .column_names = true });
 
-    defer result.deinit();
-    const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
-    config.clearAndFree();
+    // defer result.deinit();
+    // const mapper = result.mapper(models.Setting, .{ .allocator = _allocator.? });
+    // config.clearAndFree();
 
-    while (try mapper.next()) |item| {
-        try config.put(
-            item.key,
-            item.value,
-        );
-    }
+    // while (try mapper.next()) |item| {
+    //     try config.put(
+    //         item.key,
+    //         item.value,
+    //     );
+    // }
 }
 
 // 动态结构体定义 https://github.com/ziglang/zig/issues/12330

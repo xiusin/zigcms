@@ -148,7 +148,13 @@ pub fn files(self: *Self, req: zap.Request) void {
     const FileItem = struct { type: []const u8 = "", thumb: []const u8 = "", name: []const u8, path: []const u8 = "" };
 
     var items = std.ArrayList(FileItem).init(self.allocator);
-    defer items.deinit();
+    defer {
+        for (items.items) |item| {
+            self.allocator.free(item.path);
+            self.allocator.free(item.thumb);
+        }
+        items.deinit();
+    }
 
     const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
     std.log.debug("dir = {s}", .{dir});
@@ -161,15 +167,14 @@ pub fn files(self: *Self, req: zap.Request) void {
             item.type = strings.ltrim(std.fs.path.extension(it.name), ".");
         }
         if (path.len == 0) {
-            item.path = it.name;
+            item.path = std.fmt.allocPrint(self.allocator, "{s}", .{it.name}) catch |e| return base.send_error(req, e);
         } else {
-            item.path = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, it.name }) catch |e| return base.send_error(req, e); // TODO 需要显式释放内存吗
+            item.path = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, it.name }) catch |e| return base.send_error(req, e);
         }
         item.thumb = std.fmt.allocPrint(self.allocator, "ico/{s}.png", .{item.type}) catch |e| return base.send_error(req, e);
 
         items.append(item) catch {};
     }
-    std.log.debug("{s}", .{"end"});
 
     base.send_ok(req, .{ .count = items.items.len, .images = items.items });
 }

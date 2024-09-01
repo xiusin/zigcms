@@ -31,10 +31,9 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer {
         const status = gpa.deinit();
-        // if (status == .leak) @panic("内存泄漏");
-        if (status == .ok) {
-            std.log.debug("关闭成功", .{});
-        }
+        if (status == .leak) {
+            @panic("内存泄漏");
+        } else std.log.debug("server exit successfully", .{});
     }
     const allocator = gpa.allocator();
     global.init(allocator);
