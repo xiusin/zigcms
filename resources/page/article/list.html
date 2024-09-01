@@ -14,7 +14,7 @@
     <script src="../../js/public.js"></script>
 </head>
 
-<body class="elem-style-win7">
+<body>
     <div class="layuimini-container">
         <div class="layuimini-main">
             <table id="currentTable" class="layui-table layui-hide" data-auth-add="/article/add"
@@ -23,6 +23,13 @@
             </table>
         </div>
     </div>
+    <div class="select-plus" lay-filter="test1"></div>
+
+    <script type="text/html" id="selectPlus">
+        <select  lay-append-to="body">
+            <option>请选择</option>
+        </select>
+    </script>
 
     <script type="text/html" id="toolbar">
         <button class="layui-btn layui-btn-sm layuimini-btn-primary" data-treetable-refresh><i class="fa fa-refresh"></i> </button>
