@@ -28,6 +28,12 @@
           "target": "_self"
         },
         {
+          "title": "角色管理",
+          "href": "page/role/list.html",
+          "icon": "fa fa-window-maximize",
+          "target": "_self"
+        },
+        {
           "title": "文件系统",
           "href": "js/lay-module/fileManager/demo/index.html",
           "icon": "fa fa-window-maximize",

@@ -12,9 +12,10 @@ const html = @embedFile("notfound.html");
 const color = @import("modules/color.zig");
 
 const cruds = .{
-    .category = models.Category,
-    .upload = models.Upload,
-    .article = models.Article,
+    .category = models.Category, // 分类
+    .upload = models.Upload, // 上传文件
+    .article = models.Article, // 文章管理
+    .role = models.Role, // 角色管理
 };
 
 fn not_found(req: zap.Request) void {
