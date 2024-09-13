@@ -11,10 +11,6 @@
             .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
             .hash = "12202d3d03ad02a9f8c083b8278f6d66350abdac421f9c645d6cb8c838082cd5d3df",
         },
-        // .capy = .{
-        //    .url = "https://github.com/capy-ui/capy/archive/master.tar.gz",
-        //    .hash = "1220b9cbe978d1dfbed0da89fea679762e9cd1c3fe4f826d2bd7cc8fa68b2f73291d",
-        // },
         .regex = .{
             .url = "https://github.com/tiehuis/zig-regex/archive/master.tar.gz",
             .hash = "1220b497739b6fd60f627da85862cbd0cec01f3d6b7ddaa923057a7999ecfa138704",

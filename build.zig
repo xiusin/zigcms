@@ -41,6 +41,9 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("curl", curl.module("curl"));
     exe.linkLibC();
 
+    const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
