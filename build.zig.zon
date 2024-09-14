@@ -55,6 +55,10 @@
             .url = "https://github.com/softprops/zig-jwt/archive/refs/tags/v0.1.0.tar.gz",
             .hash = "12208cb520dabbb84d7ca2a91a3dacb2bc92ac6bb55eed367f05fa9351eff5832617",
         },
+        .dotenv = .{
+            .url = "git+https://github.com/zigster64/dotenv.zig?ref=main#8cfcc1d754e758d68b2e835e24d246cf53e13441",
+            .hash = "12205586d99da89bd98f87eb6a4cecd62c0fefa0f0b95a5d29632bcbb28347ee9f29",
+        },
     },
     .paths = .{
         "build.zig",

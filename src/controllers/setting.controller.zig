@@ -63,19 +63,23 @@ pub fn save(self: Self, req: zap.Request) void {
     return base.send_ok(req, "保存成功");
 }
 
-pub fn send_mail(self: Self, _: zap.Request) void {
+pub fn send_mail(self: Self, req: zap.Request) void {
     const config = smtp.Config{
         .port = 25,
-        .encryption = .none,
-        .host = "localhost",
+        .encryption = .insecure,
+        .host = "smtp.qq.com",
         .allocator = self.allocator,
-        // .username = "username",
-        // .password = "password",
+        .username = "826466266@qq.com",
+        .password = "aodpqtajdowwbfeg",
     };
 
-    try smtp.send(.{
-        .from = "admin@localhost",
-        .to = &.{"user@localhost"},
-        .data = "From: Admin <admin@localhost>\r\nTo: User <user@localhost>\r\nSubject: Test\r\n\r\nThis is karl, I'm testing a SMTP client for Zig\r\n.\r\n",
-    }, config);
+    const from = "826466266@qq.com";
+    const to = "chenchengbin92@qq.com";
+    const subject = "Test";
+
+    const content = "This is karl, I'm testing a SMTP client for Zig";
+
+    const data = std.fmt.allocPrint(self.allocator, "From: Admin <{s}>\r\nTo: User <{s}>\r\nSubject: {s}\r\n\r\n{s}\r\n.\r\n", .{ from, to, subject, content }) catch return;
+    defer self.allocator.free(data);
+    smtp.send(.{ .from = from, .to = &.{to[0..]}, .data = data }, config) catch |e| return base.send_error(req, e);
 }

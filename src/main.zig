@@ -1,6 +1,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const pretty = @import("pretty");
+const dotenv = @import("dotenv");
 const Allocator = std.mem.Allocator;
 const Mustache = zap.Mustache;
 const global = @import("global/global.zig");
@@ -30,15 +31,20 @@ fn not_found(req: zap.Request) void {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+
     defer {
         const status = gpa.deinit();
         if (status == .leak) {
             @panic("内存泄漏");
         } else std.log.debug("server exit successfully", .{});
     }
+
     const allocator = gpa.allocator();
     global.init(allocator);
     defer global.deinit();
+
+    const env = try dotenv.init(allocator, ".env");
+    defer env.deinit();
 
     var router = zap.Router.init(allocator, .{ .not_found = not_found });
     defer router.deinit();
@@ -58,6 +64,7 @@ pub fn main() !void {
     var setting = controllers.Setting.init(allocator);
     try router.handle_func("/setting/get", &setting, &controllers.Setting.get);
     try router.handle_func("/setting/save", &setting, &controllers.Setting.save);
+    try router.handle_func("/setting/send_email", &setting, &controllers.Setting.send_mail);
 
     inline for (std.meta.fields(@TypeOf(cruds))) |field| {
         const generic = controllers.Generic.Generic(@field(cruds, field.name));

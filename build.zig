@@ -44,6 +44,9 @@ pub fn build(b: *std.Build) void {
     const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
 
+    const dotenv = b.dependency("dotenv", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("dotenv", dotenv.module("dotenv"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
