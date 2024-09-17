@@ -2201,7 +2201,7 @@ layui.use(['form', 'table'], function () {
                                 content: '/page/upload/list.html?select_mode=' + selectCheck,
                                 success(layero, index) {
                                     window.onTableDataConfirm = function (data) {
-                                        var currentUrl = $(elem).val();
+                                        var currentUrl = $(elem).val() || '';
                                         var urlArray = currentUrl.split(uploadSign);
                                         if (currentUrl.length == 0 || selectCheck == 'radio') {
                                             urlArray = [];
