@@ -1,7 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
 const pretty = @import("pretty");
-const dotenv = @import("dotenv");
 const Allocator = std.mem.Allocator;
 const Mustache = zap.Mustache;
 const global = @import("global/global.zig");
@@ -42,9 +41,6 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     global.init(allocator);
     defer global.deinit();
-
-    const env = try dotenv.init(allocator, ".env");
-    defer env.deinit();
 
     var router = zap.Router.init(allocator, .{ .not_found = not_found });
     defer router.deinit();

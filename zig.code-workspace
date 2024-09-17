@@ -11,13 +11,14 @@
             "bwork.zig-tools",
             "streetsidesoftware.code-spell-checker",
             "MS-CEINTL.vscode-language-pack-zh-hans",
-            "golang.go",
-            "whosydd.go-impl",
-            "wero.go-struct-tag",
             "k--kato.intellij-idea-keybindings",
             "DanielGavin.ols",
             "anweber.vscode-httpyac",
             "Codeium.codeium",
+            "mk12.better-git-line-blame",
+            "ianic.zig-language-extras",
+            "lorenzopirro.zig-snippets",
+            "levrotech.zig-znippets",
         ]
     },
     "settings": {

@@ -18,9 +18,6 @@ pub fn build(b: *std.Build) void {
     const regex = b.dependency("regex", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("regex", regex.module("regex"));
 
-    const zmpl = b.dependency("zmpl", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("zmpl", zmpl.module("zmpl"));
-
     const pg = b.dependency("pg", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("pg", pg.module("pg"));
 
@@ -43,9 +40,6 @@ pub fn build(b: *std.Build) void {
 
     const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-
-    const dotenv = b.dependency("dotenv", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("dotenv", dotenv.module("dotenv"));
 
     b.installArtifact(exe);
 
