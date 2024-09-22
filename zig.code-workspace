@@ -41,5 +41,8 @@
             "comments": "off",
             "strings": "on"
         },
+        "cSpell.words": [
+            "layui"
+        ],
     }
 }

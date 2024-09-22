@@ -1075,7 +1075,11 @@ layui.use(['form', 'table'], function () {
             },
             time: function (field) {
                 return function (data) {
-                    return new Date(data[field]).toLocaleString();
+                    let ts = data[field]
+                    if ((data[field] + '').length > 11) {
+                        ts = data[field] / 1000
+                    }
+                    return new Date(ts).toLocaleString();
                 }
             },
             filePreview: function (data) {
@@ -1798,8 +1802,24 @@ layui.use(['form', 'table'], function () {
                 return false;
             });
 
+            try {
+                admin.api.edit();
+            } catch (e) {
+                console.error(e);
+            }
         },
         api: {
+            edit: function () {
+                var params = new URLSearchParams(window.location.search);
+                const id = parseInt(params.get('id') || 0);
+                if (id) {
+                    layui.layer.load(4);
+                    layui.$.get(window.init.prefix + '/get?id=' + id, (res) => {
+                        layui.form.val('module-save-form', res.data);
+                        layui.layer.closeAll();
+                    });
+                }
+            },
             button: function () {
                 $('button[target="_blank"]').click(function () {
                     window.open(admin.url($(this).attr('href')));
@@ -2463,11 +2483,12 @@ layui.use(['form', 'table'], function () {
 
         tableInit(prefix, tableSel = '#currentTable', currentTableRenderId = 'currentTableRenderId') {
             return {
+                prefix: prefix,
                 tableElem: tableSel,
                 tableRenderId: currentTableRenderId,
                 indexUrl: prefix + '/list',
                 addUrl: 'save.html',
-                editUrl: prefix + '/edit',
+                editUrl: 'save.html',
                 deleteUrl: prefix + '/delete',
                 exportUrl: prefix + '/export',
                 modifyUrl: prefix + '/modify',

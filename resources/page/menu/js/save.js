@@ -1,7 +1,3 @@
-layui.$(function () {
-
-});
-
 layui.use(['iconPickerFa', 'autocomplete'], function () {
     var iconPickerFa = layui.iconPickerFa;
     var autocomplete = layui.autocomplete;
