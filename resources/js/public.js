@@ -1815,6 +1815,7 @@ layui.use(['form', 'table'], function () {
                 if (id) {
                     layui.layer.load(4);
                     layui.$.get(window.init.prefix + '/get?id=' + id, (res) => {
+                      console.log(res);
                         layui.form.val('module-save-form', res.data);
                         layui.layer.closeAll();
                     });
