@@ -44,5 +44,16 @@
         "cSpell.words": [
             "layui"
         ],
+        "files.exclude": {
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/Thumbs.db": true,
+            "**/.zig-cache": true,
+            "**/zig-out": true,
+            "**/target": true,
+        }
     }
 }

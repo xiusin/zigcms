@@ -128,7 +128,7 @@ pub fn get_table_name(comptime T: type) []const u8 {
     while (iter.next()) |v| {
         tablename = v;
     }
-    var buffer: [512]u8 = undefined; // std.mem.zeroes([100]u8);
+    var buffer: [512]u8 = undefined;
     const tbl = std.ascii.lowerString(buffer[0..], tablename);
     return strings.sprinf("zigcms.{s}", .{tbl}) catch unreachable;
 }

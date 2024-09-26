@@ -83,5 +83,5 @@ pub fn main() !void {
     });
     try listener.listen();
     std.log.debug("{s}", .{try color.green_bg("the zap server is started", .{})});
-    zap.start(.{ .threads = 1, .workers = 1 });
+    zap.start(.{ .threads = 2, .workers = 1 });
 }
