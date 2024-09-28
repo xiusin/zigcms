@@ -18,8 +18,8 @@ const Reply = struct {
     type: DataType = undefined,
     eof: []const u8 = "\r\n",
     err: anyerror = undefined,
+
     allocator: Allocator,
-    alloc_strings: ?[][]const u8 = null,
     alloc_map: ?std.StringArrayHashMap([]const u8) = null,
 
     pub fn init(allocator: Allocator, buf: []u8) Reply {
@@ -38,7 +38,6 @@ const Reply = struct {
     }
 
     pub fn deinit(self: *Reply) void {
-        if (self.alloc_strings != null) self.allocator.free(self.alloc_strings.?);
         if (self.alloc_map != null) self.alloc_map.?.deinit();
         self.allocator.free(self.buf);
 
@@ -106,24 +105,21 @@ const Reply = struct {
         var list = std.ArrayList([]const u8).init(self.allocator);
         defer list.deinit();
 
-        if (self.alloc_strings == null) {
-            switch (self.type) {
-                .SimpleString, .Integer => try list.append(self.buf[1..]),
-                .Error => try list.append(self.buf[5..]),
-                .Bulk => try list.append(self.get_all_next()),
-                .Array => {
-                    var iter = std.mem.split(u8, self.buf, self.eof);
-                    _ = iter.first();
-                    while (iter.next()) |line_| {
-                        if (line_.len == 0 or line_[0] != '$') {
-                            try list.append(line_);
-                        }
+        switch (self.type) {
+            .SimpleString, .Integer => try list.append(self.buf[1..]),
+            .Error => try list.append(self.buf[5..]),
+            .Bulk => try list.append(self.get_all_next()),
+            .Array => {
+                var iter = std.mem.split(u8, self.buf, self.eof);
+                _ = iter.first();
+                while (iter.next()) |line_| {
+                    if (line_.len == 0 or line_[0] != '$') {
+                        try list.append(line_);
                     }
-                },
-            }
-            self.alloc_strings = try list.toOwnedSlice();
+                }
+            },
         }
-        return self.alloc_strings.?;
+        return list.toOwnedSlice();
     }
 };
 
@@ -167,7 +163,7 @@ pub const Client = struct {
     }
 
     /// 发送命令
-    pub fn do(self: *Client, cmd: []u8) !Reply {
+    pub fn do(self: *Client, cmd: []const u8) !Reply {
         self.mu.lock();
         defer {
             self.mu.unlock();
@@ -177,7 +173,6 @@ pub const Client = struct {
 
         var buf: [4096000]u8 = undefined;
         var content = buf[0..try self.stream.read(&buf)];
-
         if (content.len == 0) unreachable;
         if (content.len == 5 and std.mem.eql(u8, content[0..3], "$-1")) return error.NilReturned;
         return Reply.init(self.allocator, content[0 .. content.len - 2]);

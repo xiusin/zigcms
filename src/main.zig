@@ -10,6 +10,7 @@ const models = @import("models/models.zig");
 const strings = @import("modules/strings.zig");
 const html = @embedFile("notfound.html");
 const color = @import("modules/color.zig");
+const registry = @import("global/registry.zig").Registry;
 
 const cruds = .{
     .category = models.Category, // 分类
@@ -41,6 +42,17 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     global.init(allocator);
     defer global.deinit();
+
+    var di = registry.init(allocator);
+    defer di.deinit();
+
+    var reply = try di.get_redis().do("set name ");
+    defer reply.deinit();
+
+    reply = try di.get_redis().do("get name");
+    defer reply.deinit();
+
+    std.log.debug("reply = {s}", .{reply.string()});
 
     var router = zap.Router.init(allocator, .{ .not_found = not_found });
     defer router.deinit();

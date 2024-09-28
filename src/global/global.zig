@@ -80,6 +80,14 @@ pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
     return def_value;
 }
 
+pub fn is_false(comptime T: type, val: T) bool {
+    if (T == bool) { // 可以直接判断类型是否满足
+        return !val;
+    }
+
+    return false;
+}
+
 pub fn restore_setting() !void {
     mu.lock();
     defer mu.unlock();
