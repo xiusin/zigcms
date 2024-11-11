@@ -13,9 +13,7 @@ pub const Registry = struct {
     }
 
     pub fn deinit(self: *Registry) void {
-        if (self.redis != null) {
-            self.redis.?.deinit();
-        }
+        if (self.redis == null) self.redis.?.deinit();
 
         self.* = undefined;
         std.log.debug("registry deinit...", .{});

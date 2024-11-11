@@ -88,12 +88,12 @@ pub fn main() !void {
     var listener = zap.HttpListener.init(.{
         .port = 3000,
         .on_request = router.on_request_handler(),
-        .log = true,
+        .log = false,
         .public_folder = "resources",
         .max_clients = 10000,
         .timeout = 3,
     });
     try listener.listen();
     std.log.debug("{s}", .{try color.green_bg("the zap server is started", .{})});
-    zap.start(.{ .threads = 2, .workers = 1 });
+    zap.start(.{ .threads = 1, .workers = 1 });
 }
