@@ -1,99 +1,63 @@
 const std = @import("std");
-const zap = @import("zap");
-const pretty = @import("pretty");
-const Allocator = std.mem.Allocator;
-const Mustache = zap.Mustache;
-const global = @import("global/global.zig");
+const App = @import("app.zig").App;
 const controllers = @import("controllers/controllers.zig");
-const base = @import("controllers/base.fn.zig");
 const models = @import("models/models.zig");
-const strings = @import("modules/strings.zig");
-const html = @embedFile("notfound.html");
-const color = @import("modules/color.zig");
-const registry = @import("global/registry.zig").Registry;
-
-const cruds = .{
-    .category = models.Category, // 分类
-    .upload = models.Upload, // 上传文件
-    .article = models.Article, // 文章管理
-    .role = models.Role, // 角色管理
-};
-
-fn not_found(req: zap.Request) void {
-    req.setStatus(.not_found);
-    if (req.method) |method| {
-        if (strings.eql("GET", method)) {
-            req.sendBody(html[0..]) catch return;
-        }
-    }
-    base.send_failed(req, "the url not found");
-}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
-
     defer {
         const status = gpa.deinit();
         if (status == .leak) {
             @panic("内存泄漏");
-        } else std.log.debug("server exit successfully", .{});
+        } else std.log.debug("服务器正常退出", .{});
     }
 
     const allocator = gpa.allocator();
-    global.init(allocator);
-    defer global.deinit();
 
-    var di = registry.init(allocator);
-    defer di.deinit();
+    // 初始化应用
+    var app = try App.init(allocator);
+    defer app.deinit();
 
-    var reply = try di.get_redis().do("set name ");
-    defer reply.deinit();
+    // ========================================================================
+    // 注册 CRUD 模块（自动生成 list/get/save/delete/modify/select 路由）
+    // ========================================================================
+    try app.crud("category", models.Category);
+    try app.crud("upload", models.Upload);
+    try app.crud("article", models.Article);
+    try app.crud("role", models.Role);
 
-    reply = try di.get_redis().do("get name");
-    defer reply.deinit();
+    // ========================================================================
+    // 注册自定义控制器
+    // ========================================================================
 
-    std.log.debug("reply = {s}", .{reply.string()});
-
-    var router = zap.Router.init(allocator, .{ .not_found = not_found });
-    defer router.deinit();
-
+    // 登录控制器
     var login = controllers.Login.init(allocator);
-    try router.handle_func("/login", &login, &controllers.Login.login);
-    try router.handle_func("/register", &login, &controllers.Login.register);
+    try app.route("/login", &login, &controllers.Login.login);
+    try app.route("/register", &login, &controllers.Login.register);
 
+    // 公共接口
     var public = controllers.Public.init(allocator);
-    try router.handle_func("/public/upload", &public, &controllers.Public.upload);
-    try router.handle_func("/public/folder", &public, &controllers.Public.folder);
-    try router.handle_func("/public/files", &public, &controllers.Public.files);
+    try app.route("/public/upload", &public, &controllers.Public.upload);
+    try app.route("/public/folder", &public, &controllers.Public.folder);
+    try app.route("/public/files", &public, &controllers.Public.files);
 
+    // 菜单控制器
     var menu = controllers.Menu.init(allocator);
-    try router.handle_func("/menu/list", &menu, &controllers.Menu.list);
+    try app.route("/menu/list", &menu, &controllers.Menu.list);
 
+    // 设置控制器
     var setting = controllers.Setting.init(allocator);
-    try router.handle_func("/setting/get", &setting, &controllers.Setting.get);
-    try router.handle_func("/setting/save", &setting, &controllers.Setting.save);
-    try router.handle_func("/setting/send_email", &setting, &controllers.Setting.send_mail);
+    try app.route("/setting/get", &setting, &controllers.Setting.get);
+    try app.route("/setting/save", &setting, &controllers.Setting.save);
+    try app.route("/setting/send_email", &setting, &controllers.Setting.send_mail);
 
-    inline for (std.meta.fields(@TypeOf(cruds))) |field| {
-        const generic = controllers.Generic.Generic(@field(cruds, field.name));
-        var generics = generic.init(allocator);
-        try router.handle_func("/" ++ field.name ++ "/get", &generics, &generic.get);
-        try router.handle_func("/" ++ field.name ++ "/list", &generics, &generic.list);
-        try router.handle_func("/" ++ field.name ++ "/delete", &generics, &generic.delete);
-        try router.handle_func("/" ++ field.name ++ "/save", &generics, &generic.save);
-        try router.handle_func("/" ++ field.name ++ "/modify", &generics, &generic.modify);
-        try router.handle_func("/" ++ field.name ++ "/select", &generics, &generic.select);
-    }
+    // ========================================================================
+    // 使用服务容器（可选）
+    // ========================================================================
+    // const services = app.services_ref();
+    // const cache = services.getCache();
+    // try cache.set("app_started", std.time.timestamp());
 
-    var listener = zap.HttpListener.init(.{
-        .port = 3000,
-        .on_request = router.on_request_handler(),
-        .log = false,
-        .public_folder = "resources",
-        .max_clients = 10000,
-        .timeout = 3,
-    });
-    try listener.listen();
-    std.log.debug("{s}", .{try color.green_bg("the zap server is started", .{})});
-    zap.start(.{ .threads = 1, .workers = 1 });
+    // 启动服务器
+    try app.listen(3000);
 }

@@ -68,16 +68,13 @@ pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
     return error.@"sql执行错误";
 }
 
+/// 获取配置项（直接返回 config 中存储的值或默认值）
 pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
     mu.lock();
     defer mu.unlock();
 
-    var buf: [40960]u8 = undefined;
-    if (config.get(key)) |val| {
-        @memcpy(buf[0..val.len], val);
-        return buf[0..];
-    }
-    return def_value;
+    // 直接返回 config 中的值，无需拷贝（config 生命周期与程序一致）
+    return config.get(key) orelse def_value;
 }
 
 pub fn is_false(comptime T: type, val: T) bool {

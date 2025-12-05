@@ -158,7 +158,9 @@ pub fn files(self: *Self, req: zap.Request) void {
 
     const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
     std.log.debug("dir = {s}", .{dir});
-    var iter = (std.fs.cwd().openDir(dir, .{}) catch |e| return base.send_error(req, e)).iterate();
+    var opened_dir = std.fs.cwd().openDir(dir, .{}) catch |e| return base.send_error(req, e);
+    defer opened_dir.close();  // 确保关闭目录句柄
+    var iter = opened_dir.iterate();
     while (iter.next() catch return) |it| {
         var item: FileItem = .{ .name = it.name };
         if (it.kind == .directory) {

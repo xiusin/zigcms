@@ -8,10 +8,12 @@ const global = @import("../global/global.zig");
 const models = @import("../models/models.zig");
 const dtos = @import("../dto/dtos.zig");
 const strings = @import("../modules/strings.zig");
+const mw = @import("../middlewares/middlewares.zig");
 
 pub fn Generic(comptime T: type) type {
     return struct {
         const Self = @This();
+        const MW = mw.Controller(Self);
 
         allocator: Allocator,
 
@@ -19,35 +21,33 @@ pub fn Generic(comptime T: type) type {
             return .{ .allocator = allocator };
         }
 
-        fn check_auth(_: *Self, _: zap.Request) !u32 {
-            return 0;
-            // if (req.method == null) return error.HttpMethodFailed;
-            // if (req.getHeader("authorization")) |authorization| {
-            //     var token = authorization;
-            //     if (strings.starts_with(authorization, "Bearer ")) {
-            //         token = authorization[7..];
-            //     }
+        // ====================================================================
+        // 公开 API（使用中间件包装）
+        // ====================================================================
 
-            //     // 解析token
-            //     var decoded = jwt.decode(
-            //         self.allocator,
-            //         struct { sub: u32, name: []const u8, iat: i64 },
-            //         token,
-            //         .{ .secret = global.JwtTokenSecret },
-            //         .{},
-            //     ) catch return error.@"token无效";
-            //     defer decoded.deinit();
+        /// 列表查询（需要认证）
+        pub const list = MW.requireAuth(listImpl);
 
-            //     if (decoded.claims.iat < std.time.timestamp()) {
-            //         return error.@"token过期";
-            //     }
-            //     return decoded.claims.sub;
-            // }
-            // return error.@"缺少登录凭证";
-        }
+        /// 获取单条记录（需要认证）
+        pub const get = MW.requireAuth(getImpl);
 
-        pub fn list(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        /// 删除记录（需要认证）
+        pub const delete = MW.requireAuth(deleteImpl);
+
+        /// 保存/更新记录（需要认证）
+        pub const save = MW.requireAuth(saveImpl);
+
+        /// 修改单字段（需要认证）
+        pub const modify = MW.requireAuth(modifyImpl);
+
+        /// 下拉选择（需要认证）
+        pub const select = MW.requireAuth(selectImpl);
+
+        // ====================================================================
+        // 实现方法（不再需要手动调用 check_auth）
+        // ====================================================================
+
+        fn listImpl(self: *Self, req: zap.Request) void {
             var dto = dtos.Page{};
             req.parseQuery();
 
@@ -108,8 +108,7 @@ pub fn Generic(comptime T: type) type {
             base.send_layui_table_response(req, items, @as(u64, @intCast(total.total)), .{});
         }
 
-        pub fn get(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        fn getImpl(_: *Self, req: zap.Request) void {
             req.parseQuery();
             const id_ = req.getParamSlice("id") orelse return;
             if (id_.len == 0) return;
@@ -126,8 +125,7 @@ pub fn Generic(comptime T: type) type {
             return base.send_ok(req, item);
         }
 
-        pub fn delete(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        fn deleteImpl(self: *Self, req: zap.Request) void {
             var ids = std.ArrayList(usize).init(self.allocator);
             defer ids.deinit();
 
@@ -173,8 +171,7 @@ pub fn Generic(comptime T: type) type {
             return base.send_ok(req, "删除成功");
         }
 
-        pub fn save(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        fn saveImpl(self: *Self, req: zap.Request) void {
             req.parseBody() catch unreachable;
             var dto: T = undefined;
             if (req.body) |body| {
@@ -214,8 +211,7 @@ pub fn Generic(comptime T: type) type {
             return base.send_ok(req, dto);
         }
 
-        pub fn modify(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        fn modifyImpl(self: *Self, req: zap.Request) void {
             var dto = dtos.Modify{};
             req.parseBody() catch |e| return base.send_error(req, e);
             if (req.body == null) return base.send_failed(req, "缺少必要参数");
@@ -249,8 +245,7 @@ pub fn Generic(comptime T: type) type {
             return base.send_ok(req, "更新成功");
         }
 
-        pub fn select(self: *Self, req: zap.Request) void {
-            _ = self.check_auth(req) catch |e| return base.send_error(req, e);
+        fn selectImpl(self: *Self, req: zap.Request) void {
             req.parseBody() catch |e| return base.send_error(req, e);
 
             const query = strings.sprinf("SELECT * FROM {s}", .{base.get_table_name(T)}) catch unreachable;

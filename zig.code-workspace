@@ -12,9 +12,7 @@
             "streetsidesoftware.code-spell-checker",
             "MS-CEINTL.vscode-language-pack-zh-hans",
             "k--kato.intellij-idea-keybindings",
-            "DanielGavin.ols",
             "anweber.vscode-httpyac",
-            "Codeium.codeium",
             "mk12.better-git-line-blame",
             "ianic.zig-language-extras",
             "lorenzopirro.zig-snippets",
@@ -42,7 +40,8 @@
             "strings": "on"
         },
         "cSpell.words": [
-            "layui"
+            "layui",
+            "webui"
         ],
         "files.exclude": {
             "**/.git": true,
