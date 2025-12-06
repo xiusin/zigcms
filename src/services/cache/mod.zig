@@ -83,6 +83,33 @@
 //! try users.set("1", 100, null);  // 实际键: "user:1"
 //! try orders.set("1", 200, null); // 实际键: "order:1"
 //! ```
+//!
+//! ## Remember 模式（Laravel 风格）
+//!
+//! ```zig
+//! // 基本用法：缓存不存在时调用回调生成
+//! const user = try c.remember("user:1", 60_000, struct {
+//!     pub fn call() !User {
+//!         return try db.findUser(1);
+//!     }
+//! }.call);
+//!
+//! // 带上下文的 remember
+//! const ctx = .{ .db = db, .id = user_id };
+//! const user = try c.rememberCtx("user:1", 60_000, ctx, struct {
+//!     pub fn call(c: @TypeOf(ctx)) !User {
+//!         return try c.db.findUser(c.id);
+//!     }
+//! }.call);
+//!
+//! // 永不过期版本
+//! const config = try c.rememberForever("app:config", loadConfig);
+//!
+//! // 其他 Laravel 风格方法
+//! const v = c.pull("temp");           // 获取后删除
+//! try c.forever("key", value);        // 永久设置
+//! const ok = try c.add("key", value, ttl);  // 仅在不存在时设置
+//! ```
 
 const base = @import("cache.zig");
 const typed = @import("typed_cache.zig");

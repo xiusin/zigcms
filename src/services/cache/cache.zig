@@ -188,6 +188,123 @@ pub fn Cache(comptime V: type) type {
             return value;
         }
 
+        /// 记住缓存值（Laravel Cache::remember 风格）
+        ///
+        /// 先从缓存获取，如果不存在则调用回调生成并缓存。
+        ///
+        /// ## 使用示例
+        /// ```zig
+        /// // 基本用法：使用无参回调
+        /// const user = try cache.remember("user:1", 60_000, struct {
+        ///     pub fn call() !User {
+        ///         return try db.findUser(1);
+        ///     }
+        /// }.call);
+        ///
+        /// // 带上下文：使用闭包
+        /// const ctx = .{ .db = db, .id = user_id };
+        /// const user = try cache.rememberCtx("user:1", 60_000, ctx, struct {
+        ///     pub fn call(c: @TypeOf(ctx)) !User {
+        ///         return try c.db.findUser(c.id);
+        ///     }
+        /// }.call);
+        /// ```
+        pub fn remember(
+            self: *Self,
+            key: []const u8,
+            ttl_ms: u64,
+            callback: anytype,
+        ) !V {
+            if (self.get(key)) |value| {
+                return value;
+            }
+
+            const value = try callback();
+            try self.set(key, value, ttl_ms);
+            return value;
+        }
+
+        /// 带上下文的 remember（支持闭包模拟）
+        ///
+        /// 允许传入上下文对象，在回调中使用。
+        pub fn rememberCtx(
+            self: *Self,
+            key: []const u8,
+            ttl_ms: u64,
+            ctx: anytype,
+            callback: fn (@TypeOf(ctx)) anyerror!V,
+        ) !V {
+            if (self.get(key)) |value| {
+                return value;
+            }
+
+            const value = try callback(ctx);
+            try self.set(key, value, ttl_ms);
+            return value;
+        }
+
+        /// 永久记住（永不过期）
+        ///
+        /// 类似 Laravel 的 Cache::rememberForever
+        pub fn rememberForever(
+            self: *Self,
+            key: []const u8,
+            callback: anytype,
+        ) !V {
+            if (self.get(key)) |value| {
+                return value;
+            }
+
+            const value = try callback();
+            try self.set(key, value, null); // null = 永不过期
+            return value;
+        }
+
+        /// 永久记住（带上下文）
+        pub fn rememberForeverCtx(
+            self: *Self,
+            key: []const u8,
+            ctx: anytype,
+            callback: fn (@TypeOf(ctx)) anyerror!V,
+        ) !V {
+            if (self.get(key)) |value| {
+                return value;
+            }
+
+            const value = try callback(ctx);
+            try self.set(key, value, null);
+            return value;
+        }
+
+        /// 拉取缓存（获取后删除）
+        ///
+        /// 类似 Laravel 的 Cache::pull
+        pub fn pull(self: *Self, key: []const u8) ?V {
+            if (self.get(key)) |value| {
+                _ = self.delete(key);
+                return value;
+            }
+            return null;
+        }
+
+        /// 仅在不存在时设置
+        ///
+        /// 类似 Laravel 的 Cache::add，如果键已存在返回 false
+        pub fn add(self: *Self, key: []const u8, value: V, ttl_ms: ?u64) !bool {
+            if (self.exists(key)) {
+                return false;
+            }
+            try self.set(key, value, ttl_ms);
+            return true;
+        }
+
+        /// 永久设置（永不过期）
+        ///
+        /// 类似 Laravel 的 Cache::forever
+        pub fn forever(self: *Self, key: []const u8, value: V) !void {
+            try self.set(key, value, null);
+        }
+
         /// 删除缓存
         pub fn delete(self: *Self, key: []const u8) bool {
             self.lock.lock();
@@ -570,4 +687,113 @@ test "Cache: 结构体值" {
     const user1 = c.get("user:1").?;
     try std.testing.expectEqual(@as(i32, 1), user1.id);
     try std.testing.expectEqualStrings("张三", user1.name);
+}
+
+test "Cache: remember 基本用法" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    var call_count: i32 = 0;
+
+    // 第一次调用，执行回调
+    const Callback = struct {
+        var count: *i32 = undefined;
+        pub fn call() !i32 {
+            count.* += 1;
+            return 42;
+        }
+    };
+    Callback.count = &call_count;
+
+    const v1 = try c.remember("key", 60_000, Callback.call);
+    try std.testing.expectEqual(@as(i32, 42), v1);
+    try std.testing.expectEqual(@as(i32, 1), call_count);
+
+    // 第二次调用，使用缓存，不执行回调
+    const v2 = try c.remember("key", 60_000, Callback.call);
+    try std.testing.expectEqual(@as(i32, 42), v2);
+    try std.testing.expectEqual(@as(i32, 1), call_count); // 计数不变
+}
+
+test "Cache: rememberCtx 带上下文" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    const Context = struct {
+        base: i32,
+        multiplier: i32,
+    };
+
+    const callback = struct {
+        pub fn call(ctx: Context) !i32 {
+            return ctx.base * ctx.multiplier;
+        }
+    }.call;
+
+    const ctx = Context{ .base = 10, .multiplier = 5 };
+    const v1 = try c.rememberCtx("computed", 60_000, ctx, callback);
+    try std.testing.expectEqual(@as(i32, 50), v1);
+
+    // 第二次使用缓存
+    const v2 = try c.rememberCtx("computed", 60_000, ctx, callback);
+    try std.testing.expectEqual(@as(i32, 50), v2);
+}
+
+test "Cache: rememberForever 永不过期" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    const v = try c.rememberForever("forever_key", struct {
+        pub fn call() !i32 {
+            return 999;
+        }
+    }.call);
+
+    try std.testing.expectEqual(@as(i32, 999), v);
+    try std.testing.expectEqual(@as(?i64, null), c.ttl("forever_key")); // 永不过期
+}
+
+test "Cache: pull 获取后删除" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    try c.set("temp", 123, null);
+    try std.testing.expect(c.exists("temp"));
+
+    const v = c.pull("temp");
+    try std.testing.expectEqual(@as(?i32, 123), v);
+    try std.testing.expect(!c.exists("temp")); // 已删除
+
+    // 再次 pull 返回 null
+    try std.testing.expectEqual(@as(?i32, null), c.pull("temp"));
+}
+
+test "Cache: add 仅在不存在时设置" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    // 第一次 add 成功
+    const added1 = try c.add("new_key", 100, null);
+    try std.testing.expect(added1);
+    try std.testing.expectEqual(@as(?i32, 100), c.get("new_key"));
+
+    // 第二次 add 失败（键已存在）
+    const added2 = try c.add("new_key", 200, null);
+    try std.testing.expect(!added2);
+    try std.testing.expectEqual(@as(?i32, 100), c.get("new_key")); // 值未变
+}
+
+test "Cache: forever 永久设置" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    try c.forever("permanent", 888);
+    try std.testing.expectEqual(@as(?i32, 888), c.get("permanent"));
+    try std.testing.expectEqual(@as(?i64, null), c.ttl("permanent")); // 永不过期
 }
