@@ -40,6 +40,10 @@ pub const DynamicBufferPool = p.DynamicBufferPool;
 pub const PooledHandle = p.PooledHandle;
 pub const PoolConfig = p.PoolConfig;
 
+// 统一接口 - 允许不同pool实现互换使用
+pub const PoolInterface = p.PoolInterface;
+pub const Poolable = p.Poolable;
+
 pub const createPool = p.createPool;
 pub const createPoolWithSize = p.createPoolWithSize;
 

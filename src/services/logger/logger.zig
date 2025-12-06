@@ -2881,3 +2881,327 @@ test "写入器性能对比: Mutex vs LockFree vs TLS" {
     // 所有写入器都应该成功完成
     try std.testing.expect(true);
 }
+
+test "Logger: 内存安全 - 大量日志写入" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{ .format = .json });
+    defer logger.deinit();
+
+    // 添加标准错误写入器
+    try logger.addWriter(StderrWriter.writer());
+
+    // 写入大量日志
+    for (0..1000) |i| {
+        logger.info("测试日志消息 #{d}", .{i});
+    }
+
+    // 验证内存状态正常（没有泄漏）
+    try std.testing.expect(true); // 如果有内存泄漏，defer会失败
+}
+
+test "Logger: 内存安全 - 结构化日志的内存管理" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{ .format = .json });
+    defer logger.deinit();
+
+    // 使用标准错误输出
+    try logger.addWriter(StderrWriter.writer());
+
+    // 记录结构化日志（使用with方法添加额外字段）
+    const log_with_fields = logger.with(.{
+        .user_id = @as(i64, 12345),
+        .action = "login",
+        .ip = "192.168.1.1",
+        .timestamp = @as(i64, 1640995200),
+    });
+    log_with_fields.info("用户操作", .{});
+
+    // 验证没有崩溃或内存泄漏
+    try std.testing.expect(true);
+}
+
+test "Logger: 线程安全 - 并发日志写入" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{ .format = .json });
+    defer logger.deinit();
+
+    // 添加线程安全的写入器
+    var async_writer = try AsyncWriter.init(allocator, Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStderr,
+        .flushFn = testFlushStderr,
+    }, .{ .buffer_size = 4096 });
+    defer async_writer.deinit();
+
+    try logger.addWriter(async_writer.writer());
+
+    const num_threads = 4;
+    const logs_per_thread = 100;
+
+    var threads: [num_threads]std.Thread = undefined;
+
+    // 启动多个线程并发写日志
+    for (&threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, concurrentLoggingTest, .{ &logger, i, logs_per_thread });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 强制刷新缓冲区
+    logger.flush();
+
+    // 验证所有日志都被处理（没有崩溃或死锁）
+    try std.testing.expect(true);
+}
+
+test "Logger: 线程安全 - 错误级别自动刷新" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{
+        .format = .json,
+        .sync_on_error = true, // 启用错误级别自动刷新
+    });
+    defer logger.deinit();
+
+    // 创建一个能跟踪刷新次数的写入器
+    var flush_counter = std.atomic.Value(usize).init(0);
+    var test_writer = TestFlushWriter{
+        .flush_count = &flush_counter,
+    };
+
+    try logger.addWriter(Writer{
+        .ptr = &test_writer,
+        .writeFn = testWriteFlush,
+        .flushFn = testFlush,
+    });
+
+    // 记录不同级别的日志
+    logger.debug("调试信息", .{});
+    logger.info("普通信息", .{});
+    logger.warn("警告信息", .{});
+    logger.err("错误信息", .{}); // 应该触发刷新
+    logger.fatal("致命错误", .{}); // 应该触发刷新
+
+    // 验证错误级别的日志触发了刷新
+    const flush_count = flush_counter.load(.monotonic);
+    try std.testing.expect(flush_count >= 2); // 至少err和fatal各触发一次
+}
+
+test "Logger: 内存安全 - 写入器生命周期管理" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{});
+    defer logger.deinit();
+
+    // 测试添加写入器
+    const writer1 = Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStderr,
+        .flushFn = testFlushStderr,
+    };
+
+    const writer2 = Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStdout,
+        .flushFn = testFlushStdout,
+    };
+
+    // 添加写入器
+    try logger.addWriter(writer1);
+    try logger.addWriter(writer2);
+
+    // 记录日志
+    logger.info("测试多个写入器", .{});
+
+    // 清空所有写入器
+    logger.clearWriters();
+
+    // 再次添加一个写入器
+    try logger.addWriter(writer1);
+
+    // 再次记录日志
+    logger.info("测试清空后重新添加", .{});
+
+    // 验证没有崩溃
+    try std.testing.expect(true);
+}
+
+test "Logger: 崩溃保护 - 全局日志器和panic处理" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{ .format = .json });
+    defer logger.deinit();
+
+    // 设置全局日志器
+    setGlobalLogger(&logger);
+
+    // 注册崩溃保护写入器
+    var async_writer = try AsyncWriter.init(allocator, Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStderr,
+        .flushFn = testFlushStderr,
+    }, .{});
+    defer async_writer.deinit();
+
+    registerCrashFlush(&async_writer);
+    defer unregisterCrashFlush(&async_writer);
+
+    // 记录一些日志
+    logger.info("测试崩溃保护", .{});
+
+    // 手动触发崩溃刷新（模拟panic）
+    flushAllCrashWriters();
+
+    // 清理全局日志器
+    setGlobalLogger(null);
+
+    // 验证没有内存泄漏
+    try std.testing.expect(true);
+}
+
+test "Logger: 边界条件 - 空消息和参数" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{});
+    defer logger.deinit();
+
+    // 添加一个简单的写入器
+    try logger.addWriter(Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStderr,
+        .flushFn = testFlushStderr,
+    });
+
+    // 测试各种边界情况
+    logger.info("", .{}); // 空消息
+    logger.info("无参数消息", .{}); // 无参数
+    logger.info("简单消息 {s}", .{"value"}); // 带参数的消息
+
+    // 验证没有崩溃
+    try std.testing.expect(true);
+}
+
+test "Logger: 内存安全 - 作用域日志器的生命周期" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{});
+    defer logger.deinit();
+
+    // 设置全局日志器以支持作用域日志器
+    setGlobalLogger(&logger);
+    defer setGlobalLogger(null);
+
+    // 创建作用域日志器
+    const log = logger.scoped("test");
+
+    // 使用作用域日志器
+    log.info("作用域测试消息", .{});
+    log.warn("作用域警告", .{});
+    log.err("作用域错误", .{});
+
+    // 验证正常工作
+    try std.testing.expect(true);
+}
+
+test "Logger: 性能测试 - 高频日志写入" {
+    const allocator = std.testing.allocator;
+    var logger = Logger.init(allocator, .{ .format = .text });
+    defer logger.deinit();
+
+    // 使用无锁写入器进行高性能测试
+    var lock_free_writer = LockFreeWriter.init(allocator, Writer{
+        .ptr = undefined,
+        .writeFn = testWriteToStderr,
+        .flushFn = testFlushStderr,
+    }, .{ .buffer_size = 65536, .flush_threshold = 32768 }) catch {
+        // 如果初始化失败，使用简单写入器
+        try logger.addWriter(Writer{
+            .ptr = undefined,
+            .writeFn = testWriteToStderr,
+            .flushFn = testFlushStderr,
+        });
+        return;
+    };
+    defer lock_free_writer.deinit();
+
+    try logger.addWriter(lock_free_writer.writer());
+
+    // 高频写入测试
+    const start_time = std.time.milliTimestamp();
+    for (0..10000) |i| {
+        logger.debug("性能测试日志 #{d}", .{i});
+    }
+    const end_time = std.time.milliTimestamp();
+
+    // 验证在合理时间内完成（每条日志平均耗时应小于1ms）
+    const duration = end_time - start_time;
+    try std.testing.expect(duration < 2000); // 2秒内完成1万条日志
+}
+
+// ============================================================================
+// 测试辅助类型和函数
+// ============================================================================
+
+/// 测试用的刷新计数写入器
+const TestFlushWriter = struct {
+    flush_count: *std.atomic.Value(usize),
+};
+
+/// 用于ArrayList的写入函数
+fn writeToArrayList(ptr: *anyopaque, data: []const u8) void {
+    _ = ptr;
+    _ = data;
+    // 简化：测试中我们不需要真正写入
+}
+
+/// 测试写入器写入函数
+fn testWriteFlush(ptr: *anyopaque, data: []const u8) void {
+    _ = ptr;
+    // 写入到stderr
+    _ = std.posix.write(std.posix.STDERR_FILENO, data) catch {};
+}
+
+/// 测试写入器刷新函数
+fn testFlush(ptr: *anyopaque) void {
+    var test_writer = @as(*TestFlushWriter, @ptrCast(@alignCast(ptr)));
+    _ = test_writer.flush_count.fetchAdd(1, .monotonic);
+}
+
+/// 测试用stderr写入函数
+fn testWriteToStderr(ptr: *anyopaque, data: []const u8) void {
+    _ = ptr;
+    _ = std.posix.write(std.posix.STDERR_FILENO, data) catch {};
+}
+
+/// 测试用stderr刷新函数
+fn testFlushStderr(ptr: *anyopaque) void {
+    _ = ptr;
+    // 刷新不需要实际操作
+}
+
+/// 测试用stdout写入函数
+fn testWriteToStdout(ptr: *anyopaque, data: []const u8) void {
+    _ = ptr;
+    _ = std.posix.write(std.posix.STDOUT_FILENO, data) catch {};
+}
+
+/// 测试用stdout刷新函数
+fn testFlushStdout(ptr: *anyopaque) void {
+    _ = ptr;
+    // 刷新不需要实际操作
+}
+
+/// 并发日志测试函数
+fn concurrentLoggingTest(logger: *Logger, thread_id: usize, num_logs: usize) void {
+    for (0..num_logs) |i| {
+        // 使用不同的日志级别和消息（5个级别：debug, info, warn, err, fatal）
+        const level = @as(Level, @enumFromInt(@mod(i, 5)));
+        switch (level) {
+            .debug => logger.debug("线程{d}调试日志#{d}", .{ thread_id, i }),
+            .info => logger.info("线程{d}信息日志#{d}", .{ thread_id, i }),
+            .warn => logger.warn("线程{d}警告日志#{d}", .{ thread_id, i }),
+            .err => logger.err("线程{d}错误日志#{d}", .{ thread_id, i }),
+            .fatal => logger.fatal("线程{d}致命日志#{d}", .{ thread_id, i }),
+        }
+
+        // 短暂延迟以增加并发性
+        std.atomic.spinLoopHint();
+    }
+}

@@ -571,3 +571,236 @@ test "ClientPool: cleanup 清理空闲" {
     try std.testing.expect(removed >= 1);
     try std.testing.expect(pool.size() >= 1);
 }
+
+test "ClientPool: 内存安全 - 连接生命周期管理" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 5, .min_size = 2 });
+    defer pool.deinit();
+
+    // 预热创建最小连接数
+    try pool.warmup();
+    try std.testing.expectEqual(@as(u32, 2), pool.size());
+
+    // 获取和释放连接
+    var handle1 = try pool.acquire();
+    var handle2 = try pool.acquire();
+    handle1.release();
+    handle2.release();
+
+    // 验证连接被正确复用
+    try std.testing.expectEqual(@as(u32, 2), pool.size());
+
+    // 再次获取应该复用现有连接
+    var handle3 = try pool.acquire();
+    handle3.release();
+
+    // 验证没有内存泄漏
+    try std.testing.expect(true);
+}
+
+test "ClientPool: 内存安全 - 连接清理和超时" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{
+        .max_size = 10,
+        .min_size = 1,
+        .idle_timeout_ms = 50, // 50ms超时
+    });
+    defer pool.deinit();
+
+    // 创建一些连接
+    var handle1 = try pool.acquire();
+    var handle2 = try pool.acquire();
+    handle1.release();
+    handle2.release();
+
+    try std.testing.expectEqual(@as(u32, 2), pool.size());
+
+    // 等待超时
+    std.Thread.sleep(100_000_000); // 100ms
+
+    // 清理超时连接
+    const cleaned = pool.cleanup();
+    try std.testing.expect(cleaned >= 1); // 至少清理了一个连接
+
+    // 验证最小连接数被保留
+    try std.testing.expect(pool.size() >= 1);
+}
+
+test "ClientPool: 线程安全 - 并发获取连接" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 20 });
+    defer pool.deinit();
+
+    const num_threads = 8;
+    const operations_per_thread = 50;
+
+    var threads: [num_threads]std.Thread = undefined;
+    var results: [num_threads]u32 = undefined;
+
+    // 启动多个线程并发操作
+    for (&threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, concurrentHttpPoolTest, .{ &pool, operations_per_thread, &results[i] });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证统计信息
+    const stats = pool.getStats();
+    const expected_operations = num_threads * operations_per_thread;
+
+    try std.testing.expectEqual(@as(u64, expected_operations), stats.acquires);
+    try std.testing.expectEqual(@as(u64, expected_operations), stats.releases);
+
+    // 验证所有线程都成功完成了操作
+    for (results) |result| {
+        try std.testing.expectEqual(@as(u32, operations_per_thread), result);
+    }
+}
+
+test "ClientPool: 线程安全 - 连接池满时的等待" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 1 });
+    defer pool.deinit();
+
+    // 先占用唯一的连接
+    var handle1 = try pool.acquire();
+
+    // 启动一个线程尝试获取连接（应该会等待）
+    var thread_result: ?ClientHandle = null;
+    var thread = try std.Thread.spawn(.{}, acquireHttpHandleWithTimeout, .{
+        &pool, &thread_result, 100_000_000, // 100ms 超时
+    });
+
+    // 短暂等待让线程开始等待
+    std.Thread.sleep(10_000_000); // 10ms
+
+    // 释放连接，让等待的线程可以获取
+    handle1.release();
+
+    // 等待线程完成
+    thread.join();
+
+    // 验证线程成功获取了连接
+    try std.testing.expect(thread_result != null);
+
+    // 清理
+    if (thread_result) |h| {
+        var handle = h;
+        handle.release();
+    }
+}
+
+test "ClientPool: 内存安全 - 错误处理和资源清理" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 5 });
+    defer pool.deinit();
+
+    // 获取连接
+    var handle = try pool.acquire();
+
+    // 模拟连接错误并标记为无效
+    handle.invalidate();
+
+    // 验证连接被销毁
+    try std.testing.expectEqual(@as(u32, 0), pool.size());
+
+    // 再次获取新连接
+    var handle2 = try pool.acquire();
+    handle2.release();
+
+    // 验证新连接创建成功
+    try std.testing.expectEqual(@as(u32, 1), pool.size());
+
+    // 验证统计信息正确
+    const stats = pool.getStats();
+    try std.testing.expectEqual(@as(u64, 2), stats.creates); // 创建了2个连接
+    try std.testing.expectEqual(@as(u64, 1), stats.destroys); // 销毁了1个连接
+}
+
+test "ClientPool: 边界条件 - 池大小为0" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 0 });
+    defer pool.deinit();
+
+    // 尝试获取连接应该失败
+    const handle = pool.tryAcquire();
+    try std.testing.expect(handle == null);
+
+    // 直接获取也应该失败
+    try std.testing.expectError(error.AcquireTimeout, pool.acquire());
+
+    // 池应该一直是空的
+    try std.testing.expectEqual(@as(u32, 0), pool.size());
+}
+
+test "ClientPool: 性能测试 - 高频连接获取" {
+    const allocator = std.testing.allocator;
+    var pool = ClientPool.init(allocator, .{ .max_size = 10, .min_size = 5 });
+    defer pool.deinit();
+
+    // 预热
+    try pool.warmup();
+
+    // 高频获取和释放测试
+    const start_time = std.time.milliTimestamp();
+
+    for (0..1000) |_| {
+        var handle = try pool.acquire();
+        // 模拟短暂使用
+        std.atomic.spinLoopHint();
+        handle.release();
+    }
+
+    const end_time = std.time.milliTimestamp();
+    const duration = end_time - start_time;
+
+    // 验证在合理时间内完成（平均每次操作应小于1ms）
+    try std.testing.expect(duration < 2000); // 2秒内完成1000次操作
+
+    // 验证连接复用
+    const stats = pool.getStats();
+    try std.testing.expect(stats.acquires >= 1000);
+    try std.testing.expect(stats.creates <= 10); // 最多创建10个连接
+}
+
+// ============================================================================
+// 测试辅助函数
+// ============================================================================
+
+/// 并发HTTP池测试函数
+fn concurrentHttpPoolTest(pool: *ClientPool, operations: u32, result: *u32) void {
+    var local_result: u32 = 0;
+
+    for (0..operations) |_| {
+        if (pool.tryAcquire()) |h| {
+            var handle = h;
+            defer handle.release();
+
+            // 模拟一些HTTP操作
+            local_result += 1;
+
+            // 短暂延迟以增加竞争
+            std.atomic.spinLoopHint();
+        }
+    }
+
+    result.* = local_result;
+}
+
+/// 带超时的HTTP连接获取函数
+fn acquireHttpHandleWithTimeout(pool: *ClientPool, result: *?ClientHandle, timeout_ns: u64) void {
+    const start_time = std.time.nanoTimestamp();
+
+    while (std.time.nanoTimestamp() - start_time < timeout_ns) {
+        if (pool.tryAcquire()) |handle| {
+            result.* = handle;
+            return;
+        }
+        // 短暂等待后重试
+        std.Thread.sleep(1000); // 1微秒
+    }
+
+    result.* = null;
+}

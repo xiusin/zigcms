@@ -1,6 +1,7 @@
 .{
-    .name = "practice",
+    .name = .zigcms,
     .version = "0.0.0",
+    .fingerprint = 0x7a661597fa815ed0,
     .minimum_zig_version = "0.13.0",
     .dependencies = .{
         .zap = .{

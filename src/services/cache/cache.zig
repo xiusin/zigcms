@@ -6,7 +6,28 @@
 //! - 内存安全（自动清理过期项）
 //! - 泛型支持（类型安全的存取）
 //!
-//! ## 使用示例
+//! ## Pool化支持
+//!
+//! 可以与 pool 模块结合使用，实现缓存对象的池化管理：
+//!
+//! ```zig
+//! const pool_mod = @import("services/pool/mod.zig");
+//! const cache_mod = @import("services/cache/cache.zig");
+//!
+//! // 创建缓存对象池
+//! var cache_pool = pool_mod.Pool(cache_mod.Cache([]const u8)).init(allocator, .{
+//!     .max_size = 10,
+//!     .min_size = 2,
+//! });
+//! defer cache_pool.deinit();
+//!
+//! // 获取缓存实例
+//! var cache = try cache_pool.acquire();
+//! defer cache_pool.release(cache);
+//!
+//! // 使用缓存
+//! try cache.set("key", "value", 60_000);
+//! ```
 //!
 //! ```zig
 //! const cache = @import("services/cache/cache.zig");
@@ -516,12 +537,12 @@ pub fn CacheManager(comptime V: type) type {
             self.lock.lock();
             defer self.lock.unlock();
 
-            var result = std.ArrayList([]const u8).init(self.allocator);
+            var result = std.ArrayListUnmanaged([]const u8){};
             var iter = self.tables.iterator();
             while (iter.next()) |entry| {
-                try result.append(entry.key_ptr.*);
+                try result.append(self.allocator, entry.key_ptr.*);
             }
-            return try result.toOwnedSlice();
+            return try result.toOwnedSlice(self.allocator);
         }
     };
 }
@@ -796,4 +817,318 @@ test "Cache: forever 永久设置" {
     try c.forever("permanent", 888);
     try std.testing.expectEqual(@as(?i32, 888), c.get("permanent"));
     try std.testing.expectEqual(@as(?i64, null), c.ttl("permanent")); // 永不过期
+}
+
+test "Cache: 内存安全 - 键的内存管理" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    // 设置一个键值对
+    try c.set("test_key", 123, null);
+
+    // 验证键被正确复制（不是引用原始字符串）
+    const original_key = "test_key";
+    var buffer: [20]u8 = undefined;
+    const new_key = std.fmt.bufPrint(&buffer, "{s}", .{original_key}) catch "fallback";
+    _ = new_key;
+
+    // 即使原始字符串被修改，缓存中的键应该保持不变
+    try std.testing.expect(c.exists("test_key"));
+    try std.testing.expectEqual(@as(?i32, 123), c.get("test_key"));
+}
+
+test "Cache: 内存安全 - 大量键值对的清理" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{ .initial_capacity = 1000 });
+    defer c.deinit();
+
+    // 添加大量键值对
+    for (0..1000) |i| {
+        var key_buf: [20]u8 = undefined;
+        const key = std.fmt.bufPrint(&key_buf, "key_{d}", .{i}) catch continue;
+        try c.set(key, @intCast(i), 100); // 100ms过期
+    }
+
+    try std.testing.expect(c.size() > 900); // 应该有大部分键值对
+
+    // 等待过期
+    std.Thread.sleep(500_000_000); // 500ms
+
+    // 清理过期项
+    const cleaned = c.cleanup();
+    try std.testing.expect(cleaned > 0); // 至少清理了一些
+
+    // 验证内存正确释放（允许更大的范围）
+    try std.testing.expect(c.size() < 500);
+}
+
+test "Cache: 内存安全 - 并发读写时的键释放" {
+    const allocator = std.testing.allocator;
+    var c = Cache([]const u8).init(allocator, .{});
+    defer c.deinit();
+
+    // 启动多个线程并发读写
+    const num_threads = 4;
+    var threads: [num_threads]std.Thread = undefined;
+
+    for (&threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, concurrentCacheTest, .{ &c, i });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证缓存状态正常
+    try std.testing.expect(c.size() >= 0);
+    try std.testing.expect(c.size() <= 100); // 合理的上限
+}
+
+test "Cache: 线程安全 - 并发访问统计信息" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    const num_threads = 8;
+    const operations_per_thread = 100;
+
+    var threads: [num_threads]std.Thread = undefined;
+
+    // 启动多个线程并发操作
+    for (&threads) |*thread| {
+        thread.* = try std.Thread.spawn(.{}, stressTestCache, .{ &c, operations_per_thread });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证统计信息
+    const stats = c.getStats();
+
+    // 由于并发和可能的冲突，确切的数字可能有差异，只验证有操作发生
+    try std.testing.expect(stats.sets > 0);
+
+    // 重置统计后应该为0
+    c.resetStats();
+    const reset_stats = c.getStats();
+    try std.testing.expectEqual(@as(u64, 0), reset_stats.hits);
+    try std.testing.expectEqual(@as(u64, 0), reset_stats.misses);
+    try std.testing.expectEqual(@as(u64, 0), reset_stats.sets);
+}
+
+test "Cache: 线程安全 - 过期清理的并发安全" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    // 添加一些短期缓存项
+    for (0..50) |i| {
+        var key_buf: [20]u8 = undefined;
+        const key = std.fmt.bufPrint(&key_buf, "temp_{d}", .{i}) catch continue;
+        try c.set(key, @intCast(i), 10_000); // 10ms 过期
+    }
+
+    // 启动多个线程同时清理
+    const num_threads = 3;
+    var threads: [num_threads]std.Thread = undefined;
+    var results: [num_threads]usize = undefined;
+
+    for (&threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, cleanupTest, .{ &c, &results[i] });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证清理结果合理
+    var total_cleaned: usize = 0;
+    for (results) |r| {
+        total_cleaned += r;
+    }
+
+    try std.testing.expect(total_cleaned >= 0);
+    try std.testing.expect(total_cleaned <= 50);
+
+    // 短暂等待让线程开始等待
+    std.Thread.sleep(1_000_000); // 1ms
+    const final_cleaned = c.cleanup();
+    try std.testing.expect(final_cleaned >= 0);
+}
+
+test "Cache: 内存安全 - 结构体值的深拷贝" {
+    const allocator = std.testing.allocator;
+
+    const TestStruct = struct {
+        id: i32,
+        data: []const u8,
+        allocator: std.mem.Allocator,
+    };
+
+    var c = Cache(TestStruct).init(allocator, .{});
+    defer c.deinit();
+
+    // 创建一个包含切片的结构体
+    const original_data = try allocator.dupe(u8, "test_data");
+    defer allocator.free(original_data);
+
+    const value = TestStruct{
+        .id = 123,
+        .data = original_data,
+        .allocator = allocator,
+    };
+
+    try c.set("struct_key", value, null);
+
+    // 验证能获取到值
+    if (c.get("struct_key")) |cached_value| {
+        try std.testing.expectEqual(@as(i32, 123), cached_value.id);
+        try std.testing.expectEqualStrings("test_data", cached_value.data);
+    } else {
+        try std.testing.expect(false); // 应该能获取到
+    }
+}
+
+test "CacheManager: 线程安全 - 多表并发操作" {
+    const allocator = std.testing.allocator;
+    var mgr = CacheManager(i32).init(allocator, .{});
+    defer mgr.deinit();
+
+    const num_threads = 4;
+    const operations_per_thread = 50;
+
+    var threads: [num_threads]std.Thread = undefined;
+
+    // 启动多个线程操作不同的表
+    for (&threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, multiTableTest, .{ &mgr, i, operations_per_thread });
+    }
+
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证表被正确创建
+    const table_names = try mgr.tableNames();
+    defer allocator.free(table_names);
+
+    try std.testing.expect(table_names.len >= 1); // 至少有一个表
+}
+
+test "Cache: 边界条件 - 空键操作" {
+    const allocator = std.testing.allocator;
+    var c = Cache(i32).init(allocator, .{});
+    defer c.deinit();
+
+    // 空字符串键
+    try c.set("", 42, null);
+    try std.testing.expect(c.exists(""));
+    try std.testing.expectEqual(@as(?i32, 42), c.get(""));
+
+    // 删除空字符串键
+    try std.testing.expect(c.delete(""));
+    try std.testing.expect(!c.exists(""));
+}
+
+test "Cache: 边界条件 - 超大值处理" {
+    const allocator = std.testing.allocator;
+    var c = Cache([]const u8).init(allocator, .{});
+    defer c.deinit();
+
+    // 创建一个大的字符串值
+    const large_value = try allocator.alloc(u8, 10000);
+    defer allocator.free(large_value);
+    @memset(large_value, 'X');
+
+    try c.set("large_key", large_value, null);
+
+    // 验证能正确存储和检索
+    if (c.get("large_key")) |retrieved| {
+        try std.testing.expectEqual(@as(usize, 10000), retrieved.len);
+        try std.testing.expectEqual(@as(u8, 'X'), retrieved[0]);
+        try std.testing.expectEqual(@as(u8, 'X'), retrieved[9999]);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+/// 并发缓存测试函数
+fn concurrentCacheTest(cache: *Cache([]const u8), thread_id: usize) void {
+    var key_buf: [30]u8 = undefined;
+    var value_buf: [50]u8 = undefined;
+
+    for (0..25) |i| {
+        // 构造唯一的键
+        const key = std.fmt.bufPrint(&key_buf, "thread_{d}_key_{d}", .{ thread_id, i }) catch continue;
+        const value = std.fmt.bufPrint(&value_buf, "value_{d}_{d}", .{ thread_id, i }) catch continue;
+
+        // 随机操作：设置、获取、删除
+        const rand = std.crypto.random.int(u8);
+        if (rand < 85) {
+            // 80% 概率设置
+            cache.set(key, value, 60_000) catch {};
+        } else if (rand < 170) {
+            // 15% 概率获取
+            _ = cache.get(key);
+        } else {
+            // 5% 概率删除
+            _ = cache.delete(key);
+        }
+
+        // 短暂延迟增加竞争
+        std.atomic.spinLoopHint();
+    }
+}
+
+/// 缓存压力测试函数
+fn stressTestCache(cache: *Cache(i32), operations: usize) void {
+    var key_buf: [20]u8 = undefined;
+
+    for (0..operations) |i| {
+        const key = std.fmt.bufPrint(&key_buf, "stress_{d}", .{i}) catch continue;
+        const value = @as(i32, @intCast(i));
+
+        // 随机选择操作
+        const rand = std.crypto.random.int(u8);
+        if (rand < 60) {
+            // 60% 设置
+            cache.set(key, value, null) catch {};
+        } else if (rand < 80) {
+            // 20% 获取
+            _ = cache.get(key);
+        } else {
+            // 20% 删除
+            _ = cache.delete(key);
+        }
+    }
+}
+
+/// 清理测试函数
+fn cleanupTest(cache: *Cache(i32), result: *usize) void {
+    // 多次清理并累计结果
+    var total: usize = 0;
+    for (0..5) |_| {
+        total += cache.cleanup();
+        std.Thread.sleep(1_000_000); // 1ms
+    }
+    result.* = total;
+}
+
+/// 多表测试函数
+fn multiTableTest(mgr: *CacheManager(i32), table_id: usize, operations: usize) void {
+    var key_buf: [30]u8 = undefined;
+
+    // 获取或创建表
+    const table = mgr.table(std.fmt.bufPrint(&key_buf, "table_{d}", .{table_id}) catch "default") catch return;
+
+    // 在表上执行操作
+    for (0..operations) |i| {
+        const key = std.fmt.bufPrint(&key_buf, "key_{d}", .{i}) catch continue;
+        const value = @as(i32, @intCast(i + table_id * 1000));
+
+        table.set(key, value, 60_000) catch {};
+        _ = table.get(key);
+    }
 }

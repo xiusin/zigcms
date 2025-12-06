@@ -139,14 +139,14 @@ pub fn RepositoryFn(comptime T: type, comptime schema: []const u8, comptime Pool
             var result = try self.pool.queryOpts(query, .{ offset, limit }, .{ .column_names = true });
             defer result.deinit();
 
-            var items = std.ArrayList(T).init(self.allocator);
+            var items = std.ArrayListUnmanaged(T){};
             const mapper = result.mapper(T, .{ .allocator = self.allocator });
             while (try mapper.next()) |item| {
-                try items.append(item);
+                try items.append(self.allocator, item);
             }
 
             return PageResult(T){
-                .items = try items.toOwnedSlice(),
+                .items = try items.toOwnedSlice(self.allocator),
                 .total = @intCast(count_result.total),
                 .page = page,
                 .limit = limit,
@@ -159,12 +159,12 @@ pub fn RepositoryFn(comptime T: type, comptime schema: []const u8, comptime Pool
             var result = try self.pool.queryOpts(SELECT_SQL, .{}, .{ .column_names = true });
             defer result.deinit();
 
-            var items = std.ArrayList(T).init(self.allocator);
+            var items = std.ArrayListUnmanaged(T){};
             const mapper = result.mapper(T, .{ .allocator = self.allocator });
             while (try mapper.next()) |item| {
-                try items.append(item);
+                try items.append(self.allocator, item);
             }
-            return try items.toOwnedSlice();
+            return try items.toOwnedSlice(self.allocator);
         }
 
         /// 执行原生 SQL
