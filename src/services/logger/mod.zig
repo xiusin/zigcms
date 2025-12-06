@@ -78,6 +78,14 @@ pub const MultiWriter = log.MultiWriter;
 // 高性能异步写入
 pub const AsyncWriter = log.AsyncWriter;
 pub const BufferedFileWriter = log.BufferedFileWriter;
+pub const LockFreeWriter = log.LockFreeWriter;
+pub const ThreadLocalWriter = log.ThreadLocalWriter;
+
+// 崩溃保护
+pub const registerCrashFlush = log.registerCrashFlush;
+pub const unregisterCrashFlush = log.unregisterCrashFlush;
+pub const flushAllCrashWriters = log.flushAllCrashWriters;
+pub const panicHandler = log.panicHandler;
 
 // 便捷函数
 pub const createLogger = log.createLogger;
