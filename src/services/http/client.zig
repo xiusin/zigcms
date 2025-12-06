@@ -17,6 +17,15 @@
 //!
 //! // 上传文件
 //! const upload_resp = try client.uploadFile("https://api.example.com/upload", "/path/to/file.png");
+//!
+//! // 下载文件（带进度回调）
+//! try client.downloadFile("https://example.com/file.zip", "/tmp/file.zip", .{
+//!     .on_progress = struct {
+//!         fn callback(progress: *const ProgressInfo) void {
+//!             std.debug.print("\r下载进度: {d:.1}%", .{progress.percent()});
+//!         }
+//!     }.callback,
+//! });
 //! ```
 
 const std = @import("std");
@@ -28,11 +37,108 @@ const ArrayList = std.array_list.Managed;
 /// HTTP 方法
 pub const Method = http.Method;
 
+/// 进度信息
+pub const ProgressInfo = struct {
+    /// 已传输字节数
+    bytes_transferred: usize,
+    /// 总字节数（0表示未知）
+    total_bytes: usize,
+    /// 传输方向
+    direction: enum { download, upload },
+    /// 当前速率（字节/秒）
+    speed_bytes_per_sec: usize,
+    /// 已用时间（纳秒）
+    elapsed_ns: u64,
+    /// 用户自定义数据
+    user_data: ?*anyopaque,
+
+    /// 获取进度百分比（0-100）
+    pub fn percent(self: *const ProgressInfo) f64 {
+        if (self.total_bytes == 0) return 0;
+        return @as(f64, @floatFromInt(self.bytes_transferred)) / @as(f64, @floatFromInt(self.total_bytes)) * 100.0;
+    }
+
+    /// 是否已完成
+    pub fn isComplete(self: *const ProgressInfo) bool {
+        return self.total_bytes > 0 and self.bytes_transferred >= self.total_bytes;
+    }
+
+    /// 获取预估剩余时间（秒）
+    pub fn estimatedRemainingSecs(self: *const ProgressInfo) ?f64 {
+        if (self.speed_bytes_per_sec == 0 or self.total_bytes == 0) return null;
+        const remaining = self.total_bytes - self.bytes_transferred;
+        return @as(f64, @floatFromInt(remaining)) / @as(f64, @floatFromInt(self.speed_bytes_per_sec));
+    }
+
+    /// 格式化字节大小
+    pub fn formatBytes(bytes: usize) struct { value: f64, unit: []const u8 } {
+        if (bytes >= 1024 * 1024 * 1024) {
+            return .{ .value = @as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0 * 1024.0), .unit = "GB" };
+        } else if (bytes >= 1024 * 1024) {
+            return .{ .value = @as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0), .unit = "MB" };
+        } else if (bytes >= 1024) {
+            return .{ .value = @as(f64, @floatFromInt(bytes)) / 1024.0, .unit = "KB" };
+        }
+        return .{ .value = @as(f64, @floatFromInt(bytes)), .unit = "B" };
+    }
+};
+
+/// 进度回调函数类型
+pub const ProgressCallback = *const fn (info: *const ProgressInfo) void;
+
+/// 进度配置
+pub const ProgressOptions = struct {
+    /// 进度回调函数
+    on_progress: ?ProgressCallback = null,
+    /// 回调间隔（毫秒），防止过于频繁调用
+    interval_ms: u32 = 100,
+    /// 用户自定义数据，会传递给回调函数
+    user_data: ?*anyopaque = null,
+};
+
+/// 超时配置
+pub const TimeoutOptions = struct {
+    /// 连接超时（毫秒）
+    connect_ms: u64 = 10_000,
+    /// 读取超时（毫秒）
+    read_ms: u64 = 30_000,
+    /// 写入超时（毫秒）
+    write_ms: u64 = 30_000,
+    /// 总超时（毫秒，0=无限制）
+    total_ms: u64 = 60_000,
+
+    /// 无超时
+    pub const none = TimeoutOptions{
+        .connect_ms = 0,
+        .read_ms = 0,
+        .write_ms = 0,
+        .total_ms = 0,
+    };
+
+    /// 快速超时（5秒）
+    pub const fast = TimeoutOptions{
+        .connect_ms = 2_000,
+        .read_ms = 5_000,
+        .write_ms = 5_000,
+        .total_ms = 10_000,
+    };
+
+    /// 长超时（5分钟）
+    pub const slow = TimeoutOptions{
+        .connect_ms = 30_000,
+        .read_ms = 300_000,
+        .write_ms = 300_000,
+        .total_ms = 600_000,
+    };
+};
+
 /// 请求配置
 pub const RequestOptions = struct {
-    /// 请求超时（毫秒）
+    /// 超时配置
+    timeout: TimeoutOptions = .{},
+    /// 请求超时（毫秒）- 已弃用，请使用 timeout
     timeout_ms: u64 = 30_000,
-    /// 连接超时（毫秒）
+    /// 连接超时（毫秒）- 已弃用，请使用 timeout
     connect_timeout_ms: u64 = 10_000,
     /// 最大重定向次数
     max_redirects: u8 = 5,
@@ -50,6 +156,8 @@ pub const RequestOptions = struct {
     verify_ssl: bool = true,
     /// 请求体
     body: ?[]const u8 = null,
+    /// 进度配置
+    progress: ProgressOptions = .{},
 };
 
 /// Cookie 结构
@@ -264,6 +372,285 @@ pub const HttpClient = struct {
     pub fn patch(self: *Self, url: []const u8, body: ?[]const u8) !Response {
         const options = RequestOptions{ .body = body };
         return self.request(.PATCH, url, options);
+    }
+
+    /// 下载文件到本地
+    pub fn downloadFile(self: *Self, url: []const u8, save_path: []const u8, progress_opts: ProgressOptions) !void {
+        const uri = try Uri.parse(url);
+
+        var server_header_buffer: [16 * 1024]u8 = undefined;
+        var req = try self.client.open(.GET, uri, .{
+            .server_header_buffer = &server_header_buffer,
+        });
+        defer req.deinit();
+
+        try req.send();
+        try req.wait();
+
+        // 获取文件大小
+        const content_length: usize = if (req.response.content_length) |len| len else 0;
+
+        // 创建输出文件
+        const file = try std.fs.cwd().createFile(save_path, .{});
+        defer file.close();
+
+        // 带进度读取
+        var reader = req.reader();
+        var buffer: [8192]u8 = undefined;
+        var total_read: usize = 0;
+        var last_callback_time: i64 = std.time.milliTimestamp();
+        const start_time = std.time.nanoTimestamp();
+
+        while (true) {
+            const bytes_read = try reader.read(&buffer);
+            if (bytes_read == 0) break;
+
+            try file.writeAll(buffer[0..bytes_read]);
+            total_read += bytes_read;
+
+            // 进度回调
+            if (progress_opts.on_progress) |callback| {
+                const now = std.time.milliTimestamp();
+                if (now - last_callback_time >= progress_opts.interval_ms or bytes_read == 0) {
+                    last_callback_time = now;
+                    const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+                    const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+                    const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_read)) / elapsed_secs) else 0;
+
+                    const info = ProgressInfo{
+                        .bytes_transferred = total_read,
+                        .total_bytes = content_length,
+                        .direction = .download,
+                        .speed_bytes_per_sec = speed,
+                        .elapsed_ns = elapsed_ns,
+                        .user_data = progress_opts.user_data,
+                    };
+                    callback(&info);
+                }
+            }
+        }
+
+        // 最终回调（确保100%）
+        if (progress_opts.on_progress) |callback| {
+            const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+            const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+            const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_read)) / elapsed_secs) else 0;
+
+            const info = ProgressInfo{
+                .bytes_transferred = total_read,
+                .total_bytes = if (content_length > 0) content_length else total_read,
+                .direction = .download,
+                .speed_bytes_per_sec = speed,
+                .elapsed_ns = elapsed_ns,
+                .user_data = progress_opts.user_data,
+            };
+            callback(&info);
+        }
+    }
+
+    /// 下载到内存（带进度）
+    pub fn downloadBytes(self: *Self, url: []const u8, progress_opts: ProgressOptions) ![]u8 {
+        const uri = try Uri.parse(url);
+
+        var server_header_buffer: [16 * 1024]u8 = undefined;
+        var req = try self.client.open(.GET, uri, .{
+            .server_header_buffer = &server_header_buffer,
+        });
+        defer req.deinit();
+
+        try req.send();
+        try req.wait();
+
+        const content_length: usize = if (req.response.content_length) |len| len else 0;
+
+        var result = std.ArrayListUnmanaged(u8){};
+        errdefer result.deinit(self.allocator);
+
+        var reader = req.reader();
+        var buffer: [8192]u8 = undefined;
+        var total_read: usize = 0;
+        var last_callback_time: i64 = std.time.milliTimestamp();
+        const start_time = std.time.nanoTimestamp();
+
+        while (true) {
+            const bytes_read = try reader.read(&buffer);
+            if (bytes_read == 0) break;
+
+            try result.appendSlice(self.allocator, buffer[0..bytes_read]);
+            total_read += bytes_read;
+
+            if (progress_opts.on_progress) |callback| {
+                const now = std.time.milliTimestamp();
+                if (now - last_callback_time >= progress_opts.interval_ms) {
+                    last_callback_time = now;
+                    const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+                    const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+                    const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_read)) / elapsed_secs) else 0;
+
+                    const info = ProgressInfo{
+                        .bytes_transferred = total_read,
+                        .total_bytes = content_length,
+                        .direction = .download,
+                        .speed_bytes_per_sec = speed,
+                        .elapsed_ns = elapsed_ns,
+                        .user_data = progress_opts.user_data,
+                    };
+                    callback(&info);
+                }
+            }
+        }
+
+        // 最终回调
+        if (progress_opts.on_progress) |callback| {
+            const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+            const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+            const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_read)) / elapsed_secs) else 0;
+
+            const info = ProgressInfo{
+                .bytes_transferred = total_read,
+                .total_bytes = if (content_length > 0) content_length else total_read,
+                .direction = .download,
+                .speed_bytes_per_sec = speed,
+                .elapsed_ns = elapsed_ns,
+                .user_data = progress_opts.user_data,
+            };
+            callback(&info);
+        }
+
+        return result.toOwnedSlice(self.allocator);
+    }
+
+    /// 上传文件（带进度）
+    pub fn uploadFileWithProgress(
+        self: *Self,
+        url: []const u8,
+        field_name: []const u8,
+        file_path: []const u8,
+        progress_opts: ProgressOptions,
+    ) !Response {
+        const uri = try Uri.parse(url);
+
+        // 读取文件
+        const file = try std.fs.cwd().openFile(file_path, .{});
+        defer file.close();
+
+        const stat = try file.stat();
+        const file_size = stat.size;
+        const filename = std.fs.path.basename(file_path);
+        const content_type_str = guessContentType(filename);
+
+        // 构建 multipart 头部
+        const boundary = "----ZigCMSBoundary7MA4YWxkTrZu0gW";
+        var header_buf = std.ArrayListUnmanaged(u8){};
+        defer header_buf.deinit(self.allocator);
+
+        const header_writer = header_buf.writer(self.allocator);
+        try header_writer.print("--{s}\r\nContent-Disposition: form-data; name=\"{s}\"; filename=\"{s}\"\r\nContent-Type: {s}\r\n\r\n", .{ boundary, field_name, filename, content_type_str });
+
+        const footer = "\r\n--" ++ boundary ++ "--\r\n";
+        const total_size = header_buf.items.len + file_size + footer.len;
+
+        // 打开连接
+        var server_header_buffer: [16 * 1024]u8 = undefined;
+        var req = try self.client.open(.POST, uri, .{
+            .server_header_buffer = &server_header_buffer,
+            .extra_headers = &.{
+                .{ .name = "Content-Type", .value = "multipart/form-data; boundary=" ++ boundary },
+            },
+        });
+        defer req.deinit();
+
+        req.transfer_encoding = .{ .content_length = total_size };
+        try req.send();
+
+        const writer = req.writer();
+        const start_time = std.time.nanoTimestamp();
+        var total_sent: usize = 0;
+        var last_callback_time: i64 = std.time.milliTimestamp();
+
+        // 发送头部
+        try writer.writeAll(header_buf.items);
+        total_sent += header_buf.items.len;
+
+        // 发送文件内容（分块）
+        var buffer: [8192]u8 = undefined;
+        while (true) {
+            const bytes_read = try file.read(&buffer);
+            if (bytes_read == 0) break;
+
+            try writer.writeAll(buffer[0..bytes_read]);
+            total_sent += bytes_read;
+
+            // 进度回调
+            if (progress_opts.on_progress) |callback| {
+                const now = std.time.milliTimestamp();
+                if (now - last_callback_time >= progress_opts.interval_ms) {
+                    last_callback_time = now;
+                    const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+                    const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+                    const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_sent)) / elapsed_secs) else 0;
+
+                    const info = ProgressInfo{
+                        .bytes_transferred = total_sent,
+                        .total_bytes = total_size,
+                        .direction = .upload,
+                        .speed_bytes_per_sec = speed,
+                        .elapsed_ns = elapsed_ns,
+                        .user_data = progress_opts.user_data,
+                    };
+                    callback(&info);
+                }
+            }
+        }
+
+        // 发送尾部
+        try writer.writeAll(footer);
+        total_sent += footer.len;
+
+        // 最终回调
+        if (progress_opts.on_progress) |callback| {
+            const elapsed_ns: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+            const elapsed_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+            const speed: usize = if (elapsed_secs > 0) @intFromFloat(@as(f64, @floatFromInt(total_sent)) / elapsed_secs) else 0;
+
+            const info = ProgressInfo{
+                .bytes_transferred = total_sent,
+                .total_bytes = total_size,
+                .direction = .upload,
+                .speed_bytes_per_sec = speed,
+                .elapsed_ns = elapsed_ns,
+                .user_data = progress_opts.user_data,
+            };
+            callback(&info);
+        }
+
+        try req.finish();
+        try req.wait();
+
+        // 读取响应
+        var body_reader = req.reader();
+        var response_body = ArrayList(u8).init(self.allocator);
+        errdefer response_body.deinit();
+
+        try body_reader.readAllArrayList(&response_body, 10 * 1024 * 1024);
+
+        var resp_headers = std.StringHashMap([]const u8).init(self.allocator);
+        const resp_cookies = ArrayList(Cookie).init(self.allocator);
+
+        var iter = req.response.iterateHeaders();
+        while (iter.next()) |header| {
+            const key = try self.allocator.dupe(u8, header.name);
+            const val = try self.allocator.dupe(u8, header.value);
+            try resp_headers.put(key, val);
+        }
+
+        return Response{
+            .allocator = self.allocator,
+            .status = req.response.status,
+            .headers = resp_headers,
+            .body = try response_body.toOwnedSlice(),
+            .cookies = resp_cookies,
+        };
     }
 
     /// 上传单个文件
@@ -623,6 +1010,25 @@ pub const RequestBuilder = struct {
     /// 设置超时
     pub fn timeout(self: *Self, ms: u64) *Self {
         self.options.timeout_ms = ms;
+        self.options.timeout.total_ms = ms;
+        return self;
+    }
+
+    /// 设置超时配置
+    pub fn timeoutOptions(self: *Self, opts: TimeoutOptions) *Self {
+        self.options.timeout = opts;
+        return self;
+    }
+
+    /// 设置快速超时
+    pub fn fastTimeout(self: *Self) *Self {
+        self.options.timeout = TimeoutOptions.fast;
+        return self;
+    }
+
+    /// 设置慢速超时
+    pub fn slowTimeout(self: *Self) *Self {
+        self.options.timeout = TimeoutOptions.slow;
         return self;
     }
 
@@ -774,4 +1180,153 @@ test "appendUrlEncoded" {
     list.clearRetainingCapacity();
     try appendUrlEncoded(&list, "name=value&foo=bar");
     try std.testing.expectEqualStrings("name%3Dvalue%26foo%3Dbar", list.items);
+}
+
+test "ProgressInfo: 百分比计算" {
+    const info = ProgressInfo{
+        .bytes_transferred = 500,
+        .total_bytes = 1000,
+        .direction = .download,
+        .speed_bytes_per_sec = 100,
+        .elapsed_ns = 5_000_000_000,
+        .user_data = null,
+    };
+
+    try std.testing.expectEqual(@as(f64, 50.0), info.percent());
+    try std.testing.expect(!info.isComplete());
+
+    // 完成状态
+    const complete_info = ProgressInfo{
+        .bytes_transferred = 1000,
+        .total_bytes = 1000,
+        .direction = .download,
+        .speed_bytes_per_sec = 100,
+        .elapsed_ns = 10_000_000_000,
+        .user_data = null,
+    };
+    try std.testing.expect(complete_info.isComplete());
+    try std.testing.expectEqual(@as(f64, 100.0), complete_info.percent());
+}
+
+test "ProgressInfo: 剩余时间估算" {
+    const info = ProgressInfo{
+        .bytes_transferred = 500,
+        .total_bytes = 1000,
+        .direction = .download,
+        .speed_bytes_per_sec = 100,
+        .elapsed_ns = 5_000_000_000,
+        .user_data = null,
+    };
+
+    const remaining = info.estimatedRemainingSecs();
+    try std.testing.expect(remaining != null);
+    try std.testing.expectEqual(@as(f64, 5.0), remaining.?);
+}
+
+test "ProgressInfo: 字节格式化" {
+    const bytes_b = ProgressInfo.formatBytes(500);
+    try std.testing.expectEqual(@as(f64, 500.0), bytes_b.value);
+    try std.testing.expectEqualStrings("B", bytes_b.unit);
+
+    const bytes_kb = ProgressInfo.formatBytes(2048);
+    try std.testing.expectEqual(@as(f64, 2.0), bytes_kb.value);
+    try std.testing.expectEqualStrings("KB", bytes_kb.unit);
+
+    const bytes_mb = ProgressInfo.formatBytes(5 * 1024 * 1024);
+    try std.testing.expectEqual(@as(f64, 5.0), bytes_mb.value);
+    try std.testing.expectEqualStrings("MB", bytes_mb.unit);
+
+    const bytes_gb = ProgressInfo.formatBytes(2 * 1024 * 1024 * 1024);
+    try std.testing.expectEqual(@as(f64, 2.0), bytes_gb.value);
+    try std.testing.expectEqualStrings("GB", bytes_gb.unit);
+}
+
+test "ProgressOptions: 默认值" {
+    const opts = ProgressOptions{};
+    try std.testing.expect(opts.on_progress == null);
+    try std.testing.expectEqual(@as(u32, 100), opts.interval_ms);
+    try std.testing.expect(opts.user_data == null);
+}
+
+test "ProgressCallback: 函数类型" {
+    const TestContext = struct {
+        var call_count: usize = 0;
+        var last_percent: f64 = 0;
+
+        fn callback(info: *const ProgressInfo) void {
+            call_count += 1;
+            last_percent = info.percent();
+        }
+    };
+
+    TestContext.call_count = 0;
+    TestContext.last_percent = 0;
+
+    const info = ProgressInfo{
+        .bytes_transferred = 750,
+        .total_bytes = 1000,
+        .direction = .download,
+        .speed_bytes_per_sec = 100,
+        .elapsed_ns = 7_500_000_000,
+        .user_data = null,
+    };
+
+    const callback: ProgressCallback = TestContext.callback;
+    callback(&info);
+
+    try std.testing.expectEqual(@as(usize, 1), TestContext.call_count);
+    try std.testing.expectEqual(@as(f64, 75.0), TestContext.last_percent);
+}
+
+test "TimeoutOptions: 预设值" {
+    // 默认超时
+    const default_opts = TimeoutOptions{};
+    try std.testing.expectEqual(@as(u64, 10_000), default_opts.connect_ms);
+    try std.testing.expectEqual(@as(u64, 30_000), default_opts.read_ms);
+    try std.testing.expectEqual(@as(u64, 60_000), default_opts.total_ms);
+
+    // 快速超时
+    try std.testing.expectEqual(@as(u64, 2_000), TimeoutOptions.fast.connect_ms);
+    try std.testing.expectEqual(@as(u64, 5_000), TimeoutOptions.fast.read_ms);
+    try std.testing.expectEqual(@as(u64, 10_000), TimeoutOptions.fast.total_ms);
+
+    // 慢速超时
+    try std.testing.expectEqual(@as(u64, 30_000), TimeoutOptions.slow.connect_ms);
+    try std.testing.expectEqual(@as(u64, 300_000), TimeoutOptions.slow.read_ms);
+    try std.testing.expectEqual(@as(u64, 600_000), TimeoutOptions.slow.total_ms);
+
+    // 无超时
+    try std.testing.expectEqual(@as(u64, 0), TimeoutOptions.none.connect_ms);
+    try std.testing.expectEqual(@as(u64, 0), TimeoutOptions.none.total_ms);
+}
+
+test "RequestBuilder: 超时设置" {
+    const allocator = std.testing.allocator;
+    var client = HttpClient.init(allocator);
+    defer client.deinit();
+
+    var builder = RequestBuilder.init(&client, .GET, "https://example.com");
+    defer builder.headers.deinit();
+
+    // 简单超时
+    _ = builder.timeout(5000);
+    try std.testing.expectEqual(@as(u64, 5000), builder.options.timeout.total_ms);
+
+    // 快速超时
+    _ = builder.fastTimeout();
+    try std.testing.expectEqual(@as(u64, 10_000), builder.options.timeout.total_ms);
+
+    // 慢速超时
+    _ = builder.slowTimeout();
+    try std.testing.expectEqual(@as(u64, 600_000), builder.options.timeout.total_ms);
+
+    // 自定义超时
+    _ = builder.timeoutOptions(.{
+        .connect_ms = 1000,
+        .read_ms = 2000,
+        .write_ms = 3000,
+        .total_ms = 4000,
+    });
+    try std.testing.expectEqual(@as(u64, 1000), builder.options.timeout.connect_ms);
+    try std.testing.expectEqual(@as(u64, 4000), builder.options.timeout.total_ms);
 }
