@@ -80,4 +80,39 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    // ========================================================================
+    // MySQL 集成测试
+    // ========================================================================
+    const mysql_test_exe = b.addExecutable(.{
+        .name = "mysql-test",
+        .root_source_file = b.path("src/services/mysql/integration_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // 链接 MySQL C 库
+    mysql_test_exe.linkLibC();
+    mysql_test_exe.linkSystemLibrary("mysqlclient");
+
+    // macOS: Homebrew 安装路径
+    if (target.result.os.tag == .macos) {
+        // 通用路径（符号链接）
+        mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+        mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+        // mysql-client@8.0 路径
+        mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/lib" });
+        mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/include" });
+        // Intel Mac
+        mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        mysql_test_exe.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
+
+    b.installArtifact(mysql_test_exe);
+
+    const run_mysql_test = b.addRunArtifact(mysql_test_exe);
+    run_mysql_test.step.dependOn(b.getInstallStep());
+
+    const mysql_test_step = b.step("test-mysql", "Run MySQL integration tests");
+    mysql_test_step.dependOn(&run_mysql_test.step);
 }
