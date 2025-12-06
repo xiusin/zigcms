@@ -21,14 +21,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub const ai = @import("ai/ai.zig");
 pub const cache = @import("cache/mod.zig");
 pub const datetime = @import("datetime/mod.zig");
+pub const events = @import("events/events.zig");
 pub const http = @import("http/mod.zig");
 pub const json = @import("json/json.zig");
 pub const logger = @import("logger/mod.zig");
 pub const orm = @import("orm/orm.zig");
 pub const pool = @import("pool/mod.zig");
 pub const redis = @import("redis/redis.zig");
+pub const thread_manager = @import("thread_manager.zig");
 
 // ============================================================================
 // 延迟初始化支持
