@@ -19,11 +19,11 @@
 //!
 //! // 解析 JSON
 //! const json_str = "{\"id\":1,\"name\":\"张三\",\"extra\":{\"foo\":\"bar\"}}";
-//! var user = try Json.unmarshal(User, allocator, json_str);
-//! defer Json.free(User, allocator, &user);
+//! var user = try JSON.decode(User, allocator, json_str);
+//! defer JSON.free(User, allocator, &user);
 //!
 //! // 序列化为 JSON
-//! const output = try Json.marshal(allocator, user);
+//! const output = try JSON.encode(allocator, user);
 //! defer allocator.free(output);
 //!
 //! // 自定义序列化
@@ -122,15 +122,15 @@ pub const RawMessage = struct {
     }
 
     /// 解析为指定类型
-    pub fn unmarshal(self: RawMessage, comptime T: type, allocator: Allocator) !T {
+    pub fn decode(self: RawMessage, comptime T: type, allocator: Allocator) !T {
         if (self.data.len == 0) return JsonError.InvalidJson;
-        return Json.unmarshal(T, allocator, self.data);
+        return JSON.decode(T, allocator, self.data);
     }
 
     /// 解析为动态 Value
     pub fn parse(self: RawMessage, allocator: Allocator) !Value {
         if (self.data.len == 0) return Value{ .null = {} };
-        return Json.parseValue(allocator, self.data);
+        return JSON.parseValue(allocator, self.data);
     }
 
     /// 检查是否为空
@@ -205,6 +205,514 @@ pub const Number = struct {
         return try allocator.dupe(u8, self.raw);
     }
 };
+
+// ============================================================================
+// 解析缓存 - 类似 Go encoding/json 的缓存机制
+// ============================================================================
+//
+// Go 的 encoding/json 缓存的是**类型元数据**（字段映射、编解码器函数），不是字符串内容。
+// 在 Zig 中，由于是编译时元编程，类型信息在编译时就已确定，无需运行时缓存。
+//
+// 我们真正需要池化的是：
+// 1. 解析器对象 - 避免重复分配 Parser 结构
+// 2. 序列化缓冲区 - 复用输出缓冲区
+// 3. 临时工作内存 - 解析过程中的临时分配
+//
+// Zig 的编译时泛型（TypedParser/TypedStringify）相当于 Go 的类型元数据缓存。
+
+/// 字段名缓存（仅缓存常量字段名，有大小限制）
+/// 这类似于 Go 缓存字段名的做法，但 Zig 中字段名是编译时常量，通常不需要
+pub const FieldNameCache = struct {
+    const Self = @This();
+    const MaxEntries = 256; // 限制最大缓存条目
+
+    allocator: Allocator,
+    names: std.StringHashMap(void),
+    count: usize = 0,
+    mutex: std.Thread.Mutex = .{},
+
+    pub fn init(allocator: Allocator) Self {
+        return .{
+            .allocator = allocator,
+            .names = std.StringHashMap(void).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        var iter = self.names.keyIterator();
+        while (iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.names.deinit();
+    }
+
+    /// 缓存字段名（有大小限制，超过则不缓存）
+    pub fn cache(self: *Self, name: []const u8) ![]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // 已存在则直接返回
+        if (self.names.getKey(name)) |existing| {
+            return existing;
+        }
+
+        // 超过限制则不缓存，直接返回原值（调用者需自行管理）
+        if (self.count >= MaxEntries) {
+            return name;
+        }
+
+        const owned = try self.allocator.dupe(u8, name);
+        try self.names.put(owned, {});
+        self.count += 1;
+        return owned;
+    }
+};
+
+/// 解析器对象池
+/// 复用解析器实例，减少内存分配开销
+pub const ParserPool = struct {
+    const Self = @This();
+    const MaxPoolSize = 32;
+
+    allocator: Allocator,
+    parsers: std.ArrayListUnmanaged(*Parser),
+    mutex: std.Thread.Mutex = .{},
+    options: ParseOptions,
+
+    /// 创建解析器池
+    pub fn init(allocator: Allocator, options: ParseOptions) Self {
+        return .{
+            .allocator = allocator,
+            .parsers = std.ArrayListUnmanaged(*Parser){},
+            .options = options,
+        };
+    }
+
+    /// 释放解析器池
+    pub fn deinit(self: *Self) void {
+        for (self.parsers.items) |parser| {
+            self.allocator.destroy(parser);
+        }
+        self.parsers.deinit(self.allocator);
+    }
+
+    /// 获取解析器
+    pub fn acquire(self: *Self, input: []const u8) !*Parser {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.parsers.items.len > 0) {
+            const parser = self.parsers.items[self.parsers.items.len - 1];
+            self.parsers.items.len -= 1;
+            parser.input = input;
+            parser.pos = 0;
+            parser.depth = 0;
+            return parser;
+        }
+
+        const parser = try self.allocator.create(Parser);
+        parser.* = Parser.init(self.allocator, input, self.options);
+        return parser;
+    }
+
+    /// 归还解析器
+    pub fn release(self: *Self, parser: *Parser) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.parsers.items.len < MaxPoolSize) {
+            self.parsers.append(self.allocator, parser) catch {
+                self.allocator.destroy(parser);
+            };
+        } else {
+            self.allocator.destroy(parser);
+        }
+    }
+};
+
+/// 序列化缓冲区池
+pub const BufferPool = struct {
+    const Self = @This();
+    const MaxPoolSize = 16;
+    const DefaultBufferSize = 4096;
+
+    allocator: Allocator,
+    buffers: std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)),
+    mutex: std.Thread.Mutex = .{},
+
+    /// 创建缓冲区池
+    pub fn init(allocator: Allocator) Self {
+        return .{
+            .allocator = allocator,
+            .buffers = std.ArrayListUnmanaged(std.ArrayListUnmanaged(u8)){},
+        };
+    }
+
+    /// 释放缓冲区池
+    pub fn deinit(self: *Self) void {
+        for (self.buffers.items) |*buf| {
+            buf.deinit(self.allocator);
+        }
+        self.buffers.deinit(self.allocator);
+    }
+
+    /// 获取缓冲区
+    pub fn acquire(self: *Self) !std.ArrayListUnmanaged(u8) {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.buffers.items.len > 0) {
+            const buf = self.buffers.items[self.buffers.items.len - 1];
+            self.buffers.items.len -= 1;
+            return buf;
+        }
+
+        var buf = std.ArrayListUnmanaged(u8){};
+        try buf.ensureTotalCapacity(self.allocator, DefaultBufferSize);
+        return buf;
+    }
+
+    /// 归还缓冲区
+    pub fn release(self: *Self, buf: *std.ArrayListUnmanaged(u8)) void {
+        buf.clearRetainingCapacity();
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.buffers.items.len < MaxPoolSize) {
+            self.buffers.append(self.allocator, buf.*) catch {
+                buf.deinit(self.allocator);
+            };
+        } else {
+            buf.deinit(self.allocator);
+        }
+    }
+};
+
+/// 高性能 JSON 编解码器
+/// 集成对象池和缓冲区复用，减少内存分配
+///
+/// 设计说明：
+/// - Go 的 encoding/json 缓存的是类型元数据，Zig 通过编译时泛型实现
+/// - 这里的池化针对的是解析器和缓冲区，不是数据内容
+/// - 对于大 JSON，每次解析都是独立的，不会缓存内容
+pub const Codec = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+    parser_pool: ParserPool,
+    buffer_pool: BufferPool,
+    parse_options: ParseOptions,
+    stringify_options: StringifyOptions,
+
+    /// 配置选项
+    pub const Config = struct {
+        /// 解析选项
+        parse_options: ParseOptions = .{},
+        /// 序列化选项
+        stringify_options: StringifyOptions = .{},
+    };
+
+    /// 创建编解码器
+    pub fn init(allocator: Allocator, config: Config) !Self {
+        return .{
+            .allocator = allocator,
+            .parser_pool = ParserPool.init(allocator, config.parse_options),
+            .buffer_pool = BufferPool.init(allocator),
+            .parse_options = config.parse_options,
+            .stringify_options = config.stringify_options,
+        };
+    }
+
+    /// 释放编解码器
+    pub fn deinit(self: *Self) void {
+        self.parser_pool.deinit();
+        self.buffer_pool.deinit();
+    }
+
+    /// 解析 JSON 为动态值（使用对象池）
+    pub fn parse(self: *Self, input: []const u8) !Value {
+        const parser = try self.parser_pool.acquire(input);
+        defer self.parser_pool.release(parser);
+        return parser.parse();
+    }
+
+    /// 反序列化 JSON 为指定类型
+    pub fn decode(self: *Self, comptime T: type, input: []const u8) !T {
+        var value = try self.parse(input);
+        defer value.deinit(self.allocator);
+        return try JSON.valueToType(T, self.allocator, value);
+    }
+
+    /// 序列化为 JSON（使用缓冲区池）
+    pub fn encode(self: *Self, value: anytype) ![]const u8 {
+        const buffer = try self.buffer_pool.acquire();
+
+        var stringify = Stringify{
+            .allocator = self.allocator,
+            .buffer = buffer,
+            .options = self.stringify_options,
+            .depth = 0,
+        };
+
+        const result = stringify.stringify(value) catch |err| {
+            self.buffer_pool.release(&stringify.buffer);
+            return err;
+        };
+
+        // 注意：成功时不归还缓冲区，因为结果使用了该内存
+        return result;
+    }
+
+    /// 批量解析（适用于 JSON Lines 格式）
+    pub fn parseLines(self: *Self, comptime T: type, input: []const u8) ![]T {
+        var results = std.ArrayListUnmanaged(T){};
+        errdefer {
+            for (results.items) |*item| {
+                JSON.free(T, self.allocator, item);
+            }
+            results.deinit(self.allocator);
+        }
+
+        var start: usize = 0;
+        for (input, 0..) |c, i| {
+            if (c == '\n' or i == input.len - 1) {
+                const end = if (c == '\n') i else i + 1;
+                const line = std.mem.trim(u8, input[start..end], " \t\r");
+                if (line.len > 0) {
+                    const item = try self.decode(T, line);
+                    try results.append(self.allocator, item);
+                }
+                start = i + 1;
+            }
+        }
+
+        return try results.toOwnedSlice(self.allocator);
+    }
+};
+
+/// 全局默认编解码器（可选使用）
+var global_codec: ?*Codec = null;
+var global_codec_mutex: std.Thread.Mutex = .{};
+
+/// 初始化全局编解码器
+pub fn initGlobalCodec(allocator: Allocator, config: Codec.Config) !void {
+    global_codec_mutex.lock();
+    defer global_codec_mutex.unlock();
+
+    if (global_codec != null) return;
+
+    global_codec = try allocator.create(Codec);
+    global_codec.?.* = try Codec.init(allocator, config);
+}
+
+/// 释放全局编解码器
+pub fn deinitGlobalCodec(allocator: Allocator) void {
+    global_codec_mutex.lock();
+    defer global_codec_mutex.unlock();
+
+    if (global_codec) |codec| {
+        codec.deinit();
+        allocator.destroy(codec);
+        global_codec = null;
+    }
+}
+
+/// 获取全局编解码器
+pub fn getGlobalCodec() ?*Codec {
+    return global_codec;
+}
+
+// ============================================================================
+// 编译时优化 - 类似 Sonic 的 JIT 编译思路
+// ============================================================================
+
+/// 生成编译时优化的结构体解析器
+/// 在编译时生成特定类型的解析代码，避免运行时反射
+pub fn TypedParser(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const fields = std.meta.fields(T);
+
+        allocator: Allocator,
+
+        pub fn init(allocator: Allocator) Self {
+            return .{ .allocator = allocator };
+        }
+
+        /// 编译时生成的快速解析
+        pub fn parse(self: *Self, input: []const u8) !T {
+            var parser = Parser.init(self.allocator, input, .{});
+            const value = try parser.parse();
+            defer {
+                var v = value;
+                v.deinit(self.allocator);
+            }
+
+            if (value != .object) return JsonError.TypeMismatch;
+            return try self.parseObject(value.object);
+        }
+
+        fn parseObject(self: *Self, obj: std.StringHashMap(Value)) !T {
+            var result: T = undefined;
+
+            // 编译时展开的字段解析
+            inline for (fields) |field| {
+                const json_name = comptime getFieldJsonName(field.name);
+
+                if (obj.get(json_name)) |field_value| {
+                    @field(result, field.name) = try parseField(field.type, self.allocator, field_value);
+                } else {
+                    // 处理默认值
+                    if (field.default_value_ptr) |default_ptr| {
+                        const default = @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
+                        @field(result, field.name) = default;
+                    } else if (@typeInfo(field.type) == .optional) {
+                        @field(result, field.name) = null;
+                    } else {
+                        return JsonError.MissingField;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        fn getFieldJsonName(comptime field_name: []const u8) []const u8 {
+            if (@hasDecl(T, "json_field_names")) {
+                const mappings = @field(T, "json_field_names");
+                inline for (mappings) |mapping| {
+                    if (std.mem.eql(u8, mapping[0], field_name)) {
+                        return mapping[1];
+                    }
+                }
+            }
+            return field_name;
+        }
+
+        fn parseField(comptime F: type, allocator: Allocator, value: Value) !F {
+            return JSON.valueToType(F, allocator, value);
+        }
+    };
+}
+
+/// 生成编译时优化的序列化器
+pub fn TypedStringify(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const fields = std.meta.fields(T);
+
+        allocator: Allocator,
+        buffer: std.ArrayListUnmanaged(u8),
+
+        pub fn init(allocator: Allocator) Self {
+            return .{
+                .allocator = allocator,
+                .buffer = std.ArrayListUnmanaged(u8){},
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.buffer.deinit(self.allocator);
+        }
+
+        /// 编译时优化的序列化
+        pub fn stringify(self: *Self, value: T) ![]const u8 {
+            try self.buffer.append(self.allocator, '{');
+
+            var first = true;
+            inline for (fields) |field| {
+                const field_value = @field(value, field.name);
+
+                // 跳过 null 可选值
+                if (@typeInfo(field.type) == .optional) {
+                    if (field_value == null) continue;
+                }
+
+                if (!first) try self.buffer.append(self.allocator, ',');
+                first = false;
+
+                // 写入字段名
+                const json_name = comptime getFieldJsonName(field.name);
+                try self.writeString(json_name);
+                try self.buffer.append(self.allocator, ':');
+
+                // 写入字段值
+                try self.writeValue(field_value);
+            }
+
+            try self.buffer.append(self.allocator, '}');
+            return self.buffer.toOwnedSlice(self.allocator);
+        }
+
+        fn getFieldJsonName(comptime field_name: []const u8) []const u8 {
+            if (@hasDecl(T, "json_field_names")) {
+                const mappings = @field(T, "json_field_names");
+                inline for (mappings) |mapping| {
+                    if (std.mem.eql(u8, mapping[0], field_name)) {
+                        return mapping[1];
+                    }
+                }
+            }
+            return field_name;
+        }
+
+        fn writeString(self: *Self, str: []const u8) !void {
+            try self.buffer.append(self.allocator, '"');
+            for (str) |c| {
+                switch (c) {
+                    '"' => try self.buffer.appendSlice(self.allocator, "\\\""),
+                    '\\' => try self.buffer.appendSlice(self.allocator, "\\\\"),
+                    '\n' => try self.buffer.appendSlice(self.allocator, "\\n"),
+                    '\r' => try self.buffer.appendSlice(self.allocator, "\\r"),
+                    '\t' => try self.buffer.appendSlice(self.allocator, "\\t"),
+                    else => try self.buffer.append(self.allocator, c),
+                }
+            }
+            try self.buffer.append(self.allocator, '"');
+        }
+
+        fn writeValue(self: *Self, value: anytype) !void {
+            const VT = @TypeOf(value);
+            const info = @typeInfo(VT);
+
+            switch (info) {
+                .bool => {
+                    if (value) {
+                        try self.buffer.appendSlice(self.allocator, "true");
+                    } else {
+                        try self.buffer.appendSlice(self.allocator, "false");
+                    }
+                },
+                .int, .comptime_int => {
+                    var buf: [32]u8 = undefined;
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+                    try self.buffer.appendSlice(self.allocator, str);
+                },
+                .float, .comptime_float => {
+                    var buf: [64]u8 = undefined;
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+                    try self.buffer.appendSlice(self.allocator, str);
+                },
+                .optional => {
+                    if (value) |v| {
+                        try self.writeValue(v);
+                    } else {
+                        try self.buffer.appendSlice(self.allocator, "null");
+                    }
+                },
+                .pointer => |ptr| {
+                    if (ptr.size == .slice and ptr.child == u8) {
+                        try self.writeString(value);
+                    } else {
+                        try self.buffer.appendSlice(self.allocator, "null");
+                    }
+                },
+                else => try self.buffer.appendSlice(self.allocator, "null"),
+            }
+        }
+    };
+}
 
 // ============================================================================
 // 常用类型别名
@@ -611,7 +1119,10 @@ pub const Parser = struct {
             }
             self.pos += 1;
 
-            const value = try self.parseValue();
+            const value = self.parseValue() catch |err| {
+                self.allocator.free(key);
+                return err;
+            };
             map.put(key, value) catch {
                 self.allocator.free(key);
                 return JsonError.OutOfMemory;
@@ -850,32 +1361,33 @@ pub const Stringify = struct {
         inline for (fields) |field| {
             const field_value = @field(value, field.name);
 
-            // 处理 omit_null 选项
-            if (self.options.omit_null) {
-                const field_info = @typeInfo(field.type);
-                if (field_info == .optional) {
-                    if (field_value == null) continue;
+            // 处理 omit_null 选项（在编译时检查类型）
+            const is_optional = @typeInfo(field.type) == .optional;
+            const should_skip = if (is_optional)
+                (if (self.options.omit_null) field_value == null else false)
+            else
+                false;
+
+            if (!should_skip) {
+                if (!first) {
+                    try self.buffer.append(self.allocator, ',');
                 }
-            }
+                first = false;
 
-            if (!first) {
-                try self.buffer.append(self.allocator, ',');
-            }
-            first = false;
+                if (self.options.pretty) {
+                    try self.buffer.append(self.allocator, '\n');
+                    try self.writeIndent();
+                }
 
-            if (self.options.pretty) {
-                try self.buffer.append(self.allocator, '\n');
-                try self.writeIndent();
+                // 获取字段名（支持 json 标签）
+                const field_name = getJsonFieldName(T, field.name);
+                try self.writeString(field_name);
+                try self.buffer.append(self.allocator, ':');
+                if (self.options.pretty) {
+                    try self.buffer.append(self.allocator, ' ');
+                }
+                try self.writeValue(field_value);
             }
-
-            // 获取字段名（支持 json 标签）
-            const field_name = getJsonFieldName(T, field.name);
-            try self.writeString(field_name);
-            try self.buffer.append(self.allocator, ':');
-            if (self.options.pretty) {
-                try self.buffer.append(self.allocator, ' ');
-            }
-            try self.writeValue(field_value);
         }
 
         self.depth -= 1;
@@ -937,7 +1449,7 @@ pub const Stringify = struct {
 };
 
 /// JSON 主接口（类似 Go 的 encoding/json）
-pub const Json = struct {
+pub const JSON = struct {
     /// 将 JSON 字符串解析为动态值
     pub fn parseValue(allocator: Allocator, input: []const u8) JsonError!Value {
         return parseValueWithOptions(allocator, input, .{});
@@ -950,32 +1462,32 @@ pub const Json = struct {
     }
 
     /// 将 JSON 字符串解析为指定类型（类似 Go 的 json.Unmarshal）
-    pub fn unmarshal(comptime T: type, allocator: Allocator, input: []const u8) !T {
-        return unmarshalWithOptions(T, allocator, input, .{});
+    pub fn decode(comptime T: type, allocator: Allocator, input: []const u8) !T {
+        return decodeWithOptions(T, allocator, input, .{});
     }
 
     /// 带选项的反序列化
-    pub fn unmarshalWithOptions(comptime T: type, allocator: Allocator, input: []const u8, options: ParseOptions) !T {
+    pub fn decodeWithOptions(comptime T: type, allocator: Allocator, input: []const u8, options: ParseOptions) !T {
         var value = try parseValueWithOptions(allocator, input, options);
         defer value.deinit(allocator);
         return try valueToType(T, allocator, value);
     }
 
     /// 将值序列化为 JSON 字符串（类似 Go 的 json.Marshal）
-    pub fn marshal(allocator: Allocator, value: anytype) ![]const u8 {
-        return marshalWithOptions(allocator, value, .{});
+    pub fn encode(allocator: Allocator, value: anytype) ![]const u8 {
+        return encodeWithOptions(allocator, value, .{});
     }
 
     /// 带选项的序列化
-    pub fn marshalWithOptions(allocator: Allocator, value: anytype, options: StringifyOptions) ![]const u8 {
+    pub fn encodeWithOptions(allocator: Allocator, value: anytype, options: StringifyOptions) ![]const u8 {
         var stringify = Stringify.init(allocator, options);
         defer stringify.deinit();
         return stringify.stringify(value);
     }
 
     /// 格式化 JSON 输出
-    pub fn marshalIndent(allocator: Allocator, value: anytype) ![]const u8 {
-        return marshalWithOptions(allocator, value, .{ .pretty = true });
+    pub fn encodeIndent(allocator: Allocator, value: anytype) ![]const u8 {
+        return encodeWithOptions(allocator, value, .{ .pretty = true });
     }
 
     /// 释放反序列化分配的内存
@@ -1208,25 +1720,25 @@ test "Json: 解析基本类型" {
     const allocator = std.testing.allocator;
 
     // null
-    var null_val = try Json.parseValue(allocator, "null");
+    var null_val = try JSON.parseValue(allocator, "null");
     try std.testing.expect(null_val.isNull());
 
     // bool
-    var true_val = try Json.parseValue(allocator, "true");
+    var true_val = try JSON.parseValue(allocator, "true");
     try std.testing.expectEqual(true, true_val.getBool().?);
 
-    var false_val = try Json.parseValue(allocator, "false");
+    var false_val = try JSON.parseValue(allocator, "false");
     try std.testing.expectEqual(false, false_val.getBool().?);
 
     // number
-    var num_val = try Json.parseValue(allocator, "42");
+    var num_val = try JSON.parseValue(allocator, "42");
     try std.testing.expectEqual(@as(f64, 42), num_val.getNumber().?);
 
-    var float_val = try Json.parseValue(allocator, "3.14");
+    var float_val = try JSON.parseValue(allocator, "3.14");
     try std.testing.expectApproxEqAbs(@as(f64, 3.14), float_val.getNumber().?, 0.001);
 
     // string
-    var str_val = try Json.parseValue(allocator, "\"hello\"");
+    var str_val = try JSON.parseValue(allocator, "\"hello\"");
     defer str_val.deinit(allocator);
     try std.testing.expectEqualStrings("hello", str_val.getString().?);
 }
@@ -1234,7 +1746,7 @@ test "Json: 解析基本类型" {
 test "Json: 解析数组" {
     const allocator = std.testing.allocator;
 
-    var arr_val = try Json.parseValue(allocator, "[1, 2, 3]");
+    var arr_val = try JSON.parseValue(allocator, "[1, 2, 3]");
     defer arr_val.deinit(allocator);
 
     const arr = arr_val.getArray().?;
@@ -1247,7 +1759,7 @@ test "Json: 解析数组" {
 test "Json: 解析对象" {
     const allocator = std.testing.allocator;
 
-    var obj_val = try Json.parseValue(allocator, "{\"name\":\"张三\",\"age\":25}");
+    var obj_val = try JSON.parseValue(allocator, "{\"name\":\"张三\",\"age\":25}");
     defer obj_val.deinit(allocator);
 
     try std.testing.expectEqualStrings("张三", obj_val.get("name").?.getString().?);
@@ -1257,7 +1769,7 @@ test "Json: 解析对象" {
 test "Json: 解析转义字符" {
     const allocator = std.testing.allocator;
 
-    var str_val = try Json.parseValue(allocator, "\"hello\\nworld\\t!\"");
+    var str_val = try JSON.parseValue(allocator, "\"hello\\nworld\\t!\"");
     defer str_val.deinit(allocator);
 
     try std.testing.expectEqualStrings("hello\nworld\t!", str_val.getString().?);
@@ -1267,17 +1779,17 @@ test "Json: 序列化基本类型" {
     const allocator = std.testing.allocator;
 
     // bool
-    const bool_str = try Json.marshal(allocator, true);
+    const bool_str = try JSON.encode(allocator, true);
     defer allocator.free(bool_str);
     try std.testing.expectEqualStrings("true", bool_str);
 
     // number
-    const num_str = try Json.marshal(allocator, @as(i32, 42));
+    const num_str = try JSON.encode(allocator, @as(i32, 42));
     defer allocator.free(num_str);
     try std.testing.expectEqualStrings("42", num_str);
 
     // string
-    const str_str = try Json.marshal(allocator, "hello");
+    const str_str = try JSON.encode(allocator, "hello");
     defer allocator.free(str_str);
     try std.testing.expectEqualStrings("\"hello\"", str_str);
 }
@@ -1297,7 +1809,7 @@ test "Json: 序列化结构体" {
         .active = true,
     };
 
-    const json_str = try Json.marshal(allocator, user);
+    const json_str = try JSON.encode(allocator, user);
     defer allocator.free(json_str);
 
     // 验证输出包含必要的字段
@@ -1316,8 +1828,8 @@ test "Json: 反序列化结构体" {
     };
 
     const json_str = "{\"id\":1,\"name\":\"张三\",\"age\":25}";
-    var user = try Json.unmarshal(User, allocator, json_str);
-    defer Json.free(User, allocator, &user);
+    var user = try JSON.decode(User, allocator, json_str);
+    defer JSON.free(User, allocator, &user);
 
     try std.testing.expectEqual(@as(i64, 1), user.id);
     try std.testing.expectEqualStrings("张三", user.name);
@@ -1339,7 +1851,7 @@ test "Json: 安全性 - 嵌套深度限制" {
         try deep_json.append(allocator, ']');
     }
 
-    const result = Json.parseValueWithOptions(allocator, deep_json.items, .{ .max_depth = 128 });
+    const result = JSON.parseValueWithOptions(allocator, deep_json.items, .{ .max_depth = 128 });
     try std.testing.expectError(JsonError.TooDeep, result);
 }
 
@@ -1347,13 +1859,13 @@ test "Json: 安全性 - 无效 JSON 拒绝" {
     const allocator = std.testing.allocator;
 
     // 未闭合的字符串
-    try std.testing.expectError(JsonError.UnterminatedString, Json.parseValue(allocator, "\"hello"));
+    try std.testing.expectError(JsonError.UnterminatedString, JSON.parseValue(allocator, "\"hello"));
 
     // 无效的 token
-    try std.testing.expectError(JsonError.UnexpectedCharacter, Json.parseValue(allocator, "undefined"));
+    try std.testing.expectError(JsonError.UnexpectedCharacter, JSON.parseValue(allocator, "undefined"));
 
     // 无效的数字（以点开头）
-    try std.testing.expectError(JsonError.UnexpectedCharacter, Json.parseValue(allocator, ".123"));
+    try std.testing.expectError(JsonError.UnexpectedCharacter, JSON.parseValue(allocator, ".123"));
 }
 
 test "Json: 格式化输出" {
@@ -1365,7 +1877,7 @@ test "Json: 格式化输出" {
     };
 
     const data = Data{ .name = "test", .value = 42 };
-    const pretty_json = try Json.marshalIndent(allocator, data);
+    const pretty_json = try JSON.encodeIndent(allocator, data);
     defer allocator.free(pretty_json);
 
     // 验证包含换行和缩进
@@ -1383,8 +1895,8 @@ test "Json: 可选字段处理" {
 
     // 部分字段缺失
     const json_str = "{\"host\":\"localhost\",\"port\":8080}";
-    var config = try Json.unmarshal(Config, allocator, json_str);
-    defer Json.free(Config, allocator, &config);
+    var config = try JSON.decode(Config, allocator, json_str);
+    defer JSON.free(Config, allocator, &config);
 
     try std.testing.expectEqualStrings("localhost", config.host);
     try std.testing.expectEqual(@as(?i32, 8080), config.port);
@@ -1395,7 +1907,7 @@ test "Json: Unicode 支持" {
     const allocator = std.testing.allocator;
 
     // 包含 Unicode 转义的 JSON
-    var str_val = try Json.parseValue(allocator, "\"\\u4e2d\\u6587\"");
+    var str_val = try JSON.parseValue(allocator, "\"\\u4e2d\\u6587\"");
     defer str_val.deinit(allocator);
 
     try std.testing.expectEqualStrings("中文", str_val.getString().?);
@@ -1411,8 +1923,8 @@ test "RawMessage: 基本功能" {
     };
 
     const json_str = "{\"type\":\"user\",\"payload\":{\"id\":1,\"name\":\"张三\"}}";
-    var msg = try Json.unmarshal(Message, allocator, json_str);
-    defer Json.free(Message, allocator, &msg);
+    var msg = try JSON.decode(Message, allocator, json_str);
+    defer JSON.free(Message, allocator, &msg);
 
     try std.testing.expectEqualStrings("user", msg.type);
 
@@ -1426,8 +1938,8 @@ test "RawMessage: 基本功能" {
         name: []const u8,
     };
 
-    var user = try msg.payload.unmarshal(User, allocator);
-    defer Json.free(User, allocator, &user);
+    var user = try msg.payload.decode(User, allocator);
+    defer JSON.free(User, allocator, &user);
 
     try std.testing.expectEqual(@as(i64, 1), user.id);
     try std.testing.expectEqualStrings("张三", user.name);
@@ -1447,7 +1959,7 @@ test "RawMessage: 序列化" {
         .payload = RawMessage.fromSlice("{\"foo\":\"bar\"}"),
     };
 
-    const json_str = try Json.marshal(allocator, msg);
+    const json_str = try JSON.encode(allocator, msg);
     defer allocator.free(json_str);
 
     // 验证 payload 被原样输出
@@ -1476,7 +1988,7 @@ test "自定义序列化: jsonMarshal" {
         .time = .{ .epoch = 1702857600 },
     };
 
-    const json_str = try Json.marshal(allocator, event);
+    const json_str = try JSON.encode(allocator, event);
     defer allocator.free(json_str);
 
     // 验证时间被序列化为数字
@@ -1513,8 +2025,8 @@ test "自定义反序列化: jsonUnmarshal" {
     };
 
     const json_str = "{\"name\":\"dark\",\"primary\":\"#1a2b3c\"}";
-    var theme = try Json.unmarshal(Theme, allocator, json_str);
-    defer Json.free(Theme, allocator, &theme);
+    var theme = try JSON.decode(Theme, allocator, json_str);
+    defer JSON.free(Theme, allocator, &theme);
 
     try std.testing.expectEqualStrings("dark", theme.name);
     try std.testing.expectEqual(@as(u8, 0x1a), theme.primary.r);
@@ -1526,7 +2038,7 @@ test "元组序列化" {
     const allocator = std.testing.allocator;
 
     const point = .{ @as(i32, 10), @as(i32, 20), @as(i32, 30) };
-    const json_str = try Json.marshal(allocator, point);
+    const json_str = try JSON.encode(allocator, point);
     defer allocator.free(json_str);
 
     try std.testing.expectEqualStrings("[10,20,30]", json_str);
@@ -1546,4 +2058,637 @@ test "Number: 高精度数值" {
     defer allocator.free(json_str);
 
     try std.testing.expectEqualStrings("12345678901234567890", json_str);
+}
+
+test "FieldNameCache: 字段名缓存" {
+    const allocator = std.testing.allocator;
+
+    var cache = FieldNameCache.init(allocator);
+    defer cache.deinit();
+
+    // 缓存字段名
+    const s1 = try cache.cache("id");
+    const s2 = try cache.cache("id");
+    const s3 = try cache.cache("name");
+
+    // 相同名称应该返回相同指针
+    try std.testing.expectEqual(s1.ptr, s2.ptr);
+
+    // 不同名称应该返回不同指针
+    try std.testing.expect(s1.ptr != s3.ptr);
+
+    // 验证内容
+    try std.testing.expectEqualStrings("id", s1);
+    try std.testing.expectEqualStrings("name", s3);
+}
+
+test "Codec: 高性能编解码器" {
+    const allocator = std.testing.allocator;
+
+    var codec = try Codec.init(allocator, .{});
+    defer codec.deinit();
+
+    const User = struct {
+        id: i64,
+        name: []const u8,
+    };
+
+    // 解析
+    const json_str = "{\"id\":1,\"name\":\"张三\"}";
+    var user = try codec.decode(User, json_str);
+    defer JSON.free(User, allocator, &user);
+
+    try std.testing.expectEqual(@as(i64, 1), user.id);
+    try std.testing.expectEqualStrings("张三", user.name);
+
+    // 序列化
+    const output = try codec.encode(user);
+    defer allocator.free(output);
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "\"id\":1") != null);
+}
+
+test "Codec: 批量解析 JSON Lines" {
+    const allocator = std.testing.allocator;
+
+    var codec = try Codec.init(allocator, .{});
+    defer codec.deinit();
+
+    const Item = struct {
+        id: i64,
+        value: []const u8,
+    };
+
+    const input =
+        \\{"id":1,"value":"a"}
+        \\{"id":2,"value":"b"}
+        \\{"id":3,"value":"c"}
+    ;
+
+    const items = try codec.parseLines(Item, input);
+    defer {
+        for (items) |*item| {
+            JSON.free(Item, allocator, item);
+        }
+        allocator.free(items);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), items.len);
+    try std.testing.expectEqual(@as(i64, 1), items[0].id);
+    try std.testing.expectEqual(@as(i64, 2), items[1].id);
+    try std.testing.expectEqual(@as(i64, 3), items[2].id);
+}
+
+test "TypedParser: 编译时优化解析" {
+    const allocator = std.testing.allocator;
+
+    const Config = struct {
+        host: []const u8,
+        port: i32,
+        debug: bool = false,
+    };
+
+    var parser = TypedParser(Config).init(allocator);
+
+    const json_str = "{\"host\":\"localhost\",\"port\":8080,\"debug\":true}";
+    var config = try parser.parse(json_str);
+    defer JSON.free(Config, allocator, &config);
+
+    try std.testing.expectEqualStrings("localhost", config.host);
+    try std.testing.expectEqual(@as(i32, 8080), config.port);
+    try std.testing.expectEqual(true, config.debug);
+}
+
+test "TypedStringify: 编译时优化序列化" {
+    const allocator = std.testing.allocator;
+
+    const Config = struct {
+        host: []const u8,
+        port: i32,
+        enabled: bool,
+    };
+
+    var stringify = TypedStringify(Config).init(allocator);
+    defer stringify.deinit();
+
+    const config = Config{
+        .host = "localhost",
+        .port = 3000,
+        .enabled = true,
+    };
+
+    const json_str = try stringify.stringify(config);
+    defer allocator.free(json_str);
+
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"host\":\"localhost\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"port\":3000") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"enabled\":true") != null);
+}
+
+test "ParserPool: 解析器对象池" {
+    const allocator = std.testing.allocator;
+
+    var pool = ParserPool.init(allocator, .{});
+    defer pool.deinit();
+
+    // 获取多个解析器
+    const p1 = try pool.acquire("{\"a\":1}");
+    const p2 = try pool.acquire("{\"b\":2}");
+
+    // 归还解析器
+    pool.release(p1);
+    pool.release(p2);
+
+    // 再次获取应该复用
+    const p3 = try pool.acquire("{\"c\":3}");
+    defer pool.release(p3);
+
+    // 验证解析器可用
+    var value = try p3.parse();
+    defer value.deinit(allocator);
+
+    try std.testing.expect(value == .object);
+}
+
+test "BufferPool: 缓冲区对象池" {
+    const allocator = std.testing.allocator;
+
+    var pool = BufferPool.init(allocator);
+    defer pool.deinit();
+
+    // 获取缓冲区
+    var buf1 = try pool.acquire();
+    try buf1.appendSlice(allocator, "hello");
+
+    // 归还缓冲区
+    pool.release(&buf1);
+
+    // 再次获取应该是空的（已清空）
+    var buf2 = try pool.acquire();
+    defer pool.release(&buf2);
+
+    try std.testing.expectEqual(@as(usize, 0), buf2.items.len);
+}
+
+// ============================================================================
+// Null 处理测试
+// ============================================================================
+
+test "Null: 解析 null 值" {
+    const allocator = std.testing.allocator;
+
+    // 直接解析 null
+    var null_val = try JSON.parseValue(allocator, "null");
+    try std.testing.expect(null_val.isNull());
+    try std.testing.expect(null_val == .null);
+}
+
+test "Null: 对象中的 null 字段" {
+    const allocator = std.testing.allocator;
+
+    const json_str = "{\"name\":\"test\",\"value\":null,\"count\":0}";
+    var obj = try JSON.parseValue(allocator, json_str);
+    defer obj.deinit(allocator);
+
+    try std.testing.expect(obj == .object);
+    try std.testing.expect(obj.get("value").?.isNull());
+    try std.testing.expectEqualStrings("test", obj.get("name").?.getString().?);
+}
+
+test "Null: 数组中的 null 元素" {
+    const allocator = std.testing.allocator;
+
+    const json_str = "[1, null, \"hello\", null, true]";
+    var arr = try JSON.parseValue(allocator, json_str);
+    defer arr.deinit(allocator);
+
+    try std.testing.expect(arr == .array);
+    const items = arr.getArray().?;
+    try std.testing.expectEqual(@as(usize, 5), items.len);
+    try std.testing.expect(items[1].isNull());
+    try std.testing.expect(items[3].isNull());
+    try std.testing.expectEqual(@as(f64, 1), items[0].getNumber().?);
+}
+
+test "Null: 反序列化到可选类型" {
+    const allocator = std.testing.allocator;
+
+    const User = struct {
+        name: []const u8,
+        email: ?[]const u8 = null,
+        age: ?i32 = null,
+        score: ?f64 = null,
+    };
+
+    // email 为 null
+    const json1 = "{\"name\":\"张三\",\"email\":null,\"age\":25}";
+    var user1 = try JSON.decode(User, allocator, json1);
+    defer JSON.free(User, allocator, &user1);
+
+    try std.testing.expectEqualStrings("张三", user1.name);
+    try std.testing.expectEqual(@as(?[]const u8, null), user1.email);
+    try std.testing.expectEqual(@as(?i32, 25), user1.age);
+    try std.testing.expectEqual(@as(?f64, null), user1.score);
+
+    // 字段完全缺失
+    const json2 = "{\"name\":\"李四\"}";
+    var user2 = try JSON.decode(User, allocator, json2);
+    defer JSON.free(User, allocator, &user2);
+
+    try std.testing.expectEqualStrings("李四", user2.name);
+    try std.testing.expectEqual(@as(?[]const u8, null), user2.email);
+    try std.testing.expectEqual(@as(?i32, null), user2.age);
+}
+
+test "Null: 序列化可选类型" {
+    const allocator = std.testing.allocator;
+
+    const Config = struct {
+        host: []const u8,
+        port: ?i32,
+        timeout: ?i32,
+    };
+
+    const config = Config{
+        .host = "localhost",
+        .port = 8080,
+        .timeout = null,
+    };
+
+    const json_str = try JSON.encode(allocator, config);
+    defer allocator.free(json_str);
+
+    // 验证包含 null
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"timeout\":null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"port\":8080") != null);
+}
+
+test "Null: 序列化时省略 null 字段" {
+    const allocator = std.testing.allocator;
+
+    const Config = struct {
+        host: []const u8,
+        port: ?i32,
+        timeout: ?i32,
+    };
+
+    const config = Config{
+        .host = "localhost",
+        .port = 8080,
+        .timeout = null,
+    };
+
+    const json_str = try JSON.encodeWithOptions(allocator, config, .{ .omit_null = true });
+    defer allocator.free(json_str);
+
+    // timeout 应该被省略
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "timeout") == null);
+    try std.testing.expect(std.mem.indexOf(u8, json_str, "\"port\":8080") != null);
+}
+
+// ============================================================================
+// 复杂嵌套结构测试
+// ============================================================================
+
+test "复杂嵌套: 多层对象" {
+    const allocator = std.testing.allocator;
+
+    const Address = struct {
+        city: []const u8,
+        zip: ?[]const u8 = null,
+    };
+
+    const Company = struct {
+        name: []const u8,
+        address: Address,
+    };
+
+    const Employee = struct {
+        id: i64,
+        name: []const u8,
+        company: Company,
+    };
+
+    const json_str =
+        \\{"id":1,"name":"张三","company":{"name":"科技公司","address":{"city":"北京","zip":"100000"}}}
+    ;
+
+    var emp = try JSON.decode(Employee, allocator, json_str);
+    defer JSON.free(Employee, allocator, &emp);
+
+    try std.testing.expectEqual(@as(i64, 1), emp.id);
+    try std.testing.expectEqualStrings("张三", emp.name);
+    try std.testing.expectEqualStrings("科技公司", emp.company.name);
+    try std.testing.expectEqualStrings("北京", emp.company.address.city);
+    try std.testing.expectEqualStrings("100000", emp.company.address.zip.?);
+}
+
+test "复杂嵌套: 嵌套数组" {
+    const allocator = std.testing.allocator;
+
+    const json_str = "[[1,2],[3,4],[5,6]]";
+    var arr = try JSON.parseValue(allocator, json_str);
+    defer arr.deinit(allocator);
+
+    try std.testing.expect(arr == .array);
+    const outer = arr.getArray().?;
+    try std.testing.expectEqual(@as(usize, 3), outer.len);
+
+    const inner0 = outer[0].getArray().?;
+    try std.testing.expectEqual(@as(f64, 1), inner0[0].getNumber().?);
+    try std.testing.expectEqual(@as(f64, 2), inner0[1].getNumber().?);
+}
+
+test "复杂嵌套: 对象数组" {
+    const allocator = std.testing.allocator;
+
+    const json_str =
+        \\[{"id":1,"name":"a"},{"id":2,"name":"b"},{"id":3,"name":"c"}]
+    ;
+
+    var arr = try JSON.parseValue(allocator, json_str);
+    defer arr.deinit(allocator);
+
+    try std.testing.expect(arr == .array);
+    const items = arr.getArray().?;
+    try std.testing.expectEqual(@as(usize, 3), items.len);
+
+    try std.testing.expectEqual(@as(f64, 1), items[0].get("id").?.getNumber().?);
+    try std.testing.expectEqualStrings("a", items[0].get("name").?.getString().?);
+}
+
+// ============================================================================
+// 异常情况和边界测试
+// ============================================================================
+
+test "异常: 空字符串" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.InvalidJson, JSON.parseValue(allocator, ""));
+}
+
+test "异常: 只有空白字符" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.InvalidJson, JSON.parseValue(allocator, "   \t\n  "));
+}
+
+test "异常: 未闭合的对象" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.UnexpectedToken, JSON.parseValue(allocator, "{\"key\":1"));
+}
+
+test "异常: 未闭合的数组" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.UnexpectedToken, JSON.parseValue(allocator, "[1,2,3"));
+}
+
+test "异常: 无效的数字格式" {
+    const allocator = std.testing.allocator;
+
+    // 以点开头
+    try std.testing.expectError(JsonError.UnexpectedCharacter, JSON.parseValue(allocator, ".5"));
+
+    // 多个负号
+    try std.testing.expectError(JsonError.InvalidNumber, JSON.parseValue(allocator, "--5"));
+
+    // 前导零后跟数字
+    // 注意：这在某些解析器中可能是有效的，我们只检查基本格式
+}
+
+test "异常: 无效的转义序列" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.InvalidEscape, JSON.parseValue(allocator, "\"hello\\xworld\""));
+}
+
+test "异常: 无效的 Unicode 转义" {
+    const allocator = std.testing.allocator;
+
+    // 不完整的 Unicode 转义
+    try std.testing.expectError(JsonError.InvalidUnicode, JSON.parseValue(allocator, "\"\\u12\""));
+
+    // 无效的十六进制字符
+    try std.testing.expectError(JsonError.InvalidUnicode, JSON.parseValue(allocator, "\"\\uGGGG\""));
+}
+
+test "异常: 对象键不是字符串" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.ObjectKeyNotString, JSON.parseValue(allocator, "{123:\"value\"}"));
+}
+
+test "异常: 缺少冒号" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.UnexpectedCharacter, JSON.parseValue(allocator, "{\"key\"\"value\"}"));
+}
+
+test "异常: 缺少逗号" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(JsonError.UnexpectedCharacter, JSON.parseValue(allocator, "{\"a\":1\"b\":2}"));
+}
+
+test "异常: 类型不匹配" {
+    const allocator = std.testing.allocator;
+
+    const User = struct {
+        id: i64,
+        name: []const u8,
+    };
+
+    // id 应该是数字，但传入了字符串
+    try std.testing.expectError(JsonError.TypeMismatch, JSON.decode(User, allocator, "{\"id\":\"not_a_number\",\"name\":\"test\"}"));
+
+    // name 应该是字符串，但传入了数字
+    try std.testing.expectError(JsonError.TypeMismatch, JSON.decode(User, allocator, "{\"id\":1,\"name\":123}"));
+}
+
+test "异常: 缺少必需字段" {
+    const allocator = std.testing.allocator;
+
+    const User = struct {
+        id: i64,
+        name: []const u8,
+    };
+
+    // 缺少 name 字段
+    try std.testing.expectError(JsonError.MissingField, JSON.decode(User, allocator, "{\"id\":1}"));
+}
+
+test "异常: 根级别不是对象" {
+    const allocator = std.testing.allocator;
+
+    const User = struct {
+        id: i64,
+    };
+
+    // 传入数组而不是对象
+    try std.testing.expectError(JsonError.TypeMismatch, JSON.decode(User, allocator, "[1,2,3]"));
+
+    // 传入基本类型
+    try std.testing.expectError(JsonError.TypeMismatch, JSON.decode(User, allocator, "123"));
+}
+
+// ============================================================================
+// 边界值测试
+// ============================================================================
+
+test "边界: 空对象" {
+    const allocator = std.testing.allocator;
+
+    var obj = try JSON.parseValue(allocator, "{}");
+    defer obj.deinit(allocator);
+
+    try std.testing.expect(obj == .object);
+}
+
+test "边界: 空数组" {
+    const allocator = std.testing.allocator;
+
+    var arr = try JSON.parseValue(allocator, "[]");
+    defer arr.deinit(allocator);
+
+    try std.testing.expect(arr == .array);
+    try std.testing.expectEqual(@as(usize, 0), arr.getArray().?.len);
+}
+
+test "边界: 空字符串值" {
+    const allocator = std.testing.allocator;
+
+    var str = try JSON.parseValue(allocator, "\"\"");
+    defer str.deinit(allocator);
+
+    try std.testing.expect(str == .string);
+    try std.testing.expectEqualStrings("", str.getString().?);
+}
+
+test "边界: 大整数" {
+    const allocator = std.testing.allocator;
+
+    // 大数值（注意：f64 精度有限，这里只测试解析成功）
+    var num = try JSON.parseValue(allocator, "9007199254740992");
+    try std.testing.expect(num.getNumber() != null);
+}
+
+test "边界: 科学计数法" {
+    const allocator = std.testing.allocator;
+
+    var num1 = try JSON.parseValue(allocator, "1.5e10");
+    try std.testing.expectApproxEqAbs(@as(f64, 1.5e10), num1.getNumber().?, 1);
+
+    var num2 = try JSON.parseValue(allocator, "1.5E-5");
+    try std.testing.expectApproxEqAbs(@as(f64, 1.5e-5), num2.getNumber().?, 1e-10);
+
+    var num3 = try JSON.parseValue(allocator, "-2.5e+3");
+    try std.testing.expectApproxEqAbs(@as(f64, -2500), num3.getNumber().?, 0.001);
+}
+
+test "边界: 特殊字符字符串" {
+    const allocator = std.testing.allocator;
+
+    // 包含所有需要转义的字符
+    var str = try JSON.parseValue(allocator, "\"line1\\nline2\\ttab\\r\\\"quote\\\\slash\"");
+    defer str.deinit(allocator);
+
+    try std.testing.expectEqualStrings("line1\nline2\ttab\r\"quote\\slash", str.getString().?);
+}
+
+test "边界: 深层嵌套（接近限制）" {
+    const allocator = std.testing.allocator;
+
+    // 创建 50 层嵌套（在默认 128 限制内）
+    var json = std.ArrayListUnmanaged(u8){};
+    defer json.deinit(allocator);
+
+    for (0..50) |_| {
+        try json.append(allocator, '[');
+    }
+    try json.appendSlice(allocator, "null");
+    for (0..50) |_| {
+        try json.append(allocator, ']');
+    }
+
+    var value = try JSON.parseValue(allocator, json.items);
+    defer value.deinit(allocator);
+
+    try std.testing.expect(value == .array);
+}
+
+test "边界: 带空白的 JSON" {
+    const allocator = std.testing.allocator;
+
+    const json_str =
+        \\  {
+        \\    "name"  :  "test"  ,
+        \\    "value" :  123
+        \\  }
+    ;
+
+    var obj = try JSON.parseValue(allocator, json_str);
+    defer obj.deinit(allocator);
+
+    try std.testing.expectEqualStrings("test", obj.get("name").?.getString().?);
+    try std.testing.expectEqual(@as(f64, 123), obj.get("value").?.getNumber().?);
+}
+
+// ============================================================================
+// RawMessage 边界测试
+// ============================================================================
+
+test "RawMessage: 嵌套 null 值" {
+    const allocator = std.testing.allocator;
+
+    const Message = struct {
+        type: []const u8,
+        data: RawMessage = .{},
+    };
+
+    const json_str = "{\"type\":\"empty\",\"data\":null}";
+    var msg = try JSON.decode(Message, allocator, json_str);
+    defer JSON.free(Message, allocator, &msg);
+
+    try std.testing.expectEqualStrings("empty", msg.type);
+    // RawMessage 应该包含 "null"
+    try std.testing.expectEqualStrings("null", msg.data.bytes());
+}
+
+test "RawMessage: 空对象" {
+    const allocator = std.testing.allocator;
+
+    const Message = struct {
+        type: []const u8,
+        data: RawMessage = .{},
+    };
+
+    const json_str = "{\"type\":\"empty\",\"data\":{}}";
+    var msg = try JSON.decode(Message, allocator, json_str);
+    defer JSON.free(Message, allocator, &msg);
+
+    try std.testing.expectEqualStrings("empty", msg.type);
+    try std.testing.expectEqualStrings("{}", msg.data.bytes());
+}
+
+// ============================================================================
+// 内存安全测试
+// ============================================================================
+
+test "内存安全: 错误时不泄漏内存" {
+    const allocator = std.testing.allocator;
+
+    const User = struct {
+        id: i64,
+        name: []const u8,
+    };
+
+    // 这些都应该返回错误，但不应该泄漏内存
+    // 使用 expectError 确保错误被正确处理
+    try std.testing.expectError(JsonError.MissingField, JSON.decode(User, allocator, "{\"id\":1}"));
+    try std.testing.expectError(JsonError.TypeMismatch, JSON.decode(User, allocator, "{\"id\":\"wrong\",\"name\":\"test\"}"));
+    try std.testing.expectError(JsonError.ObjectKeyNotString, JSON.parseValue(allocator, "{invalid}"));
+    try std.testing.expectError(JsonError.UnexpectedToken, JSON.parseValue(allocator, "[1,2,"));
+}
+
+test "内存安全: 部分解析后的清理" {
+    const allocator = std.testing.allocator;
+
+    // 测试各种格式错误，确保不泄漏内存
+    // 注意：具体错误类型取决于解析器在哪里失败
+    _ = JSON.parseValue(allocator, "[1, 2, \"hello\", {\"key\":}]") catch {};
+    _ = JSON.parseValue(allocator, "{\"a\":1,\"b\":2,\"c\":}") catch {};
 }
