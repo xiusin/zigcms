@@ -45,23 +45,48 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const driver = @import("driver.zig");
+const interface = @import("interface.zig");
 const mysql_core = @import("mysql.zig");
 
 // ============================================================================
 // 数据库管理器
 // ============================================================================
 
-/// 数据库管理器
+/// 数据库管理器 - 使用统一驱动接口
 pub const Database = struct {
     allocator: Allocator,
-    conn: driver.Connection,
+    conn: interface.Connection,
     debug: bool = false,
 
-    pub fn init(allocator: Allocator, config: driver.ConnectionConfig) !Database {
+    /// 从统一连接创建
+    pub fn fromConnection(allocator: Allocator, conn: interface.Connection) Database {
         return .{
             .allocator = allocator,
-            .conn = try driver.Connection.init(allocator, config),
+            .conn = conn,
+        };
+    }
+
+    /// 创建 SQLite 数据库（开发/测试）
+    pub fn sqlite(allocator: Allocator, path: []const u8) !Database {
+        return .{
+            .allocator = allocator,
+            .conn = try interface.Driver.sqlite(allocator, path),
+        };
+    }
+
+    /// 创建 MySQL 数据库（生产）
+    pub fn mysql(allocator: Allocator, config: interface.MySQLConfig) !Database {
+        return .{
+            .allocator = allocator,
+            .conn = try interface.Driver.mysql(allocator, config),
+        };
+    }
+
+    /// 创建内存数据库（纯测试）
+    pub fn memory(allocator: Allocator) !Database {
+        return .{
+            .allocator = allocator,
+            .conn = try interface.Driver.memory(allocator),
         };
     }
 
@@ -69,8 +94,13 @@ pub const Database = struct {
         self.conn.deinit();
     }
 
+    /// 获取驱动类型
+    pub fn getDriverType(self: *const Database) interface.DriverType {
+        return self.conn.getDriverType();
+    }
+
     /// 执行原始查询
-    pub fn rawQuery(self: *Database, sql: []const u8) !driver.ResultSet {
+    pub fn rawQuery(self: *Database, sql: []const u8) !interface.ResultSet {
         if (self.debug) {
             std.debug.print("[SQL] {s}\n", .{sql});
         }
@@ -537,7 +567,7 @@ pub fn ModelQuery(comptime T: type) type {
             var result = try self.db.rawQuery(sql_str);
             defer result.deinit();
 
-            if (try result.next()) |row| {
+            if (result.next()) |row| {
                 return @intCast(row.getInt("cnt") orelse 0);
             }
             return 0;
@@ -627,11 +657,11 @@ pub fn ModelQuery(comptime T: type) type {
             }
         }
 
-        fn mapResults(self: *Self, result: *driver.ResultSet) ![]T {
+        fn mapResults(self: *Self, result: *interface.ResultSet) ![]T {
             var models = std.ArrayList(T).init(self.db.allocator);
             errdefer models.deinit();
 
-            while (try result.next()) |row| {
+            while (result.next()) |row| {
                 var model: T = undefined;
 
                 inline for (std.meta.fields(T)) |field| {

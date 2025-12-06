@@ -115,4 +115,47 @@ pub fn build(b: *std.Build) void {
 
     const mysql_test_step = b.step("test-mysql", "Run MySQL integration tests");
     mysql_test_step.dependOn(&run_mysql_test.step);
+
+    // ========================================================================
+    // SQLite 集成测试
+    // ========================================================================
+    const sqlite_test_exe = b.addExecutable(.{
+        .name = "sqlite-test",
+        .root_source_file = b.path("src/services/mysql/sqlite_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // 链接 SQLite3 库
+    sqlite_test_exe.linkLibC();
+    sqlite_test_exe.linkSystemLibrary("sqlite3");
+
+    b.installArtifact(sqlite_test_exe);
+
+    const run_sqlite_test = b.addRunArtifact(sqlite_test_exe);
+    run_sqlite_test.step.dependOn(b.getInstallStep());
+
+    const sqlite_test_step = b.step("test-sqlite", "Run SQLite integration tests (no external DB needed)");
+    sqlite_test_step.dependOn(&run_sqlite_test.step);
+
+    // ========================================================================
+    // ORM 集成测试（SQLite）
+    // ========================================================================
+    const orm_test_exe = b.addExecutable(.{
+        .name = "orm-test",
+        .root_source_file = b.path("src/services/mysql/orm_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    orm_test_exe.linkLibC();
+    orm_test_exe.linkSystemLibrary("sqlite3");
+
+    b.installArtifact(orm_test_exe);
+
+    const run_orm_test = b.addRunArtifact(orm_test_exe);
+    run_orm_test.step.dependOn(b.getInstallStep());
+
+    const orm_test_step = b.step("test-orm", "Run ORM + QueryBuilder integration tests");
+    orm_test_step.dependOn(&run_orm_test.step);
 }

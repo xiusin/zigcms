@@ -361,4 +361,81 @@ const TestConfig = struct {
 - ✅ 全局作用域
 - ✅ C API驱动绑定
 - ✅ 高阶ORM
-- 🔧 真实数据库连接（需要安装mysql-client）
+- ✅ 多驱动支持（MySQL / SQLite / Memory）
+- ✅ 真实数据库集成测试
+
+## 多驱动支持
+
+### 统一接口
+
+```zig
+const db = @import("services").mysql;
+
+// 方式1: SQLite（开发/测试）- 无需外部服务
+var conn = try db.Driver.sqlite(allocator, ":memory:");
+defer conn.deinit();
+
+// 方式2: MySQL（生产）
+var conn = try db.Driver.mysql(allocator, .{
+    .host = "localhost",
+    .user = "root",
+    .password = "password",
+    .database = "myapp",
+});
+defer conn.deinit();
+
+// 方式3: 内存模拟（纯单元测试）
+var conn = try db.Driver.memory(allocator);
+defer conn.deinit();
+
+// 统一的操作接口
+var result = try conn.query("SELECT * FROM users");
+defer result.deinit();
+
+while (result.next()) |row| {
+    std.debug.print("{s}\n", .{row.getString("name") orelse ""});
+}
+
+_ = try conn.exec("INSERT INTO users (name) VALUES ('test')");
+
+try conn.beginTransaction();
+try conn.commit();
+// 或 try conn.rollback();
+```
+
+### 运行 SQLite 测试（无需安装数据库）
+
+```bash
+# 编译
+zig build-exe src/services/mysql/sqlite_test.zig -lc -lsqlite3
+
+# 运行
+./sqlite_test
+```
+
+### 预期输出
+
+```
+╔══════════════════════════════════════════════════════════╗
+║          ZigCMS SQLite 集成测试                          ║
+╚══════════════════════════════════════════════════════════╝
+
+📡 创建 SQLite 内存数据库...
+✅ 数据库创建成功! (驱动: sqlite)
+
+📋 测试1: 创建表
+   ✓ users 表创建成功
+
+📝 测试2: 插入数据
+   ✓ 插入 5 个用户
+
+🔍 测试3: 查询数据
+   用户列表 (共 5 条):
+   │ 1  │ 张三     │ zhangsan@example.com    │ 25  │
+   │ 2  │ 李四     │ lisi@example.com        │ 30  │
+   ...
+
+╔══════════════════════════════════════════════════════════╗
+║          ✅ 所有测试完成!                                ║
+╚══════════════════════════════════════════════════════════╝
+```

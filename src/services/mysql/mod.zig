@@ -42,6 +42,7 @@ pub const eloquent = @import("model.zig");
 pub const advanced = @import("advanced.zig");
 pub const driver = @import("driver.zig");
 pub const orm = @import("orm.zig");
+pub const interface = @import("interface.zig");
 
 // 重导出常用类型
 pub const Config = core.Config;
@@ -60,8 +61,15 @@ pub const QueryBuilder = eloquent.QueryBuilder;
 pub const Op = eloquent.Op;
 pub const ModelOptions = eloquent.ModelOptions;
 
-// 驱动（真正的数据库连接）
-pub const Connection = driver.Connection;
+// 驱动接口（统一抽象）
+pub const Driver = interface.Driver;
+pub const DriverType = interface.DriverType;
+pub const UnifiedConnection = interface.Connection;
+pub const MySQLConfig = interface.MySQLConfig;
+pub const SQLiteConfig = interface.SQLiteConfig;
+
+// MySQL原生驱动
+pub const MySQLConnection = driver.Connection;
 pub const ConnectionConfig = driver.ConnectionConfig;
 pub const MySQLError = driver.MySQLError;
 
