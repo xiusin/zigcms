@@ -4,34 +4,35 @@ const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const global = @import("../global/global.zig");
-const models = @import("../models/models.zig");
+const orm_models = @import("../models/orm_models.zig");
 const strings = @import("../modules/strings.zig");
 
 const Self = @This();
 
-const table = "zigcms.setting";
+// ORM 模型别名
+const Task = orm_models.Task;
 
 allocator: Allocator,
+
 pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
-pub fn get(_: Self, req: zap.Request) void {
+pub fn get(self: *Self, req: zap.Request) void {
     req.parseQuery();
-    const id_ = req.getParamSlice("id") orelse return;
-    if (id_.len == 0) return;
-    var pool = global.get_pg_pool();
-    const id = strings.to_int(id_) catch return base.send_failed(req, "缺少必要参数");
+    const id_str = req.getParamSlice("id") orelse return;
+    if (id_str.len == 0) return;
 
-    const query = strings.sprinf("SELECT * FROM {s} WHERE id = $1", .{base.get_table_name(models.Task)}) catch unreachable;
+    const id = strings.to_int(id_str) catch return base.send_failed(req, "缺少必要参数");
 
-    var row = (pool.rowOpts(query, .{id}, .{ .column_names = true }) catch |e|
-        return base.send_error(req, e)) orelse
+    // 使用 ORM 查询
+    const item_opt = Task.Find(@as(i32, @intCast(id))) catch |e| return base.send_error(req, e);
+    if (item_opt == null) {
         return base.send_failed(req, "记录不存在");
+    }
 
-    defer row.deinit() catch {};
-    const item = row.to(models.Task, .{ .map = .name }) catch |e|
-        return base.send_error(req, e);
+    var item = item_opt.?;
+    defer Task.freeModel(self.allocator, &item);
 
     return base.send_ok(req, item);
 }

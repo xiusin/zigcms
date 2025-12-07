@@ -1251,7 +1251,13 @@ pub const Stringify = struct {
                         try self.writeArray(value);
                     }
                 } else if (ptr.size == .one) {
-                    try self.writeValue(value.*);
+                    // 检查是否为 opaque 或函数类型，这些无法解引用
+                    const child_info = @typeInfo(ptr.child);
+                    if (child_info == .@"opaque" or child_info == .@"fn") {
+                        try self.buffer.appendSlice(self.allocator, "null");
+                    } else {
+                        try self.writeValue(value.*);
+                    }
                 } else {
                     try self.buffer.appendSlice(self.allocator, "null");
                 }

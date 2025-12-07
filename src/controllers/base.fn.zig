@@ -1,8 +1,8 @@
 const zap = @import("zap");
-const json = @import("json");
 const std = @import("std");
 const global = @import("../global/global.zig");
 const strings = @import("../modules/strings.zig");
+const services = @import("../services/services.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -16,13 +16,13 @@ pub const Response = struct {
 /// 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
     var buf: [40960]u8 = undefined;
-    const msg = std.fmt.bufPrint(&buf, "{?}", .{e}) catch return req.sendError(e, null, 500);
+    const msg = std.fmt.bufPrint(&buf, "{}", .{e}) catch return req.sendError(e, null, 500);
     send_failed(req, msg[6..]);
 }
 
 /// 响应成功消息
 pub fn send_ok(req: zap.Request, v: anytype) void {
-    const ser = json.toSlice(global.get_allocator(), .{
+    const ser = services.json.JSON.encode(global.get_allocator(), .{
         .code = 0,
         .msg = "操作成功",
         .data = v,
@@ -33,7 +33,7 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
 
 /// 响应前端table结构
 pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
-    const ser = json.toSlice(global.get_allocator(), .{
+    const ser = services.json.JSON.encode(global.get_allocator(), .{
         .code = 0,
         .count = count,
         .msg = "获取列表成功",
@@ -46,7 +46,7 @@ pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra
 
 /// 响应失败消息
 pub fn send_failed(req: zap.Request, message: []const u8) void {
-    const ser = json.toSlice(global.get_allocator(), .{
+    const ser = services.json.JSON.encode(global.get_allocator(), .{
         .code = 500,
         .msg = message,
     }) catch return;

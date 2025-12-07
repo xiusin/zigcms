@@ -166,19 +166,18 @@
 //！ │                                                                             │
 //！ └─────────────────────────────────────────────────────────────────────────────┘
 
-
-
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 /// 将字符串分割为字符串切片
 pub fn split(allocator: Allocator, str: []const u8, delimiter: []const u8) ![][]const u8 {
-    var parts = std.ArrayList([]const u8).init(allocator);
-    var iter = std.mem.split(u8, str, delimiter);
+    var parts = std.ArrayListUnmanaged([]const u8){};
+    defer parts.deinit(allocator);
+    var iter = std.mem.splitSequence(u8, str, delimiter);
     while (iter.next()) |part| {
-        try parts.append(part);
+        try parts.append(allocator, part);
     }
-    return try parts.toOwnedSlice();
+    return try parts.toOwnedSlice(allocator);
 }
 
 /// 将字符串转换为数字类型
@@ -264,14 +263,13 @@ pub fn md5(allocator: Allocator, str: []const u8) ![]const u8 {
     const Md5 = std.crypto.hash.Md5;
     var out: [Md5.digest_length]u8 = undefined;
     Md5.hash(str, &out, .{});
+    // Zig 0.15: 使用 {x} 格式说明符
     const md5hex = try std.fmt.allocPrint(
         allocator,
-        "{s}",
-        .{std.fmt.fmtSliceHexLower(out[0..])},
+        "{x}",
+        .{out},
     );
-    defer allocator.free(md5hex);
-
-    return try allocator.dupe(u8, md5hex[0..]);
+    return md5hex;
 }
 
 /// 去除字符串首尾指定字符串

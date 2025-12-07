@@ -128,12 +128,12 @@ pub const App = struct {
 
         try self.services.controller_ptrs.append(self.allocator, @ptrCast(ctrl_ptr));
 
-        try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, &Controller.list);
-        try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, &Controller.get);
-        try self.router.handle_func("/" ++ name ++ "/save", ctrl_ptr, &Controller.save);
-        try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, &Controller.delete);
-        try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, &Controller.modify);
-        try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, &Controller.select);
+        try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, Controller.list);
+        try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, Controller.get);
+        try self.router.handle_func("/" ++ name ++ "/save", ctrl_ptr, Controller.save);
+        try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, Controller.delete);
+        try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, Controller.modify);
+        try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, Controller.select);
     }
 
     /// 注册路由
@@ -161,9 +161,9 @@ pub const App = struct {
         zap.start(.{ .threads = 4, .workers = 4 });
     }
 
-    fn notFoundHandler(req: zap.Request) void {
+    fn notFoundHandler(req: zap.Request) !void {
         req.setStatus(.not_found);
-        base.send_failed(req, "路由未找到");
+        base.send_failed(req, "404 Not Found");
     }
 };
 

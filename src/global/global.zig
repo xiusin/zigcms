@@ -1,13 +1,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const pg = @import("pg");
 const pretty = @import("pretty");
 const models = @import("../models/models.zig");
+const orm_models = @import("../models/orm_models.zig");
 const strings = @import("../modules/strings.zig");
 const base = @import("../controllers/base.fn.zig");
+const services = @import("../services/services.zig");
+const sql = @import("../services/sql/orm.zig");
 
 var _allocator: ?Allocator = null;
-var _pool: *pg.Pool = undefined;
+var _db: ?*sql.Database = null;
+var _di_container: ?services.Container = null;
 var config: std.StringHashMap([]const u8) = undefined;
 var mu: std.Thread.Mutex = std.Thread.Mutex{};
 
@@ -15,12 +18,27 @@ pub const JwtTokenSecret = "this is a secret";
 var initOnce = std.once(init_some);
 
 pub fn deinit() void {
-    std.log.debug("global module deinit ...", .{});
+    std.log.info("global module deinit, cleaning up resources...", .{});
+
+    // 1. 先执行 DI 容器的清理
+    if (_di_container) |*c| {
+        c.deinit();
+        _di_container = null;
+    }
+
+    // 2. 清理 ORM 数据库连接
+    if (_db) |db| {
+        db.deinit();
+        _allocator.?.destroy(db);
+        _db = null;
+    }
+
+    // 3. 清理配置
     config.deinit();
-    _pool.deinit();
     config = undefined;
     _allocator = undefined;
-    _pool = undefined;
+
+    std.log.info("global module cleanup completed", .{});
 }
 
 fn init_some() void {
@@ -28,24 +46,46 @@ fn init_some() void {
     const password = std.process.getEnvVarOwned(_allocator.?, "DB_PASSWORD") catch unreachable;
     defer _allocator.?.free(password);
 
-    var buf: [4096]u8 = undefined;
-    @memcpy(buf[0..password.len], password);
-    _pool = pg.Pool.init(_allocator.?, .{
-        .size = 10,
-        .connect = .{
-            .port = 5432,
-            .host = "124.222.103.232",
-        },
-        .auth = .{
-            .username = "postgres",
-            .database = "postgres",
-            .application_name = "zigcms",
-            .password = buf[0..password.len],
-            .timeout = std.time.ms_per_s,
-        },
-    }) catch unreachable;
+    // 初始化 SQL ORM 数据库连接
+    initOrmDatabase(password) catch |e| {
+        std.log.err("Failed to initialize ORM database: {}", .{e});
+    };
+
+    // 初始化 DI 容器
+    initDiContainer(_allocator.?);
 
     restore_setting() catch {};
+}
+
+/// 初始化 ORM 数据库连接
+fn initOrmDatabase(password: []const u8) !void {
+    const db = try _allocator.?.create(sql.Database);
+    errdefer _allocator.?.destroy(db);
+
+    db.* = try sql.Database.postgres(_allocator.?, .{
+        .host = "124.222.103.232",
+        .port = 5432,
+        .user = "postgres",
+        .password = password,
+        .database = "postgres",
+    });
+
+    _db = db;
+
+    // 初始化所有 ORM 模型
+    orm_models.init(db);
+
+    std.log.info("ORM database initialized successfully", .{});
+}
+
+/// 初始化 DI 容器
+fn initDiContainer(allocator: Allocator) void {
+    std.log.info("[global] 初始化 DI 容器...", .{});
+
+    // 使用现有的 services 模块创建容器
+    _di_container = services.createContainer(allocator);
+
+    std.log.info("[global] DI 容器初始化完成", .{});
 }
 
 pub fn init(allocator: Allocator) void {
@@ -57,15 +97,14 @@ pub fn get_allocator() Allocator {
     return _allocator.?;
 }
 
-pub fn get_pg_pool() *pg.Pool {
-    return _pool;
+/// 获取 ORM 数据库连接
+pub fn get_db() *sql.Database {
+    return _db orelse @panic("ORM database not initialized");
 }
 
-pub fn sql_exec(sql: []const u8, values: anytype) !i64 {
-    if (try get_pg_pool().exec(sql, values)) |result| {
-        return result;
-    }
-    return error.@"sql执行错误";
+/// 获取 DI 容器
+pub fn get_container() *services.Container {
+    return &_di_container.?;
 }
 
 /// 获取配置项（直接返回 config 中存储的值或默认值）

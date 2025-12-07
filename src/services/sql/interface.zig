@@ -853,8 +853,7 @@ const PostgreSQLDriver = struct {
 
     pub fn init(allocator: Allocator, config: PostgreSQLConfig) !PostgreSQLDriver {
         // 创建连接池
-        const pool = try allocator.create(pg.Pool);
-        pool.* = try pg.Pool.init(allocator, .{
+        const pool = try pg.Pool.init(allocator, .{
             .size = 5,
             .connect = .{
                 .port = config.port,
@@ -887,7 +886,7 @@ const PostgreSQLDriver = struct {
         defer pg_result.deinit();
 
         // 获取列名
-        const columns = pg_result.column_names orelse &.{};
+        const columns = pg_result.column_names;
         if (columns.len > 0) {
             const field_names_buf = try allocator.alloc([]const u8, columns.len);
             for (columns, 0..) |col, i| {
@@ -902,7 +901,9 @@ const PostgreSQLDriver = struct {
             var row_values = try allocator.alloc(?[]const u8, columns.len);
 
             for (0..columns.len) |i| {
-                if (pg_row.get([]const u8, i)) |val| {
+                // pg.zig 的 get 返回类型取决于泛型参数
+                // 如果列值为 NULL，get(?[]const u8, i) 返回 null
+                if (pg_row.get(?[]const u8, i)) |val| {
                     row_values[i] = try allocator.dupe(u8, val);
                 } else {
                     row_values[i] = null;
@@ -924,7 +925,7 @@ const PostgreSQLDriver = struct {
 
         // PostgreSQL 不直接返回 last_insert_id，需要通过 RETURNING 子句获取
         // 这里简化处理，让用户在 SQL 中使用 RETURNING id
-        return affected orelse 0;
+        return @intCast(affected orelse 0);
     }
 
     pub fn beginTransaction(self: *PostgreSQLDriver) !void {

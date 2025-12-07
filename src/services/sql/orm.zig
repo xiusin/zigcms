@@ -46,7 +46,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const interface = @import("interface.zig");
-const mysql_core = @import("query.zig");
+const query_mod = @import("query.zig");
+
+pub const OrderDir = query_mod.OrderDir;
 
 // ============================================================================
 // 公共辅助函数
@@ -390,8 +392,19 @@ pub const Database = struct {
 // 模型构建器
 // ============================================================================
 
+/// 模型配置
+pub const ModelConfig = struct {
+    table_name: ?[]const u8 = null,
+    primary_key: ?[]const u8 = null,
+};
+
 /// 定义模型
 pub fn define(comptime T: type) type {
+    return defineWithConfig(T, .{});
+}
+
+/// 定义模型（带配置）
+pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
     return struct {
         const Self = @This();
         /// 原始模型结构体类型（用于关联查询）
@@ -423,6 +436,7 @@ pub fn define(comptime T: type) type {
 
         /// 获取表名
         pub fn tableName() []const u8 {
+            if (config.table_name) |n| return n;
             if (@hasDecl(T, "table_name")) {
                 return T.table_name;
             }
@@ -431,6 +445,7 @@ pub fn define(comptime T: type) type {
 
         /// 获取主键名
         pub fn primaryKey() []const u8 {
+            if (config.primary_key) |k| return k;
             if (@hasDecl(T, "primary_key")) {
                 return T.primary_key;
             }
@@ -606,7 +621,7 @@ pub fn define(comptime T: type) type {
 
         /// 静态 orderBy - 排序
         /// 用法: Product.orderBy(db, "price", .desc).get()
-        pub fn orderBy(db: *Database, field: []const u8, dir: mysql_core.OrderDir) ModelQuery(T) {
+        pub fn orderBy(db: *Database, field: []const u8, dir: query_mod.OrderDir) ModelQuery(T) {
             var q = query(db);
             _ = q.orderBy(field, dir);
             return q;
@@ -689,7 +704,7 @@ pub fn define(comptime T: type) type {
         }
 
         /// 无参 OrderBy
-        pub fn OrderBy(field: []const u8, dir: mysql_core.OrderDir) ModelQuery(T) {
+        pub fn OrderBy(field: []const u8, dir: query_mod.OrderDir) ModelQuery(T) {
             return orderBy(getDb(), field, dir);
         }
 
@@ -1638,7 +1653,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// ORDER BY
-        pub fn orderBy(self: *Self, field: []const u8, dir: mysql_core.OrderDir) *Self {
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
             const clause = std.fmt.allocPrint(self.db.allocator, "{s} {s}", .{ field, dir.toSql() }) catch return self;
             self.order_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
@@ -1806,6 +1821,21 @@ pub fn ModelQuery(comptime T: type) type {
             return 0;
         }
 
+        /// 删除匹配的记录
+        pub fn delete(self: *Self) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){};
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "DELETE FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.rawExec(sql_str);
+        }
+
         /// 生成 SQL
         pub fn toSql(self: *Self) ![]u8 {
             var sql = std.ArrayListUnmanaged(u8){};
@@ -1901,9 +1931,18 @@ pub fn ModelQuery(comptime T: type) type {
                     const value = row.getString(field.name);
 
                     if (@typeInfo(field.type) == .optional) {
-                        // 复制可选字符串
+                        const child_type = @typeInfo(field.type).optional.child;
                         if (value) |v| {
-                            @field(model, field.name) = try self.db.allocator.dupe(u8, v);
+                            // 根据可选类型的子类型进行转换
+                            if (child_type == []const u8) {
+                                @field(model, field.name) = try self.db.allocator.dupe(u8, v);
+                            } else if (@typeInfo(child_type) == .int) {
+                                @field(model, field.name) = std.fmt.parseInt(child_type, v, 10) catch null;
+                            } else if (@typeInfo(child_type) == .float) {
+                                @field(model, field.name) = std.fmt.parseFloat(child_type, v) catch null;
+                            } else {
+                                @field(model, field.name) = null;
+                            }
                         } else {
                             @field(model, field.name) = null;
                         }
@@ -2478,7 +2517,7 @@ pub fn RelationQuery(comptime T: type) type {
 
         const OrderItem = struct {
             field: []const u8,
-            dir: mysql_core.OrderDir,
+            dir: query_mod.OrderDir,
         };
 
         pub fn init(db: *Database, foreign_key: []const u8, foreign_value: u64, relation_type: RelationType) Self {
@@ -2511,7 +2550,7 @@ pub fn RelationQuery(comptime T: type) type {
         }
 
         /// 排序
-        pub fn orderBy(self: *Self, field: []const u8, dir: mysql_core.OrderDir) *Self {
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
             self.order_items.append(self.db.allocator, .{ .field = field, .dir = dir }) catch {};
             return self;
         }
@@ -2654,7 +2693,7 @@ pub fn WithQuery(comptime T: type, comptime Related: type) type {
 
         const OrderItem = struct {
             field: []const u8,
-            dir: mysql_core.OrderDir,
+            dir: query_mod.OrderDir,
         };
 
         /// 预加载结果
@@ -2691,7 +2730,7 @@ pub fn WithQuery(comptime T: type, comptime Related: type) type {
         }
 
         /// 排序
-        pub fn orderBy(self: *Self, field: []const u8, dir: mysql_core.OrderDir) *Self {
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
             self.order_items.append(self.db.allocator, .{ .field = field, .dir = dir }) catch {};
             return self;
         }

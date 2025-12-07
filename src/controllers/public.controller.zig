@@ -3,6 +3,7 @@ const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 const base = @import("base.fn.zig");
 const models = @import("../models/models.zig");
+const orm_models = @import("../models/orm_models.zig");
 const global = @import("../global/global.zig");
 const strings = @import("../modules/strings.zig");
 
@@ -13,7 +14,7 @@ pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
-pub fn upload(self: *Self, req: zap.Request) void {
+pub fn upload(self: *Self, req: zap.Request) !void {
     if (!std.mem.eql(u8, req.method.?, "POST")) {
         return base.send_failed(req, "不支持的请求方式");
     }
@@ -23,7 +24,7 @@ pub fn upload(self: *Self, req: zap.Request) void {
     if (req.body.?.len > 1024 * 1024 * 1024 * 20) return base.send_failed(req, "上传文件过大");
 
     req.parseBody() catch return;
-    const params = req.parametersToOwnedList(self.allocator, false) catch return;
+    var params = req.parametersToOwnedList(self.allocator) catch return;
     defer params.deinit();
 
     // TODO 读取path
@@ -68,11 +69,22 @@ pub fn upload(self: *Self, req: zap.Request) void {
                         cache = false;
                     };
 
-                    const sql = base.build_insert_sql(models.Upload, self.allocator) catch return;
-                    defer self.allocator.free(sql);
+                    // 使用 ORM 创建上传记录
+                    const Upload = orm_models.Upload;
+                    const now = std.time.milliTimestamp();
 
-                    const dto = .{ origin_filename, filename, md5, ext, 0, 0, url, std.time.milliTimestamp(), std.time.milliTimestamp(), 0 };
-                    _ = global.get_pg_pool().exec(sql, dto) catch |e| return base.send_error(req, e);
+                    _ = Upload.Create(.{
+                        .original_name = origin_filename,
+                        .path = filename,
+                        .md5 = md5,
+                        .ext = ext,
+                        .size = 0,
+                        .upload_type = 0,
+                        .url = url,
+                        .create_time = now,
+                        .update_time = now,
+                        .is_delete = 0,
+                    }) catch |e| return base.send_error(req, e);
 
                     return base.send_ok(req, .{
                         .path = filename,
@@ -89,20 +101,20 @@ pub fn upload(self: *Self, req: zap.Request) void {
     }
 }
 
-pub fn folder(self: *Self, req: zap.Request) void {
+pub fn folder(self: *Self, req: zap.Request) !void {
     req.parseBody() catch |e| return base.send_error(req, e);
     if (req.body == null) return;
-    var params = req.parametersToOwnedStrList(self.allocator, true) catch return;
+    var params = req.parametersToOwnedStrList(self.allocator) catch return;
     defer params.deinit();
 
     var fold: ?[]const u8 = null;
     var request_path: ?[]const u8 = null;
 
     for (params.items) |item| {
-        if (strings.eql("folder", item.key.str)) {
-            fold = item.value.str;
-        } else if (strings.eql("path", item.key.str)) {
-            request_path = item.value.str;
+        if (strings.eql("folder", item.key)) {
+            fold = item.value;
+        } else if (strings.eql("path", item.key)) {
+            request_path = item.value;
         }
     }
 
@@ -129,37 +141,37 @@ pub fn folder(self: *Self, req: zap.Request) void {
     return base.send_ok(req, .{});
 }
 
-pub fn files(self: *Self, req: zap.Request) void {
+pub fn files(self: *Self, req: zap.Request) !void {
     req.parseBody() catch return;
     req.parseQuery();
 
     var path: []const u8 = "";
 
-    var params = req.parametersToOwnedStrList(self.allocator, true) catch return;
+    var params = req.parametersToOwnedStrList(self.allocator) catch return;
     defer params.deinit();
 
     for (params.items) |item| {
-        if (strings.eql("path", item.key.str)) {
-            path = item.value.str;
+        if (strings.eql("path", item.key)) {
+            path = item.value;
         }
     }
 
     const basepath = self.upload_base_dir();
     const FileItem = struct { type: []const u8 = "", thumb: []const u8 = "", name: []const u8, path: []const u8 = "" };
 
-    var items = std.ArrayList(FileItem).init(self.allocator);
+    var items = std.ArrayListUnmanaged(FileItem){};
     defer {
         for (items.items) |item| {
             self.allocator.free(item.path);
             self.allocator.free(item.thumb);
         }
-        items.deinit();
+        items.deinit(self.allocator);
     }
 
     const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
     std.log.debug("dir = {s}", .{dir});
     var opened_dir = std.fs.cwd().openDir(dir, .{}) catch |e| return base.send_error(req, e);
-    defer opened_dir.close();  // 确保关闭目录句柄
+    defer opened_dir.close(); // 确保关闭目录句柄
     var iter = opened_dir.iterate();
     while (iter.next() catch return) |it| {
         var item: FileItem = .{ .name = it.name };
@@ -175,7 +187,7 @@ pub fn files(self: *Self, req: zap.Request) void {
         }
         item.thumb = std.fmt.allocPrint(self.allocator, "ico/{s}.png", .{item.type}) catch |e| return base.send_error(req, e);
 
-        items.append(item) catch {};
+        items.append(self.allocator, item) catch {};
     }
 
     base.send_ok(req, .{ .count = items.items.len, .images = items.items });

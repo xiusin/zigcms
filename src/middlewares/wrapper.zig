@@ -41,7 +41,7 @@ const MockRequest = struct {
 
 /// 原始处理器函数类型（带 self 和 request）
 pub fn ControllerMethod(comptime T: type) type {
-    return *const fn (*T, zap.Request) void;
+    return *const fn (*T, zap.Request) anyerror!void;
 }
 
 /// 中间件检查结果
@@ -76,14 +76,14 @@ pub fn AuthChecker(comptime T: type) type {
             comptime method: ControllerMethod(T),
         ) ControllerMethod(T) {
             return struct {
-                fn wrapped(self: *T, req: zap.Request) void {
+                fn wrapped(self: *T, req: zap.Request) !void {
                     const result = check(req);
                     if (!result.ok) {
                         sendAuthError(req, result.error_msg orelse "认证失败");
                         return;
                     }
                     // 认证通过，调用原方法
-                    method(self, req);
+                    try method(self, req);
                 }
             }.wrapped;
         }
@@ -93,10 +93,10 @@ pub fn AuthChecker(comptime T: type) type {
             comptime method: ControllerMethod(T),
         ) ControllerMethod(T) {
             return struct {
-                fn wrapped(self: *T, req: zap.Request) void {
+                fn wrapped(self: *T, req: zap.Request) !void {
                     // 可选认证，不管结果都继续
                     _ = check(req);
-                    method(self, req);
+                    try method(self, req);
                 }
             }.wrapped;
         }
@@ -131,11 +131,11 @@ pub fn Controller(comptime T: type) type {
         /// 添加日志的方法包装
         pub fn withLog(comptime method: ControllerMethod(T)) ControllerMethod(T) {
             return struct {
-                fn wrapped(self: *T, req: zap.Request) void {
+                fn wrapped(self: *T, req: zap.Request) !void {
                     if (req.path) |path| {
                         std.log.info("[REQ] {s}", .{path});
                     }
-                    method(self, req);
+                    try method(self, req);
                 }
             }.wrapped;
         }
@@ -143,7 +143,7 @@ pub fn Controller(comptime T: type) type {
         /// 添加 CORS 的方法包装
         pub fn withCors(comptime method: ControllerMethod(T)) ControllerMethod(T) {
             return struct {
-                fn wrapped(self: *T, req: zap.Request) void {
+                fn wrapped(self: *T, req: zap.Request) !void {
                     req.setHeader("Access-Control-Allow-Origin", "*") catch {};
                     req.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE") catch {};
 
@@ -154,7 +154,7 @@ pub fn Controller(comptime T: type) type {
                             return;
                         }
                     }
-                    method(self, req);
+                    try method(self, req);
                 }
             }.wrapped;
         }
