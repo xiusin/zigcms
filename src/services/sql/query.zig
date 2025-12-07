@@ -10,7 +10,7 @@
 //! ## 使用示例
 //!
 //! ```zig
-//! const mysql = @import("services").mysql;
+//! const mysql = @import("services").sql;
 //!
 //! // 连接数据库
 //! var db = try mysql.open(.{
@@ -227,6 +227,7 @@ pub const Condition = struct {
     sql: []const u8,
     values: []const Value,
     logic: enum { and_op, or_op } = .and_op,
+    owns_sql: bool = false, // 是否拥有 SQL 字符串的所有权（需要释放）
 };
 
 /// 预处理语句（占位符绑定）
@@ -337,10 +338,13 @@ pub fn QueryBuilder(comptime T: type) type {
 
         /// 释放资源
         pub fn deinit(self: *Self) void {
-            // 释放条件中分配的values
+            // 释放条件中分配的values和sql
             for (self.conditions.items) |cond| {
                 if (cond.values.len > 0) {
                     self.allocator.free(cond.values);
+                }
+                if (cond.owns_sql) {
+                    self.allocator.free(cond.sql);
                 }
             }
             self.conditions.deinit(self.allocator);
@@ -378,14 +382,14 @@ pub fn QueryBuilder(comptime T: type) type {
         /// WHERE NULL
         pub fn whereNull(self: *Self, field: []const u8) *Self {
             const sql = std.fmt.allocPrint(self.allocator, "{s} IS NULL", .{field}) catch return self;
-            self.conditions.append(self.allocator, .{ .sql = sql, .values = &.{}, .logic = .and_op }) catch {};
+            self.conditions.append(self.allocator, .{ .sql = sql, .values = &.{}, .logic = .and_op, .owns_sql = true }) catch {};
             return self;
         }
 
         /// WHERE NOT NULL
         pub fn whereNotNull(self: *Self, field: []const u8) *Self {
             const sql = std.fmt.allocPrint(self.allocator, "{s} IS NOT NULL", .{field}) catch return self;
-            self.conditions.append(self.allocator, .{ .sql = sql, .values = &.{}, .logic = .and_op }) catch {};
+            self.conditions.append(self.allocator, .{ .sql = sql, .values = &.{}, .logic = .and_op, .owns_sql = true }) catch {};
             return self;
         }
 
@@ -441,6 +445,95 @@ pub fn QueryBuilder(comptime T: type) type {
         pub fn page(self: *Self, page_num: u64, page_size: u64) *Self {
             self.limit_val = page_size;
             self.offset_val = (page_num - 1) * page_size;
+            return self;
+        }
+
+        /// 调试输出 - 打印当前 SQL（不执行）
+        pub fn debug(self: *Self) *Self {
+            const sql = self.toSql() catch |err| {
+                std.debug.print("[QueryBuilder Debug] 构建 SQL 失败: {any}\n", .{err});
+                return self;
+            };
+            defer self.allocator.free(sql);
+            std.debug.print("[QueryBuilder Debug] SQL: {s}\n", .{sql});
+            return self;
+        }
+
+        /// 调试输出（带自定义消息）
+        pub fn debugWith(self: *Self, message: []const u8) *Self {
+            const sql = self.toSql() catch |err| {
+                std.debug.print("[QueryBuilder Debug] {s} - 构建 SQL 失败: {any}\n", .{message, err});
+                return self;
+            };
+            defer self.allocator.free(sql);
+            std.debug.print("[QueryBuilder Debug] {s}\n", .{message});
+            std.debug.print("[QueryBuilder Debug] SQL: {s}\n", .{sql});
+            return self;
+        }
+
+        /// WHERE IN 子查询
+        /// 例: builder.whereInSub("user_id", "SELECT id FROM users WHERE active = 1")
+        pub fn whereInSub(self: *Self, field: []const u8, subquery_sql: []const u8) *Self {
+            const sql = std.fmt.allocPrint(
+                self.allocator,
+                "{s} IN ({s})",
+                .{ field, subquery_sql },
+            ) catch return self;
+            self.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {};
+            return self;
+        }
+
+        /// WHERE NOT IN 子查询
+        pub fn whereNotInSub(self: *Self, field: []const u8, subquery_sql: []const u8) *Self {
+            const sql = std.fmt.allocPrint(
+                self.allocator,
+                "{s} NOT IN ({s})",
+                .{ field, subquery_sql },
+            ) catch return self;
+            self.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {};
+            return self;
+        }
+
+        /// WHERE EXISTS 子查询
+        /// 例: builder.whereExists("SELECT 1 FROM posts WHERE posts.user_id = users.id")
+        pub fn whereExists(self: *Self, subquery_sql: []const u8) *Self {
+            const sql = std.fmt.allocPrint(
+                self.allocator,
+                "EXISTS ({s})",
+                .{subquery_sql},
+            ) catch return self;
+            self.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {};
+            return self;
+        }
+
+        /// WHERE NOT EXISTS 子查询
+        pub fn whereNotExists(self: *Self, subquery_sql: []const u8) *Self {
+            const sql = std.fmt.allocPrint(
+                self.allocator,
+                "NOT EXISTS ({s})",
+                .{subquery_sql},
+            ) catch return self;
+            self.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {};
             return self;
         }
 
@@ -525,6 +618,11 @@ pub fn QueryBuilder(comptime T: type) type {
             }
 
             return sql.toOwnedSlice(self.allocator);
+        }
+
+        /// 构建 SQL（buildSelect 的别名，更直观）
+        pub fn toSql(self: *Self) ![]const u8 {
+            return self.buildSelect();
         }
 
         /// 构建 COUNT SQL

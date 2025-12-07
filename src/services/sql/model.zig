@@ -49,7 +49,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const mysql = @import("mysql.zig");
+const mysql = @import("query.zig");
 
 // ============================================================================
 // 模型配置

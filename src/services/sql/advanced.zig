@@ -12,7 +12,7 @@
 //! ## 使用示例
 //!
 //! ```zig
-//! const mysql = @import("services").mysql;
+//! const mysql = @import("services").sql;
 //!
 //! // 全局作用域
 //! const User = mysql.Model(struct {
@@ -35,7 +35,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const mysql = @import("mysql.zig");
+const mysql = @import("query.zig");
 
 // 可选导入（用于集成测试）
 const events_available = @hasDecl(@This(), "events");

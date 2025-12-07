@@ -1,6 +1,6 @@
-//! MySQL 模块
+//! SQL ORM 模块
 //!
-//! 提供完整的 MySQL ORM 功能：
+//! 提供完整的多数据库 ORM 功能（MySQL/SQLite/PostgreSQL）：
 //! - 安全的参数绑定（防SQL注入）
 //! - Laravel 风格的 Eloquent 模型
 //! - 链式查询构建器
@@ -11,10 +11,10 @@
 //! ## 快速开始
 //!
 //! ```zig
-//! const mysql = @import("services").mysql;
+//! const sql = @import("services").sql;
 //!
 //! // 定义模型
-//! const User = mysql.Model(struct {
+//! const User = sql.Model(struct {
 //!     pub const table = "users";
 //!     pub const soft_deletes = true;
 //!
@@ -37,7 +37,7 @@
 const std = @import("std");
 
 // 核心模块
-pub const core = @import("mysql.zig");
+pub const core = @import("query.zig");
 pub const eloquent = @import("model.zig");
 pub const advanced = @import("advanced.zig");
 pub const driver = @import("driver.zig");
@@ -65,8 +65,8 @@ pub const ModelOptions = eloquent.ModelOptions;
 pub const Driver = interface.Driver;
 pub const DriverType = interface.DriverType;
 pub const UnifiedConnection = interface.Connection;
-pub const MySQLConfig = interface.MySQLConfig;
 pub const SQLiteConfig = interface.SQLiteConfig;
+pub const PostgreSQLConfig = interface.PostgreSQLConfig;
 
 // MySQL原生驱动
 pub const MySQLConnection = driver.Connection;
@@ -75,10 +75,14 @@ pub const MySQLError = driver.MySQLError;
 
 // 高阶ORM
 pub const Database = orm.Database;
+pub const MySQLConfig = orm.MySQLConfig;  // MySQL配置（包含连接池选项）
 pub const define = orm.define;
 pub const ModelQuery = orm.ModelQuery;
 pub const HasMany = orm.HasMany;
 pub const BelongsTo = orm.BelongsTo;
+
+// 内部实现（不导出，用户不需要）
+// ConnectionPool、Transaction 等由 Database 内部自动管理
 
 // 高级功能
 pub const AdvancedQueryBuilder = advanced.AdvancedQueryBuilder;

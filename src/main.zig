@@ -3,6 +3,9 @@ const App = @import("app.zig").App;
 const controllers = @import("controllers/controllers.zig");
 const models = @import("models/models.zig");
 
+// 重新导出 pg 模块供 interface.zig 使用
+pub const pg = @import("pg");
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer {

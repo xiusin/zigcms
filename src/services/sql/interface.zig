@@ -8,7 +8,7 @@
 //! ## 使用示例
 //!
 //! ```zig
-//! const db = @import("services").mysql;
+//! const db = @import("services").sql;
 //!
 //! // 使用 SQLite（测试/开发）
 //! var conn = try db.Driver.sqlite(allocator, ":memory:");
@@ -28,6 +28,108 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
+
+// PostgreSQL 模块 stub（当 pg 不可用时使用）
+const PgStub = struct {
+    pub const PgRow = struct {
+        pub fn get(_: PgRow, comptime _: type, _: usize) ?[]const u8 {
+            return null;
+        }
+    };
+
+    pub const QueryResult = struct {
+        pub const column_names: ?[]const []const u8 = null;
+        pub fn deinit(_: *QueryResult) void {}
+        pub fn next(_: *QueryResult) !?PgRow {
+            return null;
+        }
+    };
+
+    pub const Pool = struct {
+        dummy: u8 = 0,
+
+        pub fn init(_: Allocator, _: anytype) !Pool {
+            return error.PostgreSQLNotAvailable;
+        }
+        pub fn deinit(_: *Pool) void {}
+        pub fn queryOpts(_: *Pool, _: []const u8, _: anytype, _: anytype) !QueryResult {
+            return error.PostgreSQLNotAvailable;
+        }
+        pub fn exec(_: *Pool, _: []const u8, _: anytype) !?u64 {
+            return error.PostgreSQLNotAvailable;
+        }
+    };
+};
+
+// 条件导入 pg 模块
+// 从 root 模块尝试获取 pg，如果不存在则使用 PgStub
+const pg = if (@hasDecl(@import("root"), "pg"))
+    @field(@import("root"), "pg")
+else
+    PgStub;
+
+// MySQL 驱动 stub（当 MySQL 不可用时使用）
+const MySQLStub = struct {
+    pub const MySQLRow = struct {
+        field_names: []const []const u8 = &.{},
+
+        pub fn get(_: MySQLRow, _: usize) ?[]const u8 {
+            return null;
+        }
+
+        pub fn getString(_: MySQLRow, _: []const u8) ?[]const u8 {
+            return null;
+        }
+
+        pub fn deinit(_: *const MySQLRow) void {}
+    };
+
+    pub const MySQLResultSet = struct {
+        affected_rows: u64 = 0,
+        insert_id: u64 = 0,
+        field_names: []const []const u8 = &.{},
+
+        pub fn deinit(_: *MySQLResultSet) void {}
+        pub fn next(_: *MySQLResultSet) !?MySQLRow {
+            return null;
+        }
+    };
+
+    pub const Connection = struct {
+        const Self = @This();
+        dummy: u8 = 0,
+
+        pub fn init(_: Allocator, _: anytype) !Self {
+            return error.MySQLNotAvailable;
+        }
+        pub fn deinit(_: *Self) void {}
+        pub fn query(_: *Self, _: []const u8) !MySQLResultSet {
+            return error.MySQLNotAvailable;
+        }
+        pub fn exec(_: *Self, _: []const u8) !u64 {
+            return error.MySQLNotAvailable;
+        }
+        pub fn beginTransaction(_: *Self) !void {
+            return error.MySQLNotAvailable;
+        }
+        pub fn commit(_: *Self) !void {
+            return error.MySQLNotAvailable;
+        }
+        pub fn rollback(_: *Self) !void {
+            return error.MySQLNotAvailable;
+        }
+        pub fn lastInsertId(_: *Self) u64 {
+            return 0;
+        }
+    };
+};
+
+// 条件导入 MySQL 驱动
+const mysql_driver = if (@hasDecl(@import("root"), "mysql_enabled"))
+    @import("driver.zig")
+else
+    MySQLStub;
 
 // ============================================================================
 // 驱动类型
@@ -82,10 +184,18 @@ pub const Row = struct {
     }
 
     pub fn deinit(self: *Row) void {
-        // 释放值字符串（如果是堆分配的）
+        // 释放值字符串
         for (self.values) |val| {
             if (val) |v| {
-                self.allocator.free(v);
+                if (v.len > 0) {
+                    self.allocator.free(v);
+                }
+            }
+        }
+        // 释放 columns 中的每个字符串
+        for (self.columns) |col| {
+            if (col.len > 0) {
+                self.allocator.free(col);
             }
         }
         self.allocator.free(self.columns);
@@ -118,8 +228,8 @@ pub const ResultSet = struct {
         }
         self.rows.deinit(self.allocator);
         if (self.field_names.len > 0) {
-            // 释放field_names中的字符串（如果是SQLite分配的）
-            if (self.driver_type == .sqlite) {
+            // 释放field_names中的字符串（SQLite 和 MySQL 都需要释放）
+            if (self.driver_type == .sqlite or self.driver_type == .mysql) {
                 for (self.field_names) |name| {
                     self.allocator.free(name);
                 }
@@ -200,7 +310,6 @@ pub const Connection = struct {
         // 释放驱动实例内存
         switch (self.driver_type) {
             .mysql => {
-                const mysql_driver = @import("driver.zig");
                 const typed_ptr: *mysql_driver.Connection = @ptrCast(@alignCast(self.ptr));
                 self.allocator.destroy(typed_ptr);
             },
@@ -212,7 +321,10 @@ pub const Connection = struct {
                 const typed_ptr: *MemoryDriver = @ptrCast(@alignCast(self.ptr));
                 self.allocator.destroy(typed_ptr);
             },
-            .postgresql => {},
+            .postgresql => {
+                const typed_ptr: *PostgreSQLDriver = @ptrCast(@alignCast(self.ptr));
+                self.allocator.destroy(typed_ptr);
+            },
         }
     }
 
@@ -242,11 +354,20 @@ pub const SQLiteConfig = struct {
     flags: u32 = 0,
 };
 
+/// PostgreSQL 配置
+pub const PostgreSQLConfig = struct {
+    host: []const u8 = "localhost",
+    port: u16 = 5432,
+    user: []const u8 = "postgres",
+    password: []const u8 = "",
+    database: []const u8 = "postgres",
+    connect_timeout: u32 = 10,
+};
+
 /// 驱动工厂
 pub const Driver = struct {
     /// 创建 MySQL 连接
     pub fn mysql(allocator: Allocator, config: MySQLConfig) !Connection {
-        const mysql_driver = @import("driver.zig");
         const conn = try mysql_driver.Connection.init(allocator, .{
             .host = config.host,
             .port = config.port,
@@ -296,6 +417,21 @@ pub const Driver = struct {
             .driver_type = .memory,
         };
     }
+
+    /// 创建 PostgreSQL 连接
+    pub fn postgres(allocator: Allocator, config: PostgreSQLConfig) !Connection {
+        const pg_impl = try PostgreSQLDriver.init(allocator, config);
+
+        const ptr = try allocator.create(PostgreSQLDriver);
+        ptr.* = pg_impl;
+
+        return Connection{
+            .ptr = ptr,
+            .vtable = &postgresql_vtable,
+            .allocator = allocator,
+            .driver_type = .postgresql,
+        };
+    }
 };
 
 // ============================================================================
@@ -313,7 +449,6 @@ const mysql_vtable = Connection.VTable{
 };
 
 fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
 
     var driver_result = try conn.query(sql);
@@ -323,23 +458,41 @@ fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet
     result.affected_rows = driver_result.affected_rows;
     result.last_insert_id = driver_result.insert_id;
 
-    // 复制字段名
-    if (driver_result.field_names.len > 0) {
-        result.field_names = try allocator.dupe([]const u8, driver_result.field_names);
+    // 复制字段名（需要在遍历行之前完成）
+    const field_count = driver_result.field_names.len;
+    if (field_count > 0) {
+        var field_names_copy = try allocator.alloc([]const u8, field_count);
+        for (driver_result.field_names, 0..) |name, i| {
+            field_names_copy[i] = try allocator.dupe(u8, name);
+        }
+        result.field_names = field_names_copy;
     }
 
     // 复制行数据
-    while (try driver_result.next()) |row| {
-        const columns = try allocator.dupe([]const u8, row.field_names);
-        var values = try allocator.alloc(?[]const u8, columns.len);
+    while (try driver_result.next()) |*row| {
+        defer row.deinit(); // 释放 driver.Row 的 HashMap
 
-        for (columns, 0..) |col, i| {
-            values[i] = row.getString(col);
+        // 为每一行复制 columns
+        var row_columns = try allocator.alloc([]const u8, field_count);
+        for (0..field_count) |i| {
+            row_columns[i] = try allocator.dupe(u8, result.field_names[i]);
+        }
+
+        var values = try allocator.alloc(?[]const u8, field_count);
+
+        // 使用原始字段名查询
+        for (0..field_count) |i| {
+            const col = driver_result.field_names[i];
+            if (row.getString(col)) |val| {
+                values[i] = try allocator.dupe(u8, val);
+            } else {
+                values[i] = null;
+            }
         }
 
         try result.rows.append(allocator, .{
             .allocator = allocator,
-            .columns = columns,
+            .columns = row_columns,
             .values = values,
         });
     }
@@ -348,37 +501,31 @@ fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet
 }
 
 fn mysqlExec(ptr: *anyopaque, sql: []const u8) !u64 {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     return conn.exec(sql);
 }
 
 fn mysqlBeginTransaction(ptr: *anyopaque) !void {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     try conn.beginTransaction();
 }
 
 fn mysqlCommit(ptr: *anyopaque) !void {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     try conn.commit();
 }
 
 fn mysqlRollback(ptr: *anyopaque) !void {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     try conn.rollback();
 }
 
 fn mysqlLastInsertId(ptr: *anyopaque) u64 {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     return conn.lastInsertId();
 }
 
 fn mysqlDeinit(ptr: *anyopaque) void {
-    const mysql_driver = @import("driver.zig");
     const conn: *mysql_driver.Connection = @ptrCast(@alignCast(ptr));
     conn.deinit();
 }
@@ -486,9 +633,13 @@ const SQLiteDriver = struct {
 
         // 读取行
         while (sqlite3.sqlite3_step(stmt.?) == sqlite3.SQLITE_ROW) {
-            const columns = try allocator.dupe([]const u8, result.field_names);
-            var values = try allocator.alloc(?[]const u8, col_count);
+            // 为每一行复制独立的 columns（避免双重释放）
+            var columns = try allocator.alloc([]const u8, col_count);
+            for (0..col_count) |i| {
+                columns[i] = try allocator.dupe(u8, result.field_names[i]);
+            }
 
+            var values = try allocator.alloc(?[]const u8, col_count);
             for (0..col_count) |i| {
                 const text = sqlite3.sqlite3_column_text(stmt.?, @intCast(i));
                 if (@intFromPtr(text) != 0) {
@@ -611,7 +762,7 @@ const MemoryDriver = struct {
     pub fn deinit(self: *MemoryDriver) void {
         var it = self.tables.valueIterator();
         while (it.next()) |table| {
-            table.rows.deinit();
+            table.rows.deinit(self.allocator);
         }
         self.tables.deinit(self.allocator);
     }
@@ -691,6 +842,154 @@ fn memoryDeinit(ptr: *anyopaque) void {
 }
 
 // ============================================================================
+// PostgreSQL 驱动
+// ============================================================================
+
+/// PostgreSQL 驱动实现
+const PostgreSQLDriver = struct {
+    allocator: Allocator,
+    pool: *pg.Pool,
+    last_insert_id: u64 = 0,
+
+    pub fn init(allocator: Allocator, config: PostgreSQLConfig) !PostgreSQLDriver {
+        // 创建连接池
+        const pool = try allocator.create(pg.Pool);
+        pool.* = try pg.Pool.init(allocator, .{
+            .size = 5,
+            .connect = .{
+                .port = config.port,
+                .host = config.host,
+            },
+            .auth = .{
+                .username = config.user,
+                .database = config.database,
+                .password = config.password,
+                .timeout = config.connect_timeout * std.time.ms_per_s,
+            },
+        });
+
+        return PostgreSQLDriver{
+            .allocator = allocator,
+            .pool = pool,
+        };
+    }
+
+    pub fn deinit(self: *PostgreSQLDriver) void {
+        self.pool.deinit();
+        self.allocator.destroy(self.pool);
+    }
+
+    pub fn query(self: *PostgreSQLDriver, allocator: Allocator, sql: []const u8) !ResultSet {
+        var result = ResultSet.init(allocator, .postgresql);
+
+        // 执行查询
+        var pg_result = try self.pool.queryOpts(sql, .{}, .{ .column_names = true });
+        defer pg_result.deinit();
+
+        // 获取列名
+        const columns = pg_result.column_names orelse &.{};
+        if (columns.len > 0) {
+            const field_names_buf = try allocator.alloc([]const u8, columns.len);
+            for (columns, 0..) |col, i| {
+                field_names_buf[i] = try allocator.dupe(u8, col);
+            }
+            result.field_names = field_names_buf;
+        }
+
+        // 读取所有行
+        while (try pg_result.next()) |pg_row| {
+            const row_columns = try allocator.dupe([]const u8, result.field_names);
+            var row_values = try allocator.alloc(?[]const u8, columns.len);
+
+            for (0..columns.len) |i| {
+                if (pg_row.get([]const u8, i)) |val| {
+                    row_values[i] = try allocator.dupe(u8, val);
+                } else {
+                    row_values[i] = null;
+                }
+            }
+
+            try result.rows.append(allocator, .{
+                .allocator = allocator,
+                .columns = row_columns,
+                .values = row_values,
+            });
+        }
+
+        return result;
+    }
+
+    pub fn exec(self: *PostgreSQLDriver, sql: []const u8) !u64 {
+        const affected = try self.pool.exec(sql, .{});
+
+        // PostgreSQL 不直接返回 last_insert_id，需要通过 RETURNING 子句获取
+        // 这里简化处理，让用户在 SQL 中使用 RETURNING id
+        return affected orelse 0;
+    }
+
+    pub fn beginTransaction(self: *PostgreSQLDriver) !void {
+        _ = try self.exec("BEGIN");
+    }
+
+    pub fn commit(self: *PostgreSQLDriver) !void {
+        _ = try self.exec("COMMIT");
+    }
+
+    pub fn rollback(self: *PostgreSQLDriver) !void {
+        _ = try self.exec("ROLLBACK");
+    }
+
+    pub fn lastInsertId(self: *PostgreSQLDriver) u64 {
+        return self.last_insert_id;
+    }
+};
+
+const postgresql_vtable = Connection.VTable{
+    .query = postgresqlQuery,
+    .exec = postgresqlExec,
+    .beginTransaction = postgresqlBeginTransaction,
+    .commit = postgresqlCommit,
+    .rollback = postgresqlRollback,
+    .lastInsertId = postgresqlLastInsertId,
+    .deinit = postgresqlDeinit,
+};
+
+fn postgresqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    return driver.query(allocator, sql);
+}
+
+fn postgresqlExec(ptr: *anyopaque, sql: []const u8) !u64 {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    return driver.exec(sql);
+}
+
+fn postgresqlBeginTransaction(ptr: *anyopaque) !void {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    try driver.beginTransaction();
+}
+
+fn postgresqlCommit(ptr: *anyopaque) !void {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    try driver.commit();
+}
+
+fn postgresqlRollback(ptr: *anyopaque) !void {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    try driver.rollback();
+}
+
+fn postgresqlLastInsertId(ptr: *anyopaque) u64 {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    return driver.lastInsertId();
+}
+
+fn postgresqlDeinit(ptr: *anyopaque) void {
+    const driver: *PostgreSQLDriver = @ptrCast(@alignCast(ptr));
+    driver.deinit();
+}
+
+// ============================================================================
 // 测试
 // ============================================================================
 
@@ -704,9 +1003,9 @@ test "Row: 基本操作" {
 
     const columns = try allocator.dupe([]const u8, &.{ "id", "name", "active" });
     var values = try allocator.alloc(?[]const u8, 3);
-    values[0] = "42";
-    values[1] = "test";
-    values[2] = "1";
+    values[0] = try allocator.dupe(u8, "42");
+    values[1] = try allocator.dupe(u8, "test");
+    values[2] = try allocator.dupe(u8, "1");
 
     var row = Row{
         .allocator = allocator,

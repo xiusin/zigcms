@@ -10,7 +10,7 @@
 //! ## 使用示例
 //!
 //! ```zig
-//! const driver = @import("services").mysql.driver;
+//! const driver = @import("services").sql.driver;
 //!
 //! // 连接数据库
 //! var conn = try driver.Connection.init(allocator, .{
@@ -36,7 +36,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const mysql_core = @import("mysql.zig");
+const mysql_core = @import("query.zig");
 
 // ============================================================================
 // C API 绑定
@@ -75,6 +75,13 @@ const c = struct {
     pub const CLIENT_MULTI_STATEMENTS: c_ulong = 65536;
     pub const CLIENT_MULTI_RESULTS: c_ulong = 131072;
 
+    // SSL 模式选项
+    pub const MYSQL_OPT_SSL_MODE: c_uint = 42; // MySQL 8.x
+    pub const SSL_MODE_DISABLED: c_uint = 1;
+
+    // mysql_options 函数
+    pub extern fn mysql_options(mysql: *MYSQL, option: c_uint, arg: ?*const anyopaque) c_int;
+
     // C API 函数声明（移除不兼容的可选类型）
     pub extern fn mysql_init(mysql: ?*MYSQL) ?*MYSQL;
     pub extern fn mysql_real_connect(
@@ -98,6 +105,7 @@ const c = struct {
     pub extern fn mysql_num_rows(res: *MYSQL_RES) u64;
     pub extern fn mysql_num_fields(res: *MYSQL_RES) c_uint;
     pub extern fn mysql_fetch_fields(res: *MYSQL_RES) [*c]MYSQL_FIELD;
+    pub extern fn mysql_fetch_field_direct(res: *MYSQL_RES, fieldnr: c_uint) *MYSQL_FIELD;
     pub extern fn mysql_affected_rows(mysql: *MYSQL) u64;
     pub extern fn mysql_insert_id(mysql: *MYSQL) u64;
     pub extern fn mysql_error(mysql: *MYSQL) [*c]const u8;
@@ -210,8 +218,10 @@ pub const Row = struct {
     data: std.StringHashMapUnmanaged([]const u8),
     field_names: []const []const u8,
 
-    pub fn deinit(self: *Row) void {
-        self.data.deinit(self.allocator);
+    pub fn deinit(self: *const Row) void {
+        // StringHashMapUnmanaged.deinit 需要 allocator
+        var data_copy = self.data;
+        data_copy.deinit(self.allocator);
     }
 
     /// 获取字符串值
@@ -273,6 +283,8 @@ pub const ResultSet = struct {
         if (@intFromPtr(row_data) == 0) return null;
 
         const lengths = c.mysql_fetch_lengths(res);
+        // 检查 lengths 是否为 null
+        if (@intFromPtr(lengths) == 0) return null;
 
         var row = Row{
             .allocator = self.allocator,
@@ -282,11 +294,18 @@ pub const ResultSet = struct {
 
         for (0..self.field_count) |i| {
             const field_name = self.field_names[i];
-            const cell_ptr = row_data[i];
-            if (@intFromPtr(cell_ptr) != 0) {
-                const len = lengths[i];
-                const value = cell_ptr[0..len];
-                try row.data.put(self.allocator, field_name, value);
+            // 安全获取 cell 指针
+            const cell_ptr_raw = row_data[i];
+            if (@intFromPtr(cell_ptr_raw) != 0) {
+                const cell_ptr: [*c]u8 = cell_ptr_raw;
+                const len: usize = @intCast(lengths[i]);
+                if (len > 0) {
+                    const value = cell_ptr[0..len];
+                    try row.data.put(self.allocator, field_name, value);
+                } else {
+                    // 空字符串
+                    try row.data.put(self.allocator, field_name, "");
+                }
             }
         }
 
@@ -335,6 +354,10 @@ pub const Connection = struct {
     pub fn init(allocator: Allocator, config: ConnectionConfig) !Connection {
         const mysql = c.mysql_init(null) orelse return MySQLError.OutOfMemory;
         errdefer c.mysql_close(mysql);
+
+        // 禁用 SSL（解决远程连接证书验证问题）
+        const ssl_mode: c_uint = c.SSL_MODE_DISABLED;
+        _ = c.mysql_options(mysql, c.MYSQL_OPT_SSL_MODE, &ssl_mode);
 
         // 连接标志
         var flags: c_ulong = 0;
@@ -408,11 +431,20 @@ pub const Connection = struct {
         if (result) |res| {
             field_count = c.mysql_num_fields(res);
             if (field_count > 0) {
-                const fields = c.mysql_fetch_fields(res);
                 field_names = try self.allocator.alloc([]const u8, field_count);
                 for (0..field_count) |i| {
-                    const name_len = fields[i].name_length;
-                    field_names[i] = fields[i].name[0..name_len];
+                    const field = c.mysql_fetch_field_direct(res, @intCast(i));
+                    if (@intFromPtr(field) != 0) {
+                        const name_c = field.name;
+                        if (@intFromPtr(name_c) != 0) {
+                            // 使用 std.mem.span 获取 C 字符串长度
+                            field_names[i] = std.mem.span(name_c);
+                        } else {
+                            field_names[i] = "";
+                        }
+                    } else {
+                        field_names[i] = "";
+                    }
                 }
             }
         }

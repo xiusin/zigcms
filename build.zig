@@ -4,42 +4,56 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{ .name = "vendor", .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
+    const lib_module = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const lib = b.addLibrary(.{
+        .name = "vendor",
+        .root_module = lib_module,
+        .linkage = .static,
+    });
     b.installArtifact(lib);
 
-    const exe = b.addExecutable(.{ .name = "vendor", .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
+    const exe_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{ .name = "vendor", .root_module = exe_module });
 
     const zap = b.dependency("zap", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("zap", zap.module("zap"));
+    exe_module.addImport("zap", zap.module("zap"));
 
-    const zig_webui = b.dependency("zig-webui", .{ .target = target, .optimize = optimize, .enable_tls = false, .is_static = true });
-    exe.root_module.addImport("webui", zig_webui.module("webui"));
+    // const zig_webui = b.dependency("zig-webui", .{ .target = target, .optimize = optimize, .enable_tls = false, .is_static = true });
+    // exe.root_module.addImport("webui", zig_webui.module("webui"));
 
     const regex = b.dependency("regex", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("regex", regex.module("regex"));
+    exe_module.addImport("regex", regex.module("regex"));
 
     const pg = b.dependency("pg", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("pg", pg.module("pg"));
+    exe_module.addImport("pg", pg.module("pg"));
 
     const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("pretty", pretty.module("pretty"));
+    exe_module.addImport("pretty", pretty.module("pretty"));
 
     const json = b.dependency("json", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("json", json.module("json"));
+    exe_module.addImport("json", json.module("json"));
 
-    const jwt = b.dependency("jwt", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("jwt", jwt.module("jwt"));
+    // const jwt = b.dependency("jwt", .{ .target = target, .optimize = optimize });
+    // exe_module.addImport("jwt", jwt.module("jwt"));
 
     const sqlite = b.dependency("sqlite", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
+    exe_module.addImport("sqlite", sqlite.module("sqlite"));
     exe.linkLibrary(sqlite.artifact("sqlite"));
 
     const curl = b.dependency("curl", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("curl", curl.module("curl"));
+    exe_module.addImport("curl", curl.module("curl"));
     exe.linkLibC();
 
     const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    exe_module.addImport("smtp_client", smtp_client.module("smtp_client"));
 
     b.installArtifact(exe);
 
@@ -58,18 +72,26 @@ pub fn build(b: *std.Build) void {
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
-    const lib_unit_tests = b.addTest(.{
+    const lib_unit_tests_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const lib_unit_tests = b.addTest(.{
+        .name = "vendor-lib-tests",
+        .root_module = lib_unit_tests_module,
+    });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
-    const exe_unit_tests = b.addTest(.{
+    const exe_unit_tests_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const exe_unit_tests = b.addTest(.{
+        .name = "vendor-exe-tests",
+        .root_module = exe_unit_tests_module,
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
@@ -84,12 +106,12 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // MySQL 集成测试
     // ========================================================================
-    const mysql_test_exe = b.addExecutable(.{
-        .name = "mysql-test",
-        .root_source_file = b.path("src/services/mysql/integration_test.zig"),
+    const mysql_test_module = b.createModule(.{
+        .root_source_file = b.path("src/services/sql/integration_test.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const mysql_test_exe = b.addExecutable(.{ .name = "mysql-test", .root_module = mysql_test_module });
 
     // 链接 MySQL C 库
     mysql_test_exe.linkLibC();
@@ -119,12 +141,12 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // SQLite 集成测试
     // ========================================================================
-    const sqlite_test_exe = b.addExecutable(.{
-        .name = "sqlite-test",
-        .root_source_file = b.path("src/services/mysql/sqlite_test.zig"),
+    const sqlite_test_module = b.createModule(.{
+        .root_source_file = b.path("src/services/sql/sqlite_test.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const sqlite_test_exe = b.addExecutable(.{ .name = "sqlite-test", .root_module = sqlite_test_module });
 
     // 链接 SQLite3 库
     sqlite_test_exe.linkLibC();
@@ -141,12 +163,12 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // ORM 集成测试（SQLite）
     // ========================================================================
-    const orm_test_exe = b.addExecutable(.{
-        .name = "orm-test",
-        .root_source_file = b.path("src/services/mysql/orm_test.zig"),
+    const orm_test_module = b.createModule(.{
+        .root_source_file = b.path("src/services/sql/orm_test.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const orm_test_exe = b.addExecutable(.{ .name = "orm-test", .root_module = orm_test_module });
 
     orm_test_exe.linkLibC();
     orm_test_exe.linkSystemLibrary("sqlite3");
