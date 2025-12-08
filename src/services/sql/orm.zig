@@ -47,6 +47,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
+const logger_mod = @import("../logger/logger.zig");
 
 pub const OrderDir = query_mod.OrderDir;
 
@@ -85,11 +86,31 @@ pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.Res
     var models = std.ArrayListUnmanaged(T){};
     errdefer models.deinit(allocator);
 
+    const fields = std.meta.fields(T);
+    var field_indices: [fields.len]?usize = .{null} ** fields.len;
+
+    // 缓存字段映射索引：将模型字段名映射到 ResultSet 列索引
+    if (result.field_names.len > 0) {
+        for (result.field_names, 0..) |col_name, col_idx| {
+            inline for (fields, 0..) |field, f_idx| {
+                if (std.mem.eql(u8, col_name, field.name)) {
+                    field_indices[f_idx] = col_idx;
+                }
+            }
+        }
+    }
+
     while (result.next()) |row| {
         var model: T = undefined;
 
-        inline for (std.meta.fields(T)) |field| {
-            const value = row.getString(field.name);
+        inline for (fields, 0..) |field, f_idx| {
+            // 使用缓存索引直接获取值，避免 O(N) 字符串查找
+            var value: ?[]const u8 = null;
+            if (field_indices[f_idx]) |idx| {
+                if (idx < row.values.len) {
+                    value = row.values[idx];
+                }
+            }
 
             if (@typeInfo(field.type) == .optional) {
                 if (value) |v| {
@@ -157,6 +178,7 @@ pub const Database = struct {
     driver_type: interface.DriverType,
     debug: bool = false,
     enable_logging: bool = false,
+    logger: ?*logger_mod.Logger = null,
 
     /// 从统一连接创建
     pub fn fromConnection(allocator: Allocator, conn: interface.Connection) Database {
@@ -248,87 +270,152 @@ pub const Database = struct {
         }
     }
 
-    /// 执行原始查询（内部自动使用连接池）
+    /// 执行原始查询（内部自动使用连接池，支持失败重试）
     pub fn rawQuery(self: *Database, sql_query: []const u8) !interface.ResultSet {
         const start_time = std.time.nanoTimestamp();
 
-        if (self.debug) {
+        if (self.logger) |log| {
+            if (self.debug) log.debug("[SQL] {s}", .{sql_query});
+        } else if (self.debug) {
             std.debug.print("[SQL] {s}\n", .{sql_query});
         }
 
-        // MySQL：从连接池获取连接
-        var pooled_conn: ?*PooledConnection = null;
-        var conn = if (self.pool) |pool| blk: {
-            pooled_conn = try pool.acquire();
-            break :blk pooled_conn.?.conn;
-        } else self.conn;
+        var retry_count: u32 = 0;
+        // 最多重试1次
+        while (retry_count <= 1) : (retry_count += 1) {
+            // MySQL：从连接池获取连接
+            var pooled_conn: ?*PooledConnection = null;
+            var conn = if (self.pool) |pool| blk: {
+                pooled_conn = try pool.acquire();
+                break :blk pooled_conn.?.conn;
+            } else self.conn;
 
-        // 确保归还连接
-        defer if (pooled_conn) |pc| {
-            if (self.pool) |pool| pool.release(pc);
-        };
+            // 确保归还连接
+            defer if (pooled_conn) |pc| {
+                if (self.pool) |pool| pool.release(pc);
+            };
 
-        const result = conn.query(sql_query) catch |err| {
+            const result = conn.query(sql_query) catch |err| {
+                const is_conn_error = switch (err) {
+                    error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
+                    else => false,
+                };
+
+                if (is_conn_error) {
+                    if (pooled_conn) |pc| {
+                        pc.broken = true; // 标记为损坏，归还时会被销毁
+                        if (retry_count < 1) {
+                            // 准备重试，continue 会触发 defer 释放当前连接
+                            continue;
+                        }
+                    }
+                }
+
+                const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
+
+                if (self.logger) |log| {
+                    if (self.enable_logging) {
+                        log.err("Query failed: {s}", .{@errorName(err)});
+                        log.err("SQL: {s}", .{sql_query});
+                        log.err("Duration: {d:.2}ms", .{elapsed_ms});
+                    }
+                } else if (self.enable_logging) {
+                    std.debug.print("[ERROR] Query failed: {s}\n", .{@errorName(err)});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
+                    std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+                }
+                return err;
+            };
+
             const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
+            const row_count = result.rowCount();
 
-            if (self.enable_logging) {
-                std.debug.print("[ERROR] Query failed: {s}\n", .{@errorName(err)});
-                std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
-                std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+            if (self.logger) |log| {
+                if (self.enable_logging) {
+                    log.info("Query executed: {d} rows, {d:.2}ms", .{ row_count, elapsed_ms });
+                    log.debug("SQL: {s}", .{sql_query});
+                }
+            } else if (self.enable_logging) {
+                std.debug.print("[INFO] Query executed: {d} rows, {d:.2}ms\n", .{ row_count, elapsed_ms });
+                std.debug.print("[SQL] {s}\n", .{sql_query});
             }
-            return err;
-        };
 
-        const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
-        const row_count = result.rowCount();
-
-        if (self.enable_logging) {
-            std.debug.print("[INFO] Query executed: {d} rows, {d:.2}ms\n", .{ row_count, elapsed_ms });
-            std.debug.print("[SQL] {s}\n", .{sql_query});
+            return result;
         }
-
-        return result;
+        return error.QueryFailed; // Should not reach here
     }
 
-    /// 执行原始命令（内部自动使用连接池）
+    /// 执行原始命令（内部自动使用连接池，支持失败重试）
     pub fn rawExec(self: *Database, sql_query: []const u8) !u64 {
         const start_time = std.time.nanoTimestamp();
 
-        if (self.debug) {
+        if (self.logger) |log| {
+            if (self.debug) log.debug("[SQL] {s}", .{sql_query});
+        } else if (self.debug) {
             std.debug.print("[SQL] {s}\n", .{sql_query});
         }
 
-        // MySQL：从连接池获取连接
-        var pooled_conn: ?*PooledConnection = null;
-        var conn = if (self.pool) |pool| blk: {
-            pooled_conn = try pool.acquire();
-            break :blk pooled_conn.?.conn;
-        } else self.conn;
+        var retry_count: u32 = 0;
+        // 最多重试1次
+        while (retry_count <= 1) : (retry_count += 1) {
+            // MySQL：从连接池获取连接
+            var pooled_conn: ?*PooledConnection = null;
+            var conn = if (self.pool) |pool| blk: {
+                pooled_conn = try pool.acquire();
+                break :blk pooled_conn.?.conn;
+            } else self.conn;
 
-        // 确保归还连接
-        defer if (pooled_conn) |pc| {
-            if (self.pool) |pool| pool.release(pc);
-        };
+            // 确保归还连接
+            defer if (pooled_conn) |pc| {
+                if (self.pool) |pool| pool.release(pc);
+            };
 
-        const affected = conn.exec(sql_query) catch |err| {
+            const affected = conn.exec(sql_query) catch |err| {
+                const is_conn_error = switch (err) {
+                    error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
+                    else => false,
+                };
+
+                if (is_conn_error) {
+                    if (pooled_conn) |pc| {
+                        pc.broken = true;
+                        if (retry_count < 1) {
+                            continue;
+                        }
+                    }
+                }
+
+                const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
+
+                if (self.logger) |log| {
+                    if (self.enable_logging) {
+                        log.err("Exec failed: {s}", .{@errorName(err)});
+                        log.err("SQL: {s}", .{sql_query});
+                        log.err("Duration: {d:.2}ms", .{elapsed_ms});
+                    }
+                } else if (self.enable_logging) {
+                    std.debug.print("[ERROR] Exec failed: {s}\n", .{@errorName(err)});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
+                    std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+                }
+                return err;
+            };
+
             const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
-            if (self.enable_logging) {
-                std.debug.print("[ERROR] Exec failed: {s}\n", .{@errorName(err)});
-                std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
-                std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+            if (self.logger) |log| {
+                if (self.enable_logging) {
+                    log.info("Exec executed: {d} rows affected, {d:.2}ms", .{ affected, elapsed_ms });
+                    log.debug("SQL: {s}", .{sql_query});
+                }
+            } else if (self.enable_logging) {
+                std.debug.print("[INFO] Exec executed: {d} rows affected, {d:.2}ms\n", .{ affected, elapsed_ms });
+                std.debug.print("[SQL] {s}\n", .{sql_query});
             }
-            return err;
-        };
 
-        const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
-
-        if (self.enable_logging) {
-            std.debug.print("[INFO] Exec executed: {d} rows affected, {d:.2}ms\n", .{ affected, elapsed_ms });
-            std.debug.print("[SQL] {s}\n", .{sql_query});
+            return affected;
         }
-
-        return affected;
+        return error.QueryFailed;
     }
 
     /// 开始事务（MySQL 使用连接池事务）
@@ -1853,7 +1940,14 @@ pub fn ModelQuery(comptime T: type) type {
                     try sql.appendSlice(self.db.allocator, f);
                 }
             } else {
-                try sql.appendSlice(self.db.allocator, "*");
+                // 自动生成带表名前缀的字段列表，避免 JOIN 时字段歧义
+                // 例如: user.id, user.name, ...
+                inline for (std.meta.fields(T), 0..) |field, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                    try sql.appendSlice(self.db.allocator, self.table);
+                    try sql.append(self.db.allocator, '.');
+                    try sql.appendSlice(self.db.allocator, field.name);
+                }
             }
 
             // FROM
@@ -1924,11 +2018,31 @@ pub fn ModelQuery(comptime T: type) type {
             var models = std.ArrayListUnmanaged(T){};
             errdefer models.deinit(self.db.allocator);
 
+            const fields = std.meta.fields(T);
+            var field_indices: [fields.len]?usize = .{null} ** fields.len;
+
+            // 缓存字段映射索引
+            if (result.field_names.len > 0) {
+                for (result.field_names, 0..) |col_name, col_idx| {
+                    inline for (fields, 0..) |field, f_idx| {
+                        if (std.mem.eql(u8, col_name, field.name)) {
+                            field_indices[f_idx] = col_idx;
+                        }
+                    }
+                }
+            }
+
             while (result.next()) |row| {
                 var model: T = undefined;
 
-                inline for (std.meta.fields(T)) |field| {
-                    const value = row.getString(field.name);
+                inline for (fields, 0..) |field, f_idx| {
+                    // 使用缓存索引
+                    var value: ?[]const u8 = null;
+                    if (field_indices[f_idx]) |idx| {
+                        if (idx < row.values.len) {
+                            value = row.values[idx];
+                        }
+                    }
 
                     if (@typeInfo(field.type) == .optional) {
                         const child_type = @typeInfo(field.type).optional.child;
@@ -2130,6 +2244,10 @@ const PooledConnection = struct {
     created_at: i64,
     last_used: i64,
     transaction_start: ?i64,
+    is_pinging: std.atomic.Value(bool),
+    broken: bool = false,
+    borrowed: bool = false,
+    mutex: std.Thread.Mutex = .{},
 
     pub fn init(conn: interface.Connection, id: usize) PooledConnection {
         const now = std.time.milliTimestamp();
@@ -2141,6 +2259,10 @@ const PooledConnection = struct {
             .created_at = now,
             .last_used = now,
             .transaction_start = null,
+            .is_pinging = std.atomic.Value(bool).init(false),
+            .broken = false,
+            .borrowed = false,
+            .mutex = .{},
         };
     }
 
@@ -2172,7 +2294,12 @@ pub const ConnectionPool = struct {
     allocator: Allocator,
     config: PoolConfig,
     db_config: interface.MySQLConfig,
-    connections: std.ArrayListUnmanaged(PooledConnection),
+
+    // 所有连接（用于管理生命周期和保活）
+    all_connections: std.ArrayListUnmanaged(*PooledConnection),
+    // 空闲连接（栈结构，LIFO，用于快速获取）
+    idle_connections: std.ArrayListUnmanaged(*PooledConnection),
+
     mutex: std.Thread.Mutex = .{},
     condition: std.Thread.Condition = .{},
     next_id: usize = 0,
@@ -2184,7 +2311,8 @@ pub const ConnectionPool = struct {
             .allocator = allocator,
             .config = pool_config,
             .db_config = db_config,
-            .connections = .{},
+            .all_connections = .{},
+            .idle_connections = .{},
             .mutex = .{},
             .condition = .{},
             .next_id = 0,
@@ -2195,9 +2323,12 @@ pub const ConnectionPool = struct {
         // 预创建最小连接数
         for (0..pool_config.min_size) |_| {
             const conn = try interface.Driver.mysql(allocator, db_config);
-            const pooled = PooledConnection.init(conn, pool.next_id);
+            const pooled = try allocator.create(PooledConnection);
+            pooled.* = PooledConnection.init(conn, pool.next_id);
             pool.next_id += 1;
-            try pool.connections.append(allocator, pooled);
+
+            try pool.all_connections.append(allocator, pooled);
+            try pool.idle_connections.append(allocator, pooled);
         }
 
         // 启动保活线程
@@ -2216,56 +2347,48 @@ pub const ConnectionPool = struct {
 
             if (self.closed) break;
 
-            // 1. 快速加锁：只收集需要 ping 的连接 ID
-            var ids_to_ping: [64]usize = undefined;
-            var ping_count: usize = 0;
+            // 1. 快速加锁：只收集需要 ping 的连接（标记为 pinging）
+            // 只检测空闲连接，因为使用中的连接被认为是最新的
+            var conns_to_ping = std.ArrayList(*PooledConnection).init(self.allocator);
+            defer conns_to_ping.deinit();
 
             {
                 self.mutex.lock();
-                defer self.mutex.unlock();
 
-                for (self.connections.items) |*pooled| {
-                    if (!pooled.in_use and ping_count < 64) {
-                        ids_to_ping[ping_count] = pooled.id;
-                        pooled.in_use = true; // 临时标记为使用中，防止被获取
-                        ping_count += 1;
+                // 遍历 idle 列表（从头开始，优先检查旧连接）
+                for (self.idle_connections.items) |pooled| {
+                    if (conns_to_ping.items.len >= 16) break;
+
+                    // 只有未被 acquire 和未在 pinging 的连接才处理
+                    // 增加 borrowed 检查，防止借出后仍在 idle 列表的极端情况
+                    if (!pooled.borrowed and !pooled.in_use and !pooled.is_pinging.load(.seq_cst)) {
+                        pooled.is_pinging.store(true, .seq_cst);
+                        conns_to_ping.append(pooled) catch {};
                     }
                 }
+
+                self.mutex.unlock();
             }
 
             // 2. 不持锁：异步执行 ping
-            for (ids_to_ping[0..ping_count]) |id| {
+            for (conns_to_ping.items) |pooled| {
                 if (self.closed) break;
 
-                // 找到连接并 ping（不持锁）
-                var conn_ptr: ?*PooledConnection = null;
-                {
-                    self.mutex.lock();
-                    for (self.connections.items) |*pooled| {
-                        if (pooled.id == id) {
-                            conn_ptr = pooled;
-                            break;
-                        }
-                    }
-                    self.mutex.unlock();
+                // 执行 ping（不持锁，不阻塞业务）
+                const ping_ok = if (pooled.conn.exec("SELECT 1")) |_| true else |_| false;
+
+                // 重新加锁更新状态
+                self.mutex.lock();
+                if (ping_ok) {
+                    pooled.last_used = std.time.milliTimestamp();
+                } else {
+                    pooled.last_used = 0; // 标记为需要重建
+                    // 尝试重连 (简化：直接在锁内释放旧连接，下次 acquire 时会发现不健康并处理)
+                    // 或者更激进点：尝试原地重连
+                    // 为简单起见，这里只更新时间，让 isHealthy 失败
                 }
-
-                if (conn_ptr) |pooled| {
-                    // 执行 ping（不持锁，不阻塞业务）
-                    const ping_ok = if (pooled.conn.exec("SELECT 1")) |_| true else |_| false;
-
-                    // 3. 快速加锁：更新状态并归还
-                    self.mutex.lock();
-                    if (ping_ok) {
-                        pooled.last_used = std.time.milliTimestamp();
-                    } else {
-                        pooled.last_used = 0; // 标记为需要重建
-                    }
-                    pooled.in_use = false; // 归还
-                    self.mutex.unlock();
-
-                    self.condition.signal(); // 通知等待的线程
-                }
+                pooled.is_pinging.store(false, .seq_cst);
+                self.mutex.unlock();
             }
         }
     }
@@ -2282,11 +2405,14 @@ pub const ConnectionPool = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        for (self.connections.items) |*pooled| {
+        // 释放所有连接
+        for (self.all_connections.items) |pooled| {
             pooled.conn.deinit();
+            self.allocator.destroy(pooled);
         }
 
-        self.connections.deinit(self.allocator);
+        self.all_connections.deinit(self.allocator);
+        self.idle_connections.deinit(self.allocator);
     }
 
     /// 获取连接
@@ -2295,78 +2421,184 @@ pub const ConnectionPool = struct {
 
         while (true) {
             self.mutex.lock();
-            defer self.mutex.unlock();
 
             if (self.closed) {
+                self.mutex.unlock();
                 return error.PoolClosed;
             }
 
-            try self.cleanupUnhealthyConnections();
+            // 1. 快速路径：从 idle 栈中查找可用连接 (O(1) ~ O(K))
+            // 从栈顶开始查找，跳过正在 ping 的连接
+            if (self.idle_connections.items.len > 0) {
+                var found_idx: ?usize = null;
+                var i: usize = self.idle_connections.items.len;
+                while (i > 0) {
+                    i -= 1;
+                    const item = self.idle_connections.items[i];
+                    if (!item.is_pinging.load(.seq_cst) and !item.borrowed) {
+                        found_idx = i;
+                        break;
+                    }
+                }
 
-            for (self.connections.items) |*pooled| {
-                if (!pooled.in_use and pooled.isHealthy(self.config)) {
-                    pooled.in_use = true;
-                    pooled.last_used = std.time.milliTimestamp();
-                    return pooled;
+                if (found_idx) |idx| {
+                    const pooled = self.idle_connections.swapRemove(idx);
+                    if (pooled.isHealthy(self.config)) {
+                        pooled.in_use = true;
+                        pooled.borrowed = true;
+                        pooled.last_used = std.time.milliTimestamp();
+                        self.mutex.unlock();
+                        return pooled;
+                    } else {
+                        // 连接不健康处理...
+                        pooled.conn.deinit();
+                        self.mutex.unlock();
+
+                        if (interface.Driver.mysql(self.allocator, self.db_config)) |new_conn| {
+                            pooled.conn = new_conn;
+                            pooled.created_at = std.time.milliTimestamp();
+                            pooled.last_used = std.time.milliTimestamp();
+                            pooled.in_use = true;
+                            pooled.borrowed = true;
+                            pooled.broken = false;
+                            // 注意：swapRemove 已经移除了它，所以直接返回即可，不需要重新加入
+                            return pooled;
+                        } else |_| {
+                            self.mutex.lock();
+                            for (self.all_connections.items, 0..) |p, k| {
+                                if (p == pooled) {
+                                    _ = self.all_connections.swapRemove(k);
+                                    break;
+                                }
+                            }
+                            self.allocator.destroy(pooled);
+                            self.mutex.unlock();
+                            continue;
+                        }
+                    }
                 }
             }
 
-            if (self.connections.items.len < self.config.max_size) {
-                const conn = try interface.Driver.mysql(self.allocator, self.db_config);
-                var pooled = PooledConnection.init(conn, self.next_id);
-                self.next_id += 1;
-                pooled.in_use = true;
-                try self.connections.append(self.allocator, pooled);
-                return &self.connections.items[self.connections.items.len - 1];
+            // 2. 慢速路径：如果没有空闲连接，检查是否可以创建新连接
+            if (self.all_connections.items.len < self.config.max_size) {
+                // 预留名额？不，直接释放锁去创建。
+                // 风险：可能创建超限。
+                // 解决方案：使用 CAS 或者乐观创建。
+                // 这里采用乐观创建：释放锁 -> 创建 -> 加锁 -> 检查 -> 放入。
+
+                self.mutex.unlock();
+
+                // 在锁外创建连接（耗时操作）
+                var conn = interface.Driver.mysql(self.allocator, self.db_config) catch |err| {
+                    return err;
+                };
+
+                // 重新获取锁
+                self.mutex.lock();
+
+                if (self.closed) {
+                    conn.deinit();
+                    self.mutex.unlock();
+                    return error.PoolClosed;
+                }
+
+                // 再次检查容量
+                if (self.all_connections.items.len < self.config.max_size) {
+                    const pooled = self.allocator.create(PooledConnection) catch |err| {
+                        conn.deinit();
+                        self.mutex.unlock();
+                        return err;
+                    };
+                    pooled.* = PooledConnection.init(conn, self.next_id);
+                    self.next_id += 1;
+                    pooled.in_use = true;
+                    pooled.borrowed = true;
+
+                    self.all_connections.append(self.allocator, pooled) catch |err| {
+                        conn.deinit();
+                        self.allocator.destroy(pooled);
+                        self.mutex.unlock();
+                        return err;
+                    };
+
+                    self.mutex.unlock();
+                    return pooled;
+                } else {
+                    // 竞争失败，池已满。销毁刚创建的连接。
+                    conn.deinit();
+                    // 继续向下执行 wait
+                }
             }
 
             const now = std.time.milliTimestamp();
             if (now >= deadline) {
+                self.mutex.unlock();
                 return error.AcquireTimeout;
             }
 
             const wait_time_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
             self.condition.timedWait(&self.mutex, wait_time_ns) catch {};
+            self.mutex.unlock();
         }
     }
 
     /// 归还连接
     pub fn release(self: *ConnectionPool, conn: *PooledConnection) void {
+        // 1. 先清理连接状态（不持池锁）
+        // 使用连接自己的锁来保护状态变更
+        {
+            conn.mutex.lock();
+            defer conn.mutex.unlock();
+
+            if (conn.in_transaction) {
+                conn.conn.rollback() catch {};
+                conn.in_transaction = false;
+                conn.transaction_start = null;
+            }
+
+            conn.in_use = false;
+            conn.borrowed = false;
+            conn.last_used = std.time.milliTimestamp();
+        }
+
+        // 2. 再归还到池中（持池锁）
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        conn.in_use = false;
-        conn.last_used = std.time.milliTimestamp();
-
-        if (conn.in_transaction) {
-            conn.conn.rollback() catch {};
-            conn.in_transaction = false;
-            conn.transaction_start = null;
+        // 如果连接已损坏，销毁它
+        if (conn.broken) {
+            conn.conn.deinit();
+            // 从 all_connections 移除
+            for (self.all_connections.items, 0..) |p, i| {
+                if (p == conn) {
+                    _ = self.all_connections.swapRemove(i);
+                    break;
+                }
+            }
+            self.allocator.destroy(conn);
+            self.condition.signal(); // 通知可能在等待容量释放的线程
+            return;
         }
+
+        self.idle_connections.append(self.allocator, conn) catch {
+            // 如果归还失败（OOM），只能销毁连接了
+            for (self.all_connections.items, 0..) |p, i| {
+                if (p == conn) {
+                    _ = self.all_connections.swapRemove(i);
+                    break;
+                }
+            }
+            conn.conn.deinit();
+            self.allocator.destroy(conn);
+            return;
+        };
 
         self.condition.signal();
     }
 
-    /// 清理不健康的连接
+    /// 清理不健康的连接 (已在 keepalive 中处理，此处保留空实现或用于手动触发)
     fn cleanupUnhealthyConnections(self: *ConnectionPool) !void {
-        var i: usize = 0;
-        while (i < self.connections.items.len) {
-            const pooled = &self.connections.items[i];
-
-            if (!pooled.in_use and !pooled.isHealthy(self.config)) {
-                pooled.conn.deinit();
-                _ = self.connections.swapRemove(i);
-            } else {
-                i += 1;
-            }
-        }
-
-        while (self.connections.items.len < self.config.min_size) {
-            const conn = try interface.Driver.mysql(self.allocator, self.db_config);
-            const pooled = PooledConnection.init(conn, self.next_id);
-            self.next_id += 1;
-            try self.connections.append(self.allocator, pooled);
-        }
+        _ = self;
     }
 
     /// 获取池统计信息
@@ -2374,29 +2606,19 @@ pub const ConnectionPool = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        var stats = PoolStats{
-            .total = self.connections.items.len,
-            .active = 0,
-            .idle = 0,
+        const stats = PoolStats{
+            .total = self.all_connections.items.len,
+            .active = self.all_connections.items.len - self.idle_connections.items.len,
+            .idle = self.idle_connections.items.len,
             .in_transaction = 0,
         };
 
-        for (self.connections.items) |*pooled| {
-            if (pooled.in_use) {
-                stats.active += 1;
-            } else {
-                stats.idle += 1;
-            }
-            if (pooled.in_transaction) {
-                stats.in_transaction += 1;
-            }
-        }
+        // in_transaction 统计不再准确，或者需要遍历 all_connections（O(N)）
+        // 为了性能，这里不再遍历
 
         return stats;
     }
 };
-
-/// 事务对象（独占连接）
 pub const Transaction = struct {
     pool: *ConnectionPool,
     conn: *PooledConnection,
@@ -2406,10 +2628,10 @@ pub const Transaction = struct {
     pub fn init(pool: *ConnectionPool) !Transaction {
         const conn = try pool.acquire();
 
-        pool.mutex.lock();
+        conn.mutex.lock();
         conn.in_transaction = true;
         conn.transaction_start = std.time.milliTimestamp();
-        pool.mutex.unlock();
+        conn.mutex.unlock();
 
         try conn.conn.beginTransaction();
 
@@ -2437,10 +2659,10 @@ pub const Transaction = struct {
         try self.conn.conn.commit();
         self.committed = true;
 
-        self.pool.mutex.lock();
+        self.conn.mutex.lock();
         self.conn.in_transaction = false;
         self.conn.transaction_start = null;
-        self.pool.mutex.unlock();
+        self.conn.mutex.unlock();
     }
 
     pub fn rollback(self: *Transaction) !void {
@@ -2451,10 +2673,10 @@ pub const Transaction = struct {
         try self.conn.conn.rollback();
         self.rolled_back = true;
 
-        self.pool.mutex.lock();
+        self.conn.mutex.lock();
         self.conn.in_transaction = false;
         self.conn.transaction_start = null;
-        self.pool.mutex.unlock();
+        self.conn.mutex.unlock();
     }
 
     pub fn query(self: *Transaction, sql: []const u8) !interface.ResultSet {
