@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZigCMS - 基于 Zig 的高性能内容管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <style>
+        :root {
+            --primary-color: #f97316;
+            --secondary-color: #0ea5e9;
+            --dark-color: #1e293b;
+            --light-bg: #f8fafc;
+            --border-color: #e2e8f0;
+            --code-bg: #1e293b;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--dark-color);
+            line-height: 1.6;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 80px;
+            height: calc(100vh - 80px);
+            overflow-y: auto;
+            background: var(--light-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 1.5rem 0;
+        }
+
+        .sidebar .nav-link {
+            color: var(--dark-color);
+            padding: 0.5rem 1.5rem;
+            border-radius: 0;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            background: white;
+            color: var(--primary-color);
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .content {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--dark-color);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .subsection-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--dark-color);
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            font-weight: 600;
+        }
+
+        pre {
+            background: var(--code-bg);
+            color: #f8f8f2;
+            border-radius: 8px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+        }
+
+        code {
+            background: var(--code-bg);
+            color: #f8f8f2;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .alert {
+            border-radius: 8px;
+            border: none;
+        }
+
+        .alert-info {
+            background: rgba(14, 165, 233, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .alert-warning {
+            background: rgba(249, 115, 22, 0.1);
+            color: var(--primary-color);
+        }
+
+        .table {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table th {
+            background: var(--light-bg);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .breadcrumb {
+            background: transparent;
+            padding: 0;
+            margin-bottom: 1rem;
+        }
+
+        .breadcrumb-item + .breadcrumb-item::before {
+            content: ">";
+            color: var(--border-color);
+        }
+
+        .toc {
+            background: var(--light-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .toc h5 {
+            color: var(--dark-color);
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .toc li {
+            margin-bottom: 0.5rem;
+        }
+
+        .toc a {
+            color: var(--secondary-color);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .toc a:hover {
+            color: var(--primary-color);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: relative;
+                height: auto;
+                margin-bottom: 2rem;
+            }
+            
+            .content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-zigzag me-2"></i>ZigCMS
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#getting-started">快速开始</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#core-modules">核心模块</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#advanced">高级用法</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#development">开发指南</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 sidebar">
+                <div class="position-sticky">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#overview">项目概述</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#installation">安装指南</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#getting-started">快速开始</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#architecture">架构设计</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#core-modules">核心模块</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#orm-system">ORM 系统</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#controllers">控制器系统</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#middlewares">中间件系统</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#services">服务容器</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#advanced">高级用法</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#development">开发指南</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#testing">测试指南</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#deployment">部署指南</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#performance">性能优化</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 content">
+                <!-- Project Overview -->
+                <section id="overview">
+                    <h1 class="section-title">ZigCMS - 基于 Zig 的高性能内容管理系统</h1>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>注意：</strong> 这是一个活跃开发中的项目，API 可能会发生变化。建议在生产环境使用前进行充分测试。
+                    </div>
+
+                    <p class="lead">ZigCMS 是一个使用 Zig 语言开发的高性能内容管理系统，采用现代化的架构设计，提供完整的后台管理功能和前端界面。</p>
+
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-rocket"></i>
+                            </div>
+                            <h5>高性能</h5>
+                            <p>基于 Zig 语言开发，内存安全，零抽象开销，提供卓越的性能表现。</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-layer-group"></i>
+                            </div>
+                            <h5>全栈支持</h5>
+                            <p>内置 HTTP 服务器、ORM、缓存等服务，提供完整的一站式解决方案。</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-cubes"></i>
+                            </div>
+                            <h5>模块化架构</h5>
+                            <p>清晰的分层架构，易于扩展和维护，支持插件化开发。</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <h5>多数据库支持</h5>
+                            <p>支持 PostgreSQL、MySQL、SQLite 等多种数据库，灵活适配不同场景。</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <h5>安全可靠</h5>
+                            <p>内置 JWT 认证、SQL 注入防护、XSS 防护等安全机制。</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <i class="fas fa-cog"></i>
+                            </div>
+                            <h5>易于配置</h5>
+                            <p>简洁的配置系统，支持环境变量和配置文件，快速部署。</p>
+                        </div>
+                    </div>
+
+                    <div class="toc">
+                        <h5>目录</h5>
+                        <ul>
+                            <li><a href="#installation">安装指南</a></li>
+                            <li><a href="#getting-started">快速开始</a></li>
+                            <li><a href="#architecture">架构设计</a></li>
+                            <li><a href="#core-modules">核心模块</a></li>
+                            <li><a href="#orm-system">ORM 系统</a></li>
+                            <li><a href="#controllers">控制器系统</a></li>
+                            <li><a href="#middlewares">中间件系统</a></li>
+                            <li><a href="#services">服务容器</a></li>
+                            <li><a href="#advanced">高级用法</a></li>
+                            <li><a href="#development">开发指南</a></li>
+                            <li><a href="#testing">测试指南</a></li>
+                            <li><a href="#deployment">部署指南</a></li>
+                            <li><a href="#performance">性能优化</a></li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Installation -->
+                <section id="installation">
+                    <h2 class="subsection-title">安装指南</h2>
+                    
+                    <h3>环境要求</h3>
+                    <ul>
+                        <li><strong>Zig</strong>: 0.15.0+</li>
+                        <li><strong>数据库</strong>: PostgreSQL/MySQL/SQLite (可选)</li>
+                        <li><strong>缓存</strong>: Redis (可选)</li>
+                        <li><strong>操作系统</strong>: Linux, macOS, Windows</li>
+                    </ul>
+
+                    <h3>安装 Zig</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-download me-2"></i>安装 Zig 编译器
+                        </div>
+                        <div class="card-body">
+                            <h5>通过包管理器安装</h5>
+                            <pre><code class="language-bash"># macOS (Homebrew)
+brew install zig
+
+# Ubuntu/Debian
+sudo apt install zig
+
+# Windows (Scoop)
+scoop install zig</code></pre>
+
+                            <h5>从源码安装</h5>
+                            <pre><code class="language-bash"># 克隆 Zig 仓库
+git clone https://github.com/ziglang/zig.git
+cd zig
+
+# 构建
+./build
+
+# 添加到 PATH
+export PATH=$PATH:/path/to/zig</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>克隆项目</h3>
+                    <pre><code class="language-bash"># 克隆项目
+git clone https://e.coding.net/code-eps/products/zigcms.git
+cd zigcms</code></pre>
+
+                    <h3>配置数据库 (可选)</h3>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        如果不配置外部数据库，系统将使用 SQLite 内存数据库。
+                    </div>
+
+                    <h4>PostgreSQL</h4>
+                    <pre><code class="language-bash"># 安装 PostgreSQL
+brew install postgresql  # macOS
+sudo apt install postgresql  # Ubuntu
+
+# 启动服务
+brew services start postgresql  # macOS
+sudo systemctl start postgresql  # Linux
+
+# 创建数据库
+createdb zigcms</code></pre>
+
+                    <h4>MySQL</h4>
+                    <pre><code class="language-bash"># 安装 MySQL
+brew install mysql  # macOS
+sudo apt install mysql-server  # Ubuntu
+
+# 启动服务
+brew services start mysql  # macOS
+sudo systemctl start mysql  # Linux
+
+# 创建数据库
+mysql -u root -p -e "CREATE DATABASE zigcms;"</code></pre>
+
+                    <h4>Redis (可选)</h4>
+                    <pre><code class="language-bash"># 安装 Redis
+brew install redis  # macOS
+sudo apt install redis-server  # Ubuntu
+
+# 启动服务
+brew services start redis  # macOS
+sudo systemctl start redis  # Linux</code></pre>
+                </section>
+
+                <!-- Getting Started -->
+                <section id="getting-started">
+                    <h2 class="subsection-title">快速开始</h2>
+
+                    <h3>构建和运行</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-play me-2"></i>运行开发服务器
+                        </div>
+                        <div class="card-body">
+                            <pre><code class="language-bash"># 构建项目
+zig build
+
+# 运行开发服务器
+zig build run</code></pre>
+
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                服务器将在 http://localhost:3000 启动
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3>生产环境构建</h3>
+                    <pre><code class="language-bash"># 优化构建
+zig build -Doptimize=ReleaseSafe run</code></pre>
+
+                    <h3>访问应用</h3>
+                    <ul>
+                        <li><strong>前端界面</strong>: <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></li>
+                        <li><strong>后台管理</strong>: <a href="http://localhost:3000/page/login.html" target="_blank">http://localhost:3000/page/login.html</a></li>
+                    </ul>
+
+                    <h3>配置</h3>
+                    <p>项目支持通过环境变量进行配置，主要配置项：</p>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>变量名</th>
+                                    <th>默认值</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>DB_HOST</code></td>
+                                    <td>localhost</td>
+                                    <td>数据库主机</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DB_PORT</code></td>
+                                    <td>5432</td>
+                                    <td>数据库端口</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DB_NAME</code></td>
+                                    <td>zigcms</td>
+                                    <td>数据库名称</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DB_USER</code></td>
+                                    <td>postgres</td>
+                                    <td>数据库用户名</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DB_PASSWORD</code></td>
+                                    <td>-</td>
+                                    <td>数据库密码</td>
+                                </tr>
+                                <tr>
+                                    <td><code>REDIS_HOST</code></td>
+                                    <td>localhost</td>
+                                    <td>Redis 主机</td>
+                                </tr>
+                                <tr>
+                                    <td><code>REDIS_PORT</code></td>
+                                    <td>6379</td>
+                                    <td>Redis 端口</td>
+                                </tr>
+                                <tr>
+                                    <td><code>JWT_SECRET</code></td>
+                                    <td>this is a secret</td>
+                                    <td>JWT 密钥</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Architecture -->
+                <section id="architecture">
+                    <h2 class="subsection-title">架构设计</h2>
+
+                    <h3>项目结构</h3>
+                    <pre><code class="language-bash">zigcms/
+├── src/                    # 源代码目录
+│   ├── app.zig            # 应用框架核心
+│   ├── main.zig           # 程序入口
+│   ├── controllers/       # 控制器层
+│   │   ├── base.fn.zig    # 基础控制器
+│   │   ├── crud.controller.zig  # CRUD 控制器
+│   │   └── ...            # 其他控制器
+│   ├── models/            # 数据模型
+│   │   ├── admin.model.zig
+│   │   ├── article.model.zig
+│   │   └── ...
+│   ├── dto/               # 数据传输对象
+│   ├── middlewares/       # 中间件
+│   │   ├── auth.middleware.zig
+│   │   └── ...
+│   ├── modules/           # 功能模块
+│   │   ├── jwt.zig
+│   │   ├── redis.zig
+│   │   └── ...
+│   ├── services/          # 服务层
+│   │   ├── sql/           # ORM 和数据库服务
+│   │   ├── cache/         # 缓存服务
+│   │   └── ...
+│   └── global/            # 全局配置
+├── resources/             # 前端资源
+│   ├── page/              # 页面模板
+│   ├── css/               # 样式文件
+│   ├── js/                # JavaScript 文件
+│   └── lib/               # 第三方库
+├── docs/                  # 文档目录
+├── build.zig              # 构建配置
+└── build.zig.zon          # 依赖管理</code></pre>
+
+                    <h3>技术栈</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>后端</h4>
+                            <ul>
+                                <li><strong>语言</strong>: Zig (0.15.0+)</li>
+                                <li><strong>HTTP 框架</strong>: Zap</li>
+                                <li><strong>数据库</strong>: PostgreSQL/MySQL/SQLite</li>
+                                <li><strong>ORM</strong>: 自研 SQL ORM</li>
+                                <li><strong>缓存</strong>: Redis/内存缓存</li>
+                                <li><strong>认证</strong>: JWT</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>前端</h4>
+                            <ul>
+                                <li><strong>框架</strong>: LayUI</li>
+                                <li><strong>UI 组件</strong>: Material Design</li>
+                                <li><strong>图标</strong>: Font Awesome</li>
+                                <li><strong>JavaScript</strong>: jQuery 3.4.1</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3>架构图</h3>
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDgwMCA2MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjRjhGQUZDIi8+CjxyZWN0IHg9IjUwIiB5PSI1MCIgd2lkdGg9IjcwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIxMCIgZmlsbD0iI0Y5NzMxNiIvPgo8dGV4dCB4PSI0MDAiIHk9IjEwMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RnJvbnRlbmQgKExheVVJKTwvdGV4dD4KPHJlY3QgeD0iNTAiIHk9IjIwMCIgd2lkdGg9IjcwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIxMCIgZmlsbD0iIzBFQTVFOSIvPgo8dGV4dCB4PSI0MDAiIHk9IjI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZT5IVFRQIFNlcnZlciAoWmFwKTwvdGV4dD4KPHJlY3QgeD0iNTAiIHk9IjM1MCIgd2lkdGg9IjcwMCIgaGVpZ2h0PSIxMDAiIHJ4PSIxMCIgZmlsbD0iIzE4MjQzQyIvPgo8dGV4dCB4PSI0MDAiIHk9IjQwMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjI0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+QXBwbGljYXRpb24gRnJhbWV3b3JrPC90ZXh0Pgo8cmVjdCB4PSI1MCIgeT0iNTAwIiB3aWR0aD0iMzMwIiBoZWlnaHQ9IjgwIiByeD0iMTAiIGZpbGw9IiM2NDc0OEIiLz4KPHRleHQgeD0iMjE1IiB5PSI1NDUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkRhdGFiYXNlPC90ZXh0Pgo8cmVjdCB4PSI0MjAiIHk9IjUwMCIgd2lkdGg9IjMzMCIgaGVpZ2h0PSI4MCIgcng9IjEwIiBmaWxsPSIjRkQ3RjE0Ii8+Cjx0ZXh0IHg9IjU4NSIgeT0iNTQ1IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5SZWRpczwvdGV4dD4KPHA+PC9wPgo8L3N2Zz4=" alt="架构图" class="img-fluid">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Core Modules -->
+                <section id="core-modules">
+                    <h2 class="subsection-title">核心模块</h2>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-cube me-2"></i>应用框架 (App)
+                        </div>
+                        <div class="card-body">
+                            <p>应用框架提供统一的应用入口和服务管理，支持路由注册、中间件、服务容器等功能。</p>
+                            
+                            <h5>基本用法</h5>
+                            <pre><code class="language-zig">const App = @import("app.zig").App;
+
+// 初始化应用
+var app = try App.init(allocator);
+defer app.deinit();
+
+// 注册 CRUD 模块
+try app.crud("category", models.Category);
+try app.crud("article", models.Article);
+
+// 注册自定义路由
+try app.route("/login", &login, &controllers.Login.login);
+
+// 启动服务器
+try app.listen(3000);</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-database me-2"></i>ORM 系统
+                        </div>
+                        <div class="card-body">
+                            <p>强大的 ORM 系统，支持多数据库，提供简洁的 API 进行数据库操作。</p>
+                            
+                            <h5>定义模型</h5>
+                            <pre><code class="language-zig">const User = sql.define(struct {
+    pub const table_name = "users";
+    pub const primary_key = "id";
+    
+    id: u64,
+    name: []const u8,
+    email: []const u8,
+    age: ?u32 = null,
+    created_at: ?[]const u8 = null,
+});</code></pre>
+
+                            <h5>使用 ORM</h5>
+                            <pre><code class="language-zig">// 创建用户
+const user = try User.create(&db, .{
+    .name = "张三",
+    .email = "zhangsan@example.com",
+    .age = 25,
+});
+
+// 查询用户
+var users = try User.query(&db)
+    .where("age", ">", 18)
+    .orderBy("created_at", .desc)
+    .limit(10)
+    .get();
+defer users.deinit();
+
+// 更新用户
+try User.update(&db, 1, .{ .name = "李四" });
+
+// 删除用户
+try User.destroy(&db, 1);</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-code me-2"></i>控制器系统
+                        </div>
+                        <div class="card-body">
+                            <p>自动生成 CRUD 控制器，支持自定义控制器，提供灵活的路由管理。</p>
+                            
+                            <h5>CRUD 控制器</h5>
+                            <pre><code class="language-zig">// 自动生成以下路由：
+// /category/list    - 列表
+// /category/get     - 获取单个
+// /category/save    - 保存
+// /category/delete  - 删除
+// /category/modify  - 修改
+// /category/select  - 选择列表
+try app.crud("category", models.Category);</code></pre>
+
+                            <h5>自定义控制器</h5>
+                            <pre><code class="language-zig">pub const Login = struct {
+    allocator: Allocator,
+    
+    pub fn init(allocator: Allocator) Login {
+        return .{ .allocator = allocator };
+    }
+    
+    pub fn login(ctrl: *Login, req: zap.Request) !void {
+        // 登录逻辑
+    }
+};</code></pre>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ORM System -->
+                <section id="orm-system">
+                    <h2 class="subsection-title">ORM 系统</h2>
+
+                    <h3>数据库连接</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-plug me-2"></i>连接配置
+                        </div>
+                        <div class="card-body">
+                            <h5>PostgreSQL（推荐）</h5>
+                            <pre><code class="language-zig">var db = try sql.Database.postgres(allocator, .{
+    .host = "localhost",
+    .port = 5432,
+    .database = "myapp",
+    .user = "postgres",
+    .password = "password",
+});
+defer db.deinit();</code></pre>
+
+                            <h5>MySQL</h5>
+                            <pre><code class="language-zig">var db = try sql.Database.mysql(allocator, .{
+    .host = "localhost",
+    .port = 3306,
+    .database = "myapp",
+    .user = "root",
+    .password = "password",
+    .max_connections = 20,
+});
+defer db.deinit();</code></pre>
+
+                            <h5>SQLite</h5>
+                            <pre><code class="language-zig">// 内存数据库
+var db = try sql.Database.sqlite(allocator, ":memory:");
+defer db.deinit();
+
+// 文件数据库
+var db2 = try sql.Database.sqlite(allocator, "app.db");
+defer db2.deinit();</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>查询构建器</h3>
+                    <pre><code class="language-zig">const QueryBuilder = sql.core.QueryBuilder;
+
+var builder = QueryBuilder.init(allocator, "users");
+defer builder.deinit();
+
+_ = builder
+    .where("age > ?", .{18})
+    .orderBy("name", .asc)
+    .limit(10);
+
+const sql_query = try builder.toSql();
+defer allocator.free(sql_query);</code></pre>
+
+                    <h3>事务处理</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-exchange-alt me-2"></i>事务管理
+                        </div>
+                        <div class="card-body">
+                            <h5>自动管理（推荐）</h5>
+                            <pre><code class="language-zig">try db.transaction(struct {
+    fn run(db_ref: *sql.Database) !void {
+        try db_ref.rawExec("INSERT INTO users ...");
+        try db_ref.rawExec("INSERT INTO logs ...");
+        // 自动提交，出错自动回滚
+    }
+}.run, .{});</code></pre>
+
+                            <h5>手动管理</h5>
+                            <pre><code class="language-zig">try db.beginTransaction();
+errdefer db.rollback() catch {};
+
+try db.rawExec("INSERT INTO users ...");
+try db.rawExec("INSERT INTO logs ...");
+
+try db.commit();</code></pre>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Controllers -->
+                <section id="controllers">
+                    <h2 class="subsection-title">控制器系统</h2>
+
+                    <h3>CRUD 控制器</h3>
+                    <p>自动生成完整的 CRUD 接口，包括列表、详情、保存、删除、修改和选择列表。</p>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>路由</th>
+                                    <th>方法</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>/{module}/list</code></td>
+                                    <td>GET/POST</td>
+                                    <td>获取列表数据，支持分页、搜索、排序</td>
+                                </tr>
+                                <tr>
+                                    <td><code>/{module}/get</code></td>
+                                    <td>GET/POST</td>
+                                    <td>获取单个记录详情</td>
+                                </tr>
+                                <tr>
+                                    <td><code>/{module}/save</code></td>
+                                    <td>POST</td>
+                                    <td>保存或更新记录</td>
+                                </tr>
+                                <tr>
+                                    <td><code>/{module}/delete</code></td>
+                                    <td>POST</td>
+                                    <td>删除记录</td>
+                                </tr>
+                                <tr>
+                                    <td><code>/{module}/modify</code></td>
+                                    <td>POST</td>
+                                    <td>修改单个字段</td>
+                                </tr>
+                                <tr>
+                                    <td><code>/{module}/select</code></td>
+                                    <td>GET/POST</td>
+                                    <td>获取选择列表（用于下拉框）</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>自定义控制器</h3>
+                    <pre><code class="language-zig">const std = @import("std");
+const zap = @import("zap");
+
+pub const CustomController = struct {
+    allocator: std.mem.Allocator,
+    
+    pub fn init(allocator: std.mem.Allocator) CustomController {
+        return .{ .allocator = allocator };
+    }
+    
+    pub fn createAction(ctrl: *CustomController, req: zap.Request) !void {
+        // 获取请求数据
+        const body = try req.readBody(ctrl.allocator);
+        defer ctrl.allocator.free(body);
+        
+        // 处理业务逻辑
+        // ...
+        
+        // 返回响应
+        try sendJson(req, .{ .success = true, .message = "创建成功" });
+    }
+    
+    pub fn listAction(ctrl: *CustomController, req: zap.Request) !void {
+        // 查询数据
+        // ...
+        
+        // 返回列表
+        try sendJson(req, .{ 
+            .success = true, 
+            .data = items,
+            .total = total 
+        });
+    }
+};</code></pre>
+
+                    <h3>注册路由</h3>
+                    <pre><code class="language-zig">// 在 main.zig 中注册
+var custom_ctrl = controllers.Custom.init(allocator);
+try app.route("/custom/create", &custom_ctrl, &controllers.Custom.createAction);
+try app.route("/custom/list", &custom_ctrl, &controllers.Custom.listAction);</code></pre>
+                </section>
+
+                <!-- Middlewares -->
+                <section id="middlewares">
+                    <h2 class="subsection-title">中间件系统</h2>
+
+                    <h3>内置中间件</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-shield-alt me-2"></i>认证中间件
+                                </div>
+                                <div class="card-body">
+                                    <pre><code class="language-zig">// 使用认证中间件
+pub const list = MW.requireAuth(listImpl);
+
+// 检查用户权限
+pub const adminOnly = MW.requireRole("admin", adminAction);</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-file-alt me-2"></i>日志中间件
+                                </div>
+                                <div class="card-body">
+                                    <pre><code class="language-zig">// 记录请求日志
+pub const withLog = MW.withLog(handlerImpl);
+
+// 自定义日志格式
+pub const customLog = MW.logWithFormat(handlerImpl, customFormat);</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3>中间件组合</h3>
+                    <pre><code class="language-zig">// 组合多个中间件
+pub const secureEndpoint = MW.compose(handlerImpl, &.{
+    MW.authMiddleware,      // 认证
+    MW.logMiddleware,       // 日志
+    MW.corsMiddleware,      // CORS
+    MW.rateLimitMiddleware, // 限流
+});</code></pre>
+
+                    <h3>自定义中间件</h3>
+                    <pre><code class="language-zig">pub const customMiddleware = struct {
+    pub fn handle(next: anytype, req: zap.Request) !void {
+        // 前置处理
+        const start_time = std.time.timestamp();
+        
+        // 执行下一个中间件或处理器
+        try next(req);
+        
+        // 后置处理
+        const end_time = std.time.timestamp();
+        const duration = end_time - start_time;
+        std.log.info("Request processed in {d}ms", .{duration});
+    }
+};</code></pre>
+                </section>
+
+                <!-- Services -->
+                <section id="services">
+                    <h2 class="subsection-title">服务容器</h2>
+
+                    <h3>依赖注入</h3>
+                    <p>服务容器提供依赖注入功能，统一管理服务的生命周期。</p>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-box me-2"></i>服务注册和使用
+                        </div>
+                        <div class="card-body">
+                            <h5>获取服务</h5>
+                            <pre><code class="language-zig">// 获取服务容器
+const services = app.services_ref();
+
+// 获取缓存服务
+const cache = services.getCache();
+try cache.set("key", "value");
+
+// 获取配置服务
+const config = services.getConfig();
+const db_host = config.get("DB_HOST", "localhost");</code></pre>
+
+                            <h5>服务生命周期</h5>
+                            <pre><code class="language-zig">// 服务自动管理生命周期
+// - 创建：延迟初始化
+// - 使用：单例模式
+// - 销毁：应用退出时自动清理</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>缓存服务</h3>
+                    <pre><code class="language-zig">// 基础缓存操作
+try cache.set("user:123", user_data);
+const user = try cache.get("user:123");
+
+// 带过期时间
+try cache.setWithTTL("session:abc", session_data, 3600);
+
+// 前缀缓存
+const user_cache = cache.withPrefix("user:");
+try user_cache.set("123", user_data);</code></pre>
+
+                    <h3>配置服务</h3>
+                    <pre><code class="language-zig">// 获取配置
+const db_host = config.get("DB_HOST", "localhost");
+const db_port = config.getInt("DB_PORT", 5432);
+const debug = config.getBool("DEBUG", false);
+
+// 环境变量自动读取
+// 优先级：环境变量 > 配置文件 > 默认值</code></pre>
+                </section>
+
+                <!-- Advanced -->
+                <section id="advanced">
+                    <h2 class="subsection-title">高级用法</h2>
+
+                    <h3>数据库连接池</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-layer-group me-2"></i>连接池配置
+                        </div>
+                        <div class="card-body">
+                            <h5>MySQL 连接池</h5>
+                            <pre><code class="language-zig">var db = try sql.Database.mysql(allocator, .{
+    .host = "localhost",
+    .database = "myapp",
+    
+    // 连接池配置
+    .min_connections = 2,              // 最小连接数
+    .max_connections = 20,             // 最大连接数
+    .acquire_timeout_ms = 5000,        // 获取连接超时
+    .max_idle_time_ms = 300_000,       // 连接空闲超时（5分钟）
+    .max_lifetime_ms = 1_800_000,      // 连接生命周期（30分钟）
+    .transaction_timeout_ms = 30_000,  // 事务超时（30秒）
+});</code></pre>
+
+                            <h5>PostgreSQL 连接池</h5>
+                            <pre><code class="language-zig">var db = try sql.Database.postgres(allocator, .{
+    .host = "localhost",
+    .port = 5432,
+    .database = "myapp",
+    .user = "postgres",
+    .password = "password",
+    .pool_size = 10,  // pg.Pool 内部管理
+});</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>多线程安全</h3>
+                    <pre><code class="language-zig">// 多线程环境下的安全使用
+var db = try sql.Database.mysql(allocator, .{
+    .max_connections = 20,
+});
+defer db.deinit();
+
+// 多个线程共享一个 Database
+for (threads) |*thread| {
+    thread.* = try std.Thread.spawn(.{}, worker, .{&db});
+}
+
+fn worker(db: *sql.Database) void {
+    // 内部自动管理连接
+    const result = db.rawQuery("SELECT ...") catch return;
+    defer result.deinit();
+}</code></pre>
+
+                    <h3>高级查询</h3>
+                    <pre><code class="language-zig">// 子查询
+var subquery = sql.Subquery.init(allocator, "orders");
+defer subquery.deinit();
+
+_ = subquery
+    .select("user_id")
+    .where("total", ">", 1000);
+
+var users = try User.query(&db)
+    .where("id", "IN", subquery)
+    .get();
+
+// 聚合查询
+var stats = try User.query(&db)
+    .select("COUNT(*) as total", "AVG(age) as avg_age")
+    .where("active", "=", true)
+    .first();
+
+// JOIN 查询
+var results = try db.rawQuery(
+    \\SELECT u.*, p.title
+    \\FROM users u
+    \\LEFT JOIN posts p ON u.id = p.user_id
+    \\WHERE u.age > ?
+, .{18});</code></pre>
+
+                    <h3>事件系统</h3>
+                    <pre><code class="language-zig">const events = @import("services").events;
+
+// 创建事件发射器
+var emitter = try events.EventEmitter.init(allocator);
+defer emitter.deinit();
+
+// 监听事件
+try emitter.on("user.created", struct {
+    fn handler(data: ?*anyopaque, ctx: ?*anyopaque) void {
+        const user = @as(*User, @ptrCast(@alignCast(data)));
+        std.log.info("User created: {s}", .{user.name});
+    }
+}.handler, null);
+
+// 触发事件
+try emitter.emit("user.created", &user);</code></pre>
+                </section>
+
+                <!-- Development -->
+                <section id="development">
+                    <h2 class="subsection-title">开发指南</h2>
+
+                    <h3>添加新的 CRUD 模块</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-plus me-2"></i>创建新模块
+                        </div>
+                        <div class="card-body">
+                            <h5>1. 创建模型</h5>
+                            <pre><code class="language-zig">// src/models/new_model.zig
+pub const NewModel = struct {
+    id: u64,
+    name: []const u8,
+    description: []const u8,
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
+};</code></pre>
+
+                            <h5>2. 注册到应用</h5>
+                            <pre><code class="language-zig">// src/main.zig
+try app.crud("new_model", models.NewModel);</code></pre>
+
+                            <h5>3. 创建前端页面</h5>
+                            <pre><code class="language-bash">mkdir -p resources/page/new_model
+# 创建以下文件：
+# - list.html  - 列表页面
+# - save.html  - 编辑页面</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>添加自定义控制器</h3>
+                    <pre><code class="language-zig">// 1. 创建控制器 (src/controllers/new.controller.zig)
+pub const NewController = struct {
+    allocator: Allocator,
+    
+    pub fn init(allocator: Allocator) NewController {
+        return .{ .allocator = allocator };
+    }
+    
+    pub fn newAction(ctrl: *NewController, req: zap.Request) !void {
+        // 获取请求参数
+        const params = try parseQuery(req);
+        
+        // 业务逻辑处理
+        // ...
+        
+        // 返回响应
+        try sendJson(req, .{ .success = true, .data = result });
+    }
+};
+
+// 2. 注册路由 (src/main.zig)
+var new_ctrl = controllers.New.init(allocator);
+try app.route("/new/action", &new_ctrl, &controllers.New.newAction);</code></pre>
+
+                    <h3>数据库迁移</h3>
+                    <pre><code class="language-zig">// 创建迁移文件
+// src/migrations/001_create_users.zig
+
+pub fn up(db: *sql.Database) !void {
+    try db.rawExec(
+        \\CREATE TABLE users (
+        \\    id BIGSERIAL PRIMARY KEY,
+        \\    name VARCHAR(255) NOT NULL,
+        \\    email VARCHAR(255) UNIQUE NOT NULL,
+        \\    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        \\)
+    );
+}
+
+pub fn down(db: *sql.Database) !void {
+    try db.rawExec("DROP TABLE users");
+}</code></pre>
+
+                    <h3>调试技巧</h3>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        使用 <code>debug()</code> 方法打印 SQL 查询
+                    </div>
+                    <pre><code class="language-zig">var builder = QueryBuilder.init(allocator, "users");
+defer builder.deinit();
+
+_ = builder
+    .where("age > ?", .{18})
+    .debug()  // 打印当前 SQL
+    .orderBy("name", .asc)
+    .debugWith("添加排序后")  // 带自定义消息
+    .limit(10);</code></pre>
+                </section>
+
+                <!-- Testing -->
+                <section id="testing">
+                    <h2 class="subsection-title">测试指南</h2>
+
+                    <h3>运行测试</h3>
+                    <pre><code class="language-bash"># 运行所有测试
+zig build test
+
+# 运行特定测试
+zig build test --test-filter "sql"
+
+# 详细输出
+zig build test --test-filter "orm" -fno-emit-bin</code></pre>
+
+                    <h3>数据库测试</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-vial me-2"></i>数据库集成测试
+                        </div>
+                        <div class="card-body">
+                            <h5>SQLite 测试</h5>
+                            <pre><code class="language-bash">cd src/services/sql
+zig build-exe sqlite_complete_test.zig -lc -lsqlite3
+./sqlite_complete_test</code></pre>
+
+                            <h5>MySQL 测试</h5>
+                            <pre><code class="language-bash">cd src/services/sql
+
+# macOS (Homebrew)
+zig build-exe mysql_complete_test.zig -lc -lmysqlclient \
+  -I /opt/homebrew/include \
+  -L /opt/homebrew/lib
+
+# Linux
+zig build-exe mysql_complete_test.zig -lc -lmysqlclient
+
+# 运行测试（需要先创建测试数据库）
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS test_zigcms;"
+./mysql_complete_test</code></pre>
+
+                            <h5>PostgreSQL 测试</h5>
+                            <pre><code class="language-bash"># 创建测试数据库
+psql -U postgres -c "CREATE DATABASE test_zigcms;"
+
+# 运行测试
+zig build</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>单元测试示例</h3>
+                    <pre><code class="language-zig">const std = @import("std");
+const testing = std.testing;
+const sql = @import("services").sql;
+
+test "User model creation" {
+    const allocator = testing.allocator;
+    
+    var db = try sql.Database.sqlite(allocator, ":memory:");
+    defer db.deinit();
+    
+    // 创建表
+    try db.rawExec(
+        \\CREATE TABLE users (
+        \\    id INTEGER PRIMARY KEY,
+        \\    name TEXT NOT NULL,
+        \\    email TEXT NOT NULL
+        \\)
+    );
+    
+    // 创建用户
+    const user = try User.create(&db, .{
+        .name = "Test User",
+        .email = "test@example.com",
+    });
+    
+    try testing.expectEqual(@as(u64, 1), user.id);
+    try testing.expectEqualStrings("Test User", user.name);
+}
+
+test "QueryBuilder where clause" {
+    const allocator = testing.allocator;
+    
+    var builder = QueryBuilder.init(allocator, "users");
+    defer builder.deinit();
+    
+    _ = builder.where("age", ">", 18).where("active", "=", true);
+    
+    const sql_query = try builder.toSql();
+    defer allocator.free(sql_query);
+    
+    try testing.expectEqualStrings(
+        "SELECT * FROM users WHERE age > ? AND active = ?",
+        sql_query,
+    );
+}</code></pre>
+                </section>
+
+                <!-- Deployment -->
+                <section id="deployment">
+                    <h2 class="subsection-title">部署指南</h2>
+
+                    <h3>Docker 部署</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fab fa-docker me-2"></i>Docker 配置
+                        </div>
+                        <div class="card-body">
+                            <h5>Dockerfile</h5>
+                            <pre><code class="language-dockerfile">FROM alpine:latest
+
+# 安装依赖
+RUN apk add --no-cache \
+    postgresql-libs \
+    sqlite-dev \
+    ca-certificates
+
+# 创建应用目录
+WORKDIR /app
+
+# 复制二进制文件
+COPY zig-out/bin/vendor .
+
+# 创建非 root 用户
+RUN adduser -D -s /bin/sh zigcms
+USER zigcms
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动应用
+CMD ["./vendor"]</code></pre>
+
+                            <h5>docker-compose.yml</h5>
+                            <pre><code class="language-yaml">version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=zigcms
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./resources:/app/resources
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=zigcms
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:</code></pre>
+
+                            <h5>部署命令</h5>
+                            <pre><code class="language-bash"># 构建和启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f app
+
+# 停止服务
+docker-compose down</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>系统服务部署</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-server me-2"></i>Systemd 服务
+                        </div>
+                        <div class="card-body">
+                            <h5>创建服务文件</h5>
+                            <pre><code class="language-ini"># /etc/systemd/system/zigcms.service
+[Unit]
+Description=ZigCMS
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=zigcms
+Group=zigcms
+WorkingDirectory=/opt/zigcms
+ExecStart=/opt/zigcms/vendor
+Restart=always
+RestartSec=5
+
+# 环境变量
+Environment=DB_HOST=localhost
+Environment=DB_PORT=5432
+Environment=DB_NAME=zigcms
+Environment=DB_USER=postgres
+Environment=DB_PASSWORD=your_password
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+                            <h5>管理服务</h5>
+                            <pre><code class="language-bash"># 启用服务
+sudo systemctl enable zigcms
+
+# 启动服务
+sudo systemctl start zigcms
+
+# 查看状态
+sudo systemctl status zigcms
+
+# 查看日志
+sudo journalctl -u zigcms -f
+
+# 重启服务
+sudo systemctl restart zigcms</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>Nginx 反向代理</h3>
+                    <pre><code class="language-nginx">server {
+    listen 80;
+    server_name your-domain.com;
+
+    # 静态文件
+    location /static/ {
+        alias /opt/zigcms/resources/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # API 请求
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+                </section>
+
+                <!-- Performance -->
+                <section id="performance">
+                    <h2 class="subsection-title">性能优化</h2>
+
+                    <h3>数据库优化</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>连接池调优</h5>
+                            <pre><code class="language-zig">// 根据并发量调整连接池大小
+var db = try sql.Database.mysql(allocator, .{
+    .max_connections = 50,  // 高并发场景
+    .min_connections = 10,  // 保持最小连接
+    .acquire_timeout_ms = 3000,  // 快速获取连接
+});</code></pre>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>查询优化</h5>
+                            <ul>
+                                <li>使用索引优化查询</li>
+                                <li>避免 N+1 查询问题</li>
+                                <li>使用批量操作</li>
+                                <li>合理使用缓存</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3>缓存策略</h3>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-tachometer-alt me-2"></i>多级缓存
+                        </div>
+                        <div class="card-body">
+                            <h5>内存缓存</h5>
+                            <pre><code class="language-zig">// 应用级缓存
+const cache = services.getCache();
+
+// 热点数据缓存
+try cache.setWithTTL("hot_data", data, 3600);
+
+// 懒加载缓存
+const lazy_cache = cache.lazy("user_profile", 1800, struct {
+    fn load(key: []const u8) !?[]const u8 {
+        return loadUserProfile(key);
+    }
+}.load);
+
+const profile = try lazy_cache.get("user123");</code></pre>
+
+                            <h5>Redis 缓存</h5>
+                            <pre><code class="language-zig">// 分布式缓存
+const redis = services.getRedis();
+
+// 缓存页面片段
+try redis.setex("page:home", 300, html_content);
+
+// 缓存查询结果
+try redis.hset("query_cache", "hash_key", json_data);
+
+// 缓存失效
+try redis.del("cache_key");</code></pre>
+                        </div>
+                    </div>
+
+                    <h3>静态资源优化</h3>
+                    <pre><code class="language-zig">// 启用 Gzip 压缩
+const listener = zap.HttpListener.init(.{
+    .port = 3000,
+    .on_request = router.on_request_handler(),
+    .enable_compression = true,  // 启用压缩
+    .public_folder = "resources",
+});
+
+// 设置缓存头
+// 在静态资源处理中添加
+try req.setHeader("Cache-Control", "public, max-age=31536000");</code></pre>
+
+                    <h3>并发处理</h3>
+                    <pre><code class="language-zig">// 调整线程池大小
+zap.start(.{ 
+    .threads = 8,    // 工作线程数
+    .workers = 16,   // 任务队列大小
+});
+
+// 异步处理
+const thread_manager = services.getThreadManager();
+try thread_manager.spawn(struct {
+    fn task() !void {
+        // 耗时操作
+        processBackgroundJob();
+    }
+}.task, .{});</code></pre>
+
+                    <h3>监控和指标</h3>
+                    <div class="alert alert-info">
+                        <i class="fas fa-chart-line me-2"></i>
+                        定期监控以下指标：
+                        <ul>
+                            <li>QPS (每秒查询数)</li>
+                            <li>响应时间</li>
+                            <li>内存使用</li>
+                            <li>数据库连接数</li>
+                            <li>缓存命中率</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Footer -->
+                <footer class="mt-5 pt-4 border-top">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>ZigCMS</h5>
+                            <p>基于 Zig 的高性能内容管理系统</p>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <h5>相关链接</h5>
+                            <ul class="list-unstyled">
+                                <li><a href="https://ziglang.org/" target="_blank">Zig 官网</a></li>
+                                <li><a href="https://github.com/zigzap/zap" target="_blank">Zap 框架</a></li>
+                                <li><a href="https://e.coding.net/code-eps/products/zigcms.git" target="_blank">项目仓库</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="text-center">
+                        <p>&copy; 2024 ZigCMS. 基于 MIT 许可证发布。</p>
+                    </div>
+                </footer>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    
+    <script>
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    // 更新导航状态
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                }
+            });
+        });
+
+        // 滚动时更新导航状态
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section[id]');
+            const scrollY = window.pageYOffset;
+
+            sections.forEach(section => {
+                const sectionHeight = section.offsetHeight;
+                const sectionTop = section.offsetTop - 100;
+                const sectionId = section.getAttribute('id');
+                const navLink = document.querySelector(`.nav-link[href="#${sectionId}"]`);
+
+                if (scrollY > sectionTop && scrollY <= sectionTop + sectionHeight) {
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    if (navLink) {
+                        navLink.classList.add('active');
+                    }
+                }
+            });
+        });
+
+        // 代码复制功能
+        document.querySelectorAll('pre').forEach(pre => {
+            const button = document.createElement('button');
+            button.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
+            button.innerHTML = '<i class="fas fa-copy"></i>';
+            button.style.opacity = '0.7';
+            
+            pre.style.position = 'relative';
+            pre.appendChild(button);
+
+            button.addEventListener('click', () => {
+                const code = pre.querySelector('code');
+                const text = code.textContent;
+                
+                navigator.clipboard.writeText(text).then(() => {
+                    button.innerHTML = '<i class="fas fa-check"></i>';
+                    setTimeout(() => {
+                        button.innerHTML = '<i class="fas fa-copy"></i>';
+                    }, 2000);
+                });
+            });
+        });
+
+        // 卡片悬停效果增强
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                card.style.transform = 'translateY(-5px)';
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'translateY(0)';
+            });
+        });
+    </script>
+</body>
+</html>
