@@ -58,17 +58,11 @@ fn init_some() void {
 }
 
 /// 初始化 ORM 数据库连接
-fn initOrmDatabase(password: []const u8) !void {
+fn initOrmDatabase(_: []const u8) !void {
     const db = try _allocator.?.create(sql.Database);
     errdefer _allocator.?.destroy(db);
 
-    db.* = try sql.Database.postgres(_allocator.?, .{
-        .host = "124.222.103.232",
-        .port = 5432,
-        .user = "postgres",
-        .password = password,
-        .database = "postgres",
-    });
+    db.* = try sql.Database.sqlite(_allocator.?, "database.sqlite3");
 
     _db = db;
 

@@ -46,10 +46,30 @@ pub const App = struct {
 
     /// 服务容器
     pub const Services = struct {
+        const ControllerEntry = struct {
+            ptr: *anyopaque,
+            allocator: Allocator,
+            size: usize,
+            alignment: u8,
+            deinitFn: ?*const fn (*anyopaque) void,
+
+            /// 释放控制器：先调用 deinit，再释放内存
+            pub fn destroy(self: ControllerEntry) void {
+                if (self.deinitFn) |deinitFn| {
+                    deinitFn(self.ptr);
+                }
+                // 释放内存
+                const slice_ptr: [*]u8 = @ptrCast(self.ptr);
+                const slice = slice_ptr[0..self.size];
+                self.allocator.rawFree(slice, @enumFromInt(self.alignment), @returnAddress());
+            }
+        };
+
         allocator: Allocator,
 
         // 控制器存储（用于生命周期管理）
-        controller_ptrs: std.ArrayListUnmanaged(*anyopaque),
+        // 存储 (指针, 销毁函数) 对，确保类型擦除后仍能正确释放
+        controller_ptrs: std.ArrayListUnmanaged(ControllerEntry),
 
         // 缓存服务
         cache: ?*container.Cache = null,
@@ -64,6 +84,9 @@ pub const App = struct {
 
         pub fn deinit(self: *Services) void {
             // 清理控制器
+            for (self.controller_ptrs.items) |entry| {
+                entry.destroy();
+            }
             self.controller_ptrs.deinit(self.allocator);
 
             // 清理服务
@@ -126,7 +149,24 @@ pub const App = struct {
         const ctrl_ptr = try self.allocator.create(Controller);
         ctrl_ptr.* = Controller.init(self.allocator);
 
-        try self.services.controller_ptrs.append(self.allocator, @ptrCast(ctrl_ptr));
+        // 创建类型擦除的 deinit 函数
+        const deinitFn: ?*const fn (*anyopaque) void = if (@hasDecl(Controller, "deinit"))
+            struct {
+                fn deinit(ptr: *anyopaque) void {
+                    const typed: *Controller = @ptrCast(@alignCast(ptr));
+                    typed.deinit();
+                }
+            }.deinit
+        else
+            null;
+
+        try self.services.controller_ptrs.append(self.allocator, .{
+            .ptr = ctrl_ptr,
+            .allocator = self.allocator,
+            .size = @sizeOf(Controller),
+            .alignment = std.math.log2_int(usize, @alignOf(Controller)),
+            .deinitFn = deinitFn,
+        });
 
         try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, Controller.list);
         try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, Controller.get);

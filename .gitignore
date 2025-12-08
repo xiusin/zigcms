@@ -22,3 +22,4 @@ resources/uploads/
 *.db
 ai_modify.md
 ai_todo.md
+*.sqlite3

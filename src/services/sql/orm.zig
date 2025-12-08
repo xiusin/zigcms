@@ -2300,7 +2300,8 @@ pub const ConnectionPool = struct {
     // 空闲连接（栈结构，LIFO，用于快速获取）
     idle_connections: std.ArrayListUnmanaged(*PooledConnection),
 
-    mutex: std.Thread.Mutex = .{},
+    state_mutex: std.Thread.Mutex = .{},
+    idle_mutex: std.Thread.Mutex = .{},
     condition: std.Thread.Condition = .{},
     next_id: usize = 0,
     closed: bool = false,
@@ -2313,7 +2314,8 @@ pub const ConnectionPool = struct {
             .db_config = db_config,
             .all_connections = .{},
             .idle_connections = .{},
-            .mutex = .{},
+            .state_mutex = .{},
+            .idle_mutex = .{},
             .condition = .{},
             .next_id = 0,
             .closed = false,
@@ -2341,11 +2343,16 @@ pub const ConnectionPool = struct {
 
     /// 保活工作线程（非阻塞设计）
     fn keepaliveWorker(self: *ConnectionPool) void {
-        while (!self.closed) {
-            // 等待保活间隔
-            std.time.sleep(self.config.keepalive_interval_ms * std.time.ns_per_ms);
+        while (true) {
+            // 检查是否关闭
+            self.state_mutex.lock();
+            if (self.closed) {
+                self.state_mutex.unlock();
+                break;
+            }
+            self.state_mutex.unlock();
 
-            if (self.closed) break;
+            std.time.sleep(self.config.keepalive_interval_ms * std.time.ns_per_ms);
 
             // 1. 快速加锁：只收集需要 ping 的连接（标记为 pinging）
             // 只检测空闲连接，因为使用中的连接被认为是最新的
@@ -2353,7 +2360,7 @@ pub const ConnectionPool = struct {
             defer conns_to_ping.deinit();
 
             {
-                self.mutex.lock();
+                self.idle_mutex.lock();
 
                 // 遍历 idle 列表（从头开始，优先检查旧连接）
                 for (self.idle_connections.items) |pooled| {
@@ -2367,43 +2374,54 @@ pub const ConnectionPool = struct {
                     }
                 }
 
-                self.mutex.unlock();
+                self.idle_mutex.unlock();
             }
 
             // 2. 不持锁：异步执行 ping
             for (conns_to_ping.items) |pooled| {
-                if (self.closed) break;
+                // 检查是否关闭
+                self.state_mutex.lock();
+                if (self.closed) {
+                    self.state_mutex.unlock();
+                    break;
+                }
+                self.state_mutex.unlock();
 
                 // 执行 ping（不持锁，不阻塞业务）
                 const ping_ok = if (pooled.conn.exec("SELECT 1")) |_| true else |_| false;
 
-                // 重新加锁更新状态
-                self.mutex.lock();
+                // 重新加锁更新状态 (仅修改 connection 自身状态，不需要池锁)
+                pooled.mutex.lock();
                 if (ping_ok) {
                     pooled.last_used = std.time.milliTimestamp();
                 } else {
                     pooled.last_used = 0; // 标记为需要重建
-                    // 尝试重连 (简化：直接在锁内释放旧连接，下次 acquire 时会发现不健康并处理)
-                    // 或者更激进点：尝试原地重连
-                    // 为简单起见，这里只更新时间，让 isHealthy 失败
                 }
+                pooled.mutex.unlock();
+
                 pooled.is_pinging.store(false, .seq_cst);
-                self.mutex.unlock();
             }
         }
     }
 
     pub fn deinit(self: *ConnectionPool) void {
         // 先标记关闭，让保活线程退出
+        self.state_mutex.lock();
         self.closed = true;
+        self.state_mutex.unlock();
+
+        self.condition.broadcast();
 
         // 等待保活线程结束
         if (self.keepalive_thread) |thread| {
             thread.join();
         }
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        self.idle_mutex.lock();
+        defer self.idle_mutex.unlock();
 
         // 释放所有连接
         for (self.all_connections.items) |pooled| {
@@ -2420,15 +2438,14 @@ pub const ConnectionPool = struct {
         const deadline = std.time.milliTimestamp() + @as(i64, @intCast(self.config.acquire_timeout_ms));
 
         while (true) {
-            self.mutex.lock();
-
-            if (self.closed) {
-                self.mutex.unlock();
-                return error.PoolClosed;
-            }
-
             // 1. 快速路径：从 idle 栈中查找可用连接 (O(1) ~ O(K))
-            // 从栈顶开始查找，跳过正在 ping 的连接
+            self.idle_mutex.lock();
+
+            // 检查关闭状态需要 state_mutex?
+            // 简化：acquire 假设 state 不会突然变，除非 deinit
+            // 但为了安全，可以在 wait 之前检查。
+            // 这里我们尽量只用 idle_mutex 进行快速路径
+
             if (self.idle_connections.items.len > 0) {
                 var found_idx: ?usize = null;
                 var i: usize = self.idle_connections.items.len;
@@ -2443,50 +2460,65 @@ pub const ConnectionPool = struct {
 
                 if (found_idx) |idx| {
                     const pooled = self.idle_connections.swapRemove(idx);
+                    self.idle_mutex.unlock();
+
                     if (pooled.isHealthy(self.config)) {
+                        pooled.mutex.lock();
                         pooled.in_use = true;
                         pooled.borrowed = true;
                         pooled.last_used = std.time.milliTimestamp();
-                        self.mutex.unlock();
+                        pooled.mutex.unlock();
                         return pooled;
                     } else {
                         // 连接不健康处理...
                         pooled.conn.deinit();
-                        self.mutex.unlock();
+                        // 不用再解锁了，上面已经解锁
 
                         if (interface.Driver.mysql(self.allocator, self.db_config)) |new_conn| {
                             pooled.conn = new_conn;
+                            pooled.mutex.lock();
                             pooled.created_at = std.time.milliTimestamp();
                             pooled.last_used = std.time.milliTimestamp();
                             pooled.in_use = true;
                             pooled.borrowed = true;
                             pooled.broken = false;
+                            pooled.mutex.unlock();
                             // 注意：swapRemove 已经移除了它，所以直接返回即可，不需要重新加入
                             return pooled;
                         } else |_| {
-                            self.mutex.lock();
+                            self.state_mutex.lock();
                             for (self.all_connections.items, 0..) |p, k| {
                                 if (p == pooled) {
                                     _ = self.all_connections.swapRemove(k);
                                     break;
                                 }
                             }
+                            self.state_mutex.unlock();
+
                             self.allocator.destroy(pooled);
-                            self.mutex.unlock();
                             continue;
                         }
                     }
                 }
             }
+            self.idle_mutex.unlock();
 
             // 2. 慢速路径：如果没有空闲连接，检查是否可以创建新连接
+            // 需要锁定 state_mutex 来检查 all_connections
+            self.state_mutex.lock();
+
+            if (self.closed) {
+                self.state_mutex.unlock();
+                return error.PoolClosed;
+            }
+
             if (self.all_connections.items.len < self.config.max_size) {
                 // 预留名额？不，直接释放锁去创建。
                 // 风险：可能创建超限。
                 // 解决方案：使用 CAS 或者乐观创建。
                 // 这里采用乐观创建：释放锁 -> 创建 -> 加锁 -> 检查 -> 放入。
 
-                self.mutex.unlock();
+                self.state_mutex.unlock();
 
                 // 在锁外创建连接（耗时操作）
                 var conn = interface.Driver.mysql(self.allocator, self.db_config) catch |err| {
@@ -2494,11 +2526,11 @@ pub const ConnectionPool = struct {
                 };
 
                 // 重新获取锁
-                self.mutex.lock();
+                self.state_mutex.lock();
 
                 if (self.closed) {
                     conn.deinit();
-                    self.mutex.unlock();
+                    self.state_mutex.unlock();
                     return error.PoolClosed;
                 }
 
@@ -2506,7 +2538,7 @@ pub const ConnectionPool = struct {
                 if (self.all_connections.items.len < self.config.max_size) {
                     const pooled = self.allocator.create(PooledConnection) catch |err| {
                         conn.deinit();
-                        self.mutex.unlock();
+                        self.state_mutex.unlock();
                         return err;
                     };
                     pooled.* = PooledConnection.init(conn, self.next_id);
@@ -2517,11 +2549,11 @@ pub const ConnectionPool = struct {
                     self.all_connections.append(self.allocator, pooled) catch |err| {
                         conn.deinit();
                         self.allocator.destroy(pooled);
-                        self.mutex.unlock();
+                        self.state_mutex.unlock();
                         return err;
                     };
 
-                    self.mutex.unlock();
+                    self.state_mutex.unlock();
                     return pooled;
                 } else {
                     // 竞争失败，池已满。销毁刚创建的连接。
@@ -2530,15 +2562,17 @@ pub const ConnectionPool = struct {
                 }
             }
 
+            // Wait for signal
             const now = std.time.milliTimestamp();
             if (now >= deadline) {
-                self.mutex.unlock();
+                self.state_mutex.unlock();
                 return error.AcquireTimeout;
             }
 
             const wait_time_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
-            self.condition.timedWait(&self.mutex, wait_time_ns) catch {};
-            self.mutex.unlock();
+            // wait releases state_mutex
+            self.condition.timedWait(&self.state_mutex, wait_time_ns) catch {};
+            self.state_mutex.unlock();
         }
     }
 
@@ -2562,36 +2596,44 @@ pub const ConnectionPool = struct {
         }
 
         // 2. 再归还到池中（持池锁）
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
         // 如果连接已损坏，销毁它
         if (conn.broken) {
             conn.conn.deinit();
             // 从 all_connections 移除
+
+            self.state_mutex.lock();
             for (self.all_connections.items, 0..) |p, i| {
                 if (p == conn) {
                     _ = self.all_connections.swapRemove(i);
                     break;
                 }
             }
+            self.state_mutex.unlock();
+
             self.allocator.destroy(conn);
             self.condition.signal(); // 通知可能在等待容量释放的线程
             return;
         }
 
+        self.idle_mutex.lock();
         self.idle_connections.append(self.allocator, conn) catch {
+            self.idle_mutex.unlock();
+
             // 如果归还失败（OOM），只能销毁连接了
+            self.state_mutex.lock();
             for (self.all_connections.items, 0..) |p, i| {
                 if (p == conn) {
                     _ = self.all_connections.swapRemove(i);
                     break;
                 }
             }
+            self.state_mutex.unlock();
+
             conn.conn.deinit();
             self.allocator.destroy(conn);
             return;
         };
+        self.idle_mutex.unlock();
 
         self.condition.signal();
     }
@@ -2603,13 +2645,20 @@ pub const ConnectionPool = struct {
 
     /// 获取池统计信息
     pub fn getStats(self: *ConnectionPool) PoolStats {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.state_mutex.lock();
+        const total = self.all_connections.items.len;
+        self.state_mutex.unlock();
+
+        self.idle_mutex.lock();
+        const idle = self.idle_connections.items.len;
+        self.idle_mutex.unlock();
+
+        const active = if (total >= idle) total - idle else 0;
 
         const stats = PoolStats{
-            .total = self.all_connections.items.len,
-            .active = self.all_connections.items.len - self.idle_connections.items.len,
-            .idle = self.idle_connections.items.len,
+            .total = total,
+            .active = active,
+            .idle = idle,
             .in_transaction = 0,
         };
 

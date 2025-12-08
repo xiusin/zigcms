@@ -11,6 +11,17 @@ https://admin.demo.ulthon.com/admin/Index/index.html#/admin/system.auth/index.ht
 https://dev.layuion.com/extend/selectplus/ 组件
 
 
+## zig fetch 要取消代理
+```
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+
+unset http_proxy https_proxy
+
+git config --global http.version HTTP/1.1 //w变更协议
+```
+
+
 ## 数据库测试
 
 每种驱动都有完整测试覆盖：
