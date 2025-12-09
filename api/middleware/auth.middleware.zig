@@ -1,6 +1,6 @@
 const std = @import("std");
 const zap = @import("zap");
-const middlewares = @import("middlewares.zig");
+const middlewares = @import("mod.zig");
 
 pub const AuthMiddleWare = struct {
     handler: middlewares.Handler,

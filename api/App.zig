@@ -9,9 +9,9 @@ const std = @import("std");
 const zap = @import("zap");
 
 // 导入各层组件
-const controllers = @import("controllers/controllers.zig");
-const application = @import("../application/Application.zig");
-const domain = @import("../domain/Domain.zig");
+const controllers = @import("controllers/mod.zig");
+const application = @import("../application/mod.zig");
+const domain = @import("../domain/mod.zig");
 
 /// 应用框架
 pub const App = struct {

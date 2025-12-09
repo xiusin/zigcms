@@ -30,10 +30,10 @@ const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const global = @import("../../shared/primitives/global.zig");
-const dtos = @import("../dto/dtos.zig");
+const dtos = @import("../dto/mod.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const sql = @import("../../application/services/sql/orm.zig");
-const mw = @import("../middleware/middlewares.zig");
+const mw = @import("../middleware/mod.zig");
 const json_mod = @import("../../application/services/json/json.zig");
 
 fn lowerStr(comptime s: []const u8) []const u8 {

@@ -11,10 +11,10 @@ const std = @import("std");
 
 // 各层入口
 pub const api = @import("api/Api.zig");
-pub const application = @import("application/Application.zig");
-pub const domain = @import("domain/Domain.zig");
-pub const infrastructure = @import("infrastructure/Infrastructure.zig");
-pub const shared = @import("shared/Shared.zig");
+pub const application = @import("application/mod.zig");
+pub const domain = @import("domain/mod.zig");
+pub const infrastructure = @import("infrastructure/mod.zig");
+pub const shared = @import("shared/mod.zig");
 
 /// 系统主配置
 pub const SystemConfig = struct {

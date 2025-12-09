@@ -11,8 +11,8 @@ const std = @import("std");
 
 // API 层导出
 pub const controllers = @import("controllers/controllers.zig");
-pub const dto = @import("dto/dtos.zig");
-pub const middleware = @import("middleware/middlewares.zig");
+pub const dto = @import("dto");
+pub const middleware = @import("middleware");
 
 /// API 层配置
 pub const Config = struct {

@@ -7,9 +7,9 @@
 const std = @import("std");
 
 // API 层组件
-pub const controllers = @import("controllers/controllers.zig");
-pub const dto = @import("dto/dtos.zig");
-pub const middleware = @import("middleware/middlewares.zig");
+pub const controllers = @import("controllers/mod.zig");
+pub const dto = @import("dto/mod.zig");
+pub const middleware = @import("middleware");
 
 /// API 服务器配置
 pub const ServerConfig = struct {

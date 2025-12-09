@@ -7,7 +7,7 @@ const jwt = @import("../../shared/utils/jwt.zig");
 
 const global = @import("../../shared/primitives/global.zig");
 const base = @import("base.fn.zig");
-const dtos = @import("../dto/dtos.zig");
+const dtos = @import("../dto/mod.zig");
 const models = @import("../../domain/entities/models.zig");
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const json_mod = @import("../../application/services/json/json.zig");

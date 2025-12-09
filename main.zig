@@ -2,7 +2,7 @@
 const std = @import("std");
 const zigcms = @import("root.zig");
 const App = @import("api/App.zig").App;
-const controllers = @import("api/controllers/controllers.zig");
+const controllers = @import("api/controllers/mod.zig");
 const models = @import("domain/entities/models.zig");
 
 pub fn main() !void {

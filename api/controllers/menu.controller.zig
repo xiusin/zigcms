@@ -3,7 +3,7 @@ const zap = @import("zap");
 const base = @import("base.fn.zig");
 const global = @import("../../shared/primitives/global.zig");
 const orm_models = @import("../../domain/entities/orm_models.zig");
-const dtos = @import("../dto/dtos.zig");
+const dtos = @import("../dto/mod.zig");
 const services = @import("../../application/services/services.zig");
 const Allocator = std.mem.Allocator;
 
