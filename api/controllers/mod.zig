@@ -19,6 +19,11 @@ pub const common = struct {
     pub const Crud = @import("crud.controller.zig").Crud;
 };
 
+// 字典管理控制器
+pub const dict = struct {
+    pub const Dict = @import("dict.controller.zig");
+};
+
 // 第三方服务控制器
 pub const external = struct {
     pub const Github = @import("github.controller.zig");
@@ -33,4 +38,5 @@ pub const ControllerType = enum {
     public,
     setting,
     task,
+    dict,
 };

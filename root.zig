@@ -1,6 +1,6 @@
 //! 项目根模块 - 组织各层入口
 //!
-//! 遵循整洁架构原则，将项目分为以下层次：
+//! 遏循整洁架构原则，将项目分为以下层次：
 //! - API 层: 处理 HTTP 请求和响应
 //! - 应用层: 协调业务流程和用例
 //! - 领域层: 核心业务逻辑和模型
@@ -16,6 +16,12 @@ pub const domain = @import("domain/mod.zig");
 pub const infrastructure = @import("infrastructure/mod.zig");
 pub const shared = @import("shared/mod.zig");
 
+// 服务管理器
+pub const ServiceManager = @import("application/services/Services.zig").ServiceManager;
+
+// 全局服务实例
+var service_manager: ?ServiceManager = null;
+
 /// 系统主配置
 pub const SystemConfig = struct {
     api: api.ServerConfig = .{},
@@ -23,11 +29,16 @@ pub const SystemConfig = struct {
     infra: infrastructure.InfraConfig = .{},
 };
 
+/// 全局服务管理器获取函数
+pub fn getServiceManager() *ServiceManager {
+    return service_manager.?;
+}
+
 /// 初始化整个系统
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     _ = config; // 忽略未使用的参数
     
-    // 初始化各层，遵循依赖关系
+    // 初始化各层，遵照依赖关系
     try shared.init(allocator);
     try domain.init(allocator);
     try infrastructure.init(allocator);
@@ -35,4 +46,8 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     try api.init(allocator);
     
     std.log.info("系统初始化完成", .{});
+    
+    // 初始化服务管理器
+    // 这里需要获取数据库实例并传入服务管理器
+    // 由于数据库初始化可能在基础设施层，所以需要适当调整
 }

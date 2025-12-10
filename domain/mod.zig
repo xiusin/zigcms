@@ -1,24 +1,25 @@
 //! 领域层入口文件
 //!
 //! 职责：
-//! - 定义业务实体和值对象
-//! - 定义领域服务和仓库接口
-//! - 包含业务规则和逻辑
-//! - 独立于基础设施和应用层
+//! - 定义核心业务实体和值对象
+//! - 实现业务规则和约束
+//! - 定义领域服务接口
+//! - 提供业务实体的仓储接口
 
 const std = @import("std");
 
-// 领域实体
-pub const entities = @import("../domain/entities/models.zig");
-
-/// 领域层配置（通常很少有配置）
+/// 领域层配置
 pub const DomainConfig = struct {
-    // 领域层通常不需要太多配置，保持简单
+    // 领域层特定配置
+    validate_models: bool = true,
+    enforce_business_rules: bool = true,
 };
 
 /// 领域层初始化函数
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
-    // 验证领域模型完整性
     std.log.info("领域层初始化完成", .{});
+    
+    // 初始化实体模型
+    @import("entities/models.zig");
 }

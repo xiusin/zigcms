@@ -1,1134 +1,272 @@
-//! 进程内缓存模块
+//! 缓存服务 - 用于缓存查询结果和字典数据
 //!
-//! 特性：
-//! - 支持 TTL 过期时间
-//! - 并发安全（读写锁）
-//! - 内存安全（自动清理过期项）
-//! - 泛型支持（类型安全的存取）
-//!
-//! ## Pool化支持
-//!
-//! 可以与 pool 模块结合使用，实现缓存对象的池化管理：
-//!
-//! ```zig
-//! const pool_mod = @import("services/pool/mod.zig");
-//! const cache_mod = @import("services/cache/cache.zig");
-//!
-//! // 创建缓存对象池
-//! var cache_pool = pool_mod.Pool(cache_mod.Cache([]const u8)).init(allocator, .{
-//!     .max_size = 10,
-//!     .min_size = 2,
-//! });
-//! defer cache_pool.deinit();
-//!
-//! // 获取缓存实例
-//! var cache = try cache_pool.acquire();
-//! defer cache_pool.release(cache);
-//!
-//! // 使用缓存
-//! try cache.set("key", "value", 60_000);
-//! ```
-//!
-//! ```zig
-//! const cache = @import("services/cache/cache.zig");
-//!
-//! var c = cache.Cache([]const u8).init(allocator, .{
-//!     .cleanup_interval_ms = 10_000, // 10秒清理一次
-//! });
-//! defer c.deinit();
-//!
-//! // 设置缓存，5秒过期
-//! try c.set("user:1", "张三", 5_000);
-//!
-//! // 获取缓存
-//! if (c.get("user:1")) |value| {
-//!     std.debug.print("用户: {s}\n", .{value});
-//! }
-//!
-//! // 删除
-//! c.delete("user:1");
-//! ```
+//! 该服务提供：
+//! - 基于内存的缓存实现
+//! - TTL（Time To Live）过期机制
+//! - 键值对存储
+//! - 批量操作支持
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const Mutex = std.Thread.Mutex;
-const RwLock = std.Thread.RwLock;
+const builtin = @import("builtin");
 
-/// 缓存配置
-pub const CacheConfig = struct {
-    /// 清理间隔（毫秒），0 表示不自动清理
-    cleanup_interval_ms: u64 = 60_000,
-    /// 初始容量
-    initial_capacity: u32 = 16,
-    /// 默认过期时间（毫秒），0 表示永不过期
-    default_ttl_ms: u64 = 0,
-};
-
-/// 缓存项
-fn CacheItem(comptime V: type) type {
-    return struct {
-        value: V,
-        expire_at: ?i64, // null 表示永不过期
-        created_at: i64,
-        access_count: u64,
-
-        fn isExpired(self: @This()) bool {
-            if (self.expire_at) |exp| {
-                return std.time.milliTimestamp() > exp;
-            }
-            return false;
+pub const CacheService = struct {
+    const Self = @This();
+    
+    allocator: std.mem.Allocator,
+    cache: std.StringHashMapUnmanaged(CacheItem),
+    mutex: std.Thread.Mutex = std.Thread.Mutex{},
+    
+    // 默认过期时间（秒）
+    default_ttl: u64 = 300, // 5分钟
+    
+    pub fn init(allocator: std.mem.Allocator) CacheService {
+        return .{
+            .allocator = allocator,
+            .cache = std.StringHashMapUnmanaged(CacheItem){},
+        };
+    }
+    
+    pub fn deinit(self: *CacheService) void {
+        var iter = self.cache.valueIterator();
+        while (iter.next()) |item| {
+            item.deinit(self.allocator);
+        }
+        self.cache.deinit(self.allocator);
+    }
+    
+    /// 缓存项结构
+    const CacheItem = struct {
+        value: []u8,        // JSON序列化后的值
+        expiry: u64,        // 过期时间戳（秒）
+        created_at: u64,    // 创建时间戳（秒）
+        
+        pub fn deinit(self: *CacheItem, allocator: std.mem.Allocator) void {
+            allocator.free(self.value);
         }
     };
-}
-
-/// 泛型缓存
-///
-/// 支持任意值类型，键固定为 `[]const u8`
-pub fn Cache(comptime V: type) type {
-    return struct {
-        const Self = @This();
-        const Item = CacheItem(V);
-        const Map = std.StringHashMap(Item);
-
-        allocator: Allocator,
-        map: Map,
-        lock: RwLock,
-        config: CacheConfig,
-        stats: Stats,
-
-        /// 统计信息
-        pub const Stats = struct {
-            hits: u64 = 0,
-            misses: u64 = 0,
-            sets: u64 = 0,
-            deletes: u64 = 0,
-            expirations: u64 = 0,
-
-            pub fn hitRate(self: Stats) f64 {
-                const total = self.hits + self.misses;
-                if (total == 0) return 0;
-                return @as(f64, @floatFromInt(self.hits)) / @as(f64, @floatFromInt(total));
-            }
+    
+    /// 设置缓存项
+    pub fn set(self: *CacheService, key: []const u8, value: []const u8, ttl: ?u64) !void {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const alloc = gpa.allocator();
+        
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        const expiry_time = std.time.timestamp() + (ttl orelse self.default_ttl);
+        
+        // 检查是否已存在相同的键，如果存在则释放旧值
+        if (self.cache.get(key)) |existing_item| {
+            existing_item.deinit(self.allocator);
+            _ = self.cache.remove(key);
+        }
+        
+        const value_copy = try self.allocator.dupe(u8, value);
+        const item = CacheItem{
+            .value = value_copy,
+            .expiry = expiry_time,
+            .created_at = std.time.timestamp(),
         };
-
-        pub fn init(allocator: Allocator, config: CacheConfig) Self {
-            return .{
-                .allocator = allocator,
-                .map = Map.init(allocator),
-                .lock = .{},
-                .config = config,
-                .stats = .{},
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            // 释放所有存储的键
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
+        
+        try self.cache.put(self.allocator, try self.allocator.dupe(u8, key), item);
+    }
+    
+    /// 获取缓存项
+    pub fn get(self: *CacheService, key: []const u8) !?[]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        if (self.cache.get(key)) |item| {
+            // 检查是否过期
+            if (std.time.timestamp() > item.expiry) {
+                // 过期了，删除它
+                _ = self.cache.remove(key);
+                return null;
             }
-            self.map.deinit();
+            
+            return item.value;
         }
-
-        /// 设置缓存
-        ///
-        /// - key: 缓存键
-        /// - value: 缓存值
-        /// - ttl_ms: 过期时间（毫秒），0 表示使用默认值，null 表示永不过期
-        pub fn set(self: *Self, key: []const u8, value: V, ttl_ms: ?u64) !void {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            const now = std.time.milliTimestamp();
-            const actual_ttl = ttl_ms orelse self.config.default_ttl_ms;
-            const expire_at: ?i64 = if (actual_ttl > 0) now + @as(i64, @intCast(actual_ttl)) else null;
-
-            // 复制 key 以确保内存安全
-            const owned_key = try self.allocator.dupe(u8, key);
-            errdefer self.allocator.free(owned_key);
-
-            // 如果已存在，先释放旧的 key
-            if (self.map.fetchRemove(key)) |old| {
-                self.allocator.free(old.key);
-            }
-
-            try self.map.put(owned_key, .{
-                .value = value,
-                .expire_at = expire_at,
-                .created_at = now,
-                .access_count = 0,
-            });
-
-            self.stats.sets += 1;
+        
+        return null;
+    }
+    
+    /// 删除缓存项
+    pub fn del(self: *CacheService, key: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        if (self.cache.fetchRemove(key)) |entry| {
+            entry.value.deinit(self.allocator);
+            self.allocator.free(entry.key);
         }
-
-        /// 获取缓存值
-        pub fn get(self: *Self, key: []const u8) ?V {
-            // 先尝试读锁
-            self.lock.lockShared();
-
-            if (self.map.getPtr(key)) |item| {
-                if (item.isExpired()) {
-                    self.lock.unlockShared();
-                    // 过期了，需要写锁来删除
-                    self.lock.lock();
-                    defer self.lock.unlock();
-                    if (self.map.fetchRemove(key)) |old| {
-                        self.allocator.free(old.key);
-                        self.stats.expirations += 1;
-                    }
-                    self.stats.misses += 1;
-                    return null;
-                }
-                item.access_count += 1;
-                const value = item.value;
-                self.lock.unlockShared();
-                self.stats.hits += 1;
-                return value;
-            }
-
-            self.lock.unlockShared();
-            self.stats.misses += 1;
-            return null;
-        }
-
-        /// 获取或设置（如果不存在则调用 loader 加载）
-        pub fn getOrSet(
-            self: *Self,
-            key: []const u8,
-            ttl_ms: ?u64,
-            loader: anytype,
-        ) !V {
-            if (self.get(key)) |value| {
-                return value;
-            }
-
-            // 调用 loader 获取值
-            const value = try loader();
-            try self.set(key, value, ttl_ms);
-            return value;
-        }
-
-        /// 记住缓存值（Laravel Cache::remember 风格）
-        ///
-        /// 先从缓存获取，如果不存在则调用回调生成并缓存。
-        ///
-        /// ## 使用示例
-        /// ```zig
-        /// // 基本用法：使用无参回调
-        /// const user = try cache.remember("user:1", 60_000, struct {
-        ///     pub fn call() !User {
-        ///         return try db.findUser(1);
-        ///     }
-        /// }.call);
-        ///
-        /// // 带上下文：使用闭包
-        /// const ctx = .{ .db = db, .id = user_id };
-        /// const user = try cache.rememberCtx("user:1", 60_000, ctx, struct {
-        ///     pub fn call(c: @TypeOf(ctx)) !User {
-        ///         return try c.db.findUser(c.id);
-        ///     }
-        /// }.call);
-        /// ```
-        pub fn remember(
-            self: *Self,
-            key: []const u8,
-            ttl_ms: u64,
-            callback: anytype,
-        ) !V {
-            if (self.get(key)) |value| {
-                return value;
-            }
-
-            const value = try callback();
-            try self.set(key, value, ttl_ms);
-            return value;
-        }
-
-        /// 带上下文的 remember（支持闭包模拟）
-        ///
-        /// 允许传入上下文对象，在回调中使用。
-        pub fn rememberCtx(
-            self: *Self,
-            key: []const u8,
-            ttl_ms: u64,
-            ctx: anytype,
-            callback: fn (@TypeOf(ctx)) anyerror!V,
-        ) !V {
-            if (self.get(key)) |value| {
-                return value;
-            }
-
-            const value = try callback(ctx);
-            try self.set(key, value, ttl_ms);
-            return value;
-        }
-
-        /// 永久记住（永不过期）
-        ///
-        /// 类似 Laravel 的 Cache::rememberForever
-        pub fn rememberForever(
-            self: *Self,
-            key: []const u8,
-            callback: anytype,
-        ) !V {
-            if (self.get(key)) |value| {
-                return value;
-            }
-
-            const value = try callback();
-            try self.set(key, value, null); // null = 永不过期
-            return value;
-        }
-
-        /// 永久记住（带上下文）
-        pub fn rememberForeverCtx(
-            self: *Self,
-            key: []const u8,
-            ctx: anytype,
-            callback: fn (@TypeOf(ctx)) anyerror!V,
-        ) !V {
-            if (self.get(key)) |value| {
-                return value;
-            }
-
-            const value = try callback(ctx);
-            try self.set(key, value, null);
-            return value;
-        }
-
-        /// 拉取缓存（获取后删除）
-        ///
-        /// 类似 Laravel 的 Cache::pull
-        pub fn pull(self: *Self, key: []const u8) ?V {
-            if (self.get(key)) |value| {
-                _ = self.delete(key);
-                return value;
-            }
-            return null;
-        }
-
-        /// 仅在不存在时设置
-        ///
-        /// 类似 Laravel 的 Cache::add，如果键已存在返回 false
-        pub fn add(self: *Self, key: []const u8, value: V, ttl_ms: ?u64) !bool {
-            if (self.exists(key)) {
+    }
+    
+    /// 检查缓存项是否存在
+    pub fn exists(self: *CacheService, key: []const u8) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        if (self.cache.get(key)) |item| {
+            // 检查是否过期
+            if (std.time.timestamp() > item.expiry) {
+                // 过期了，删除它
+                _ = self.cache.remove(key);
                 return false;
             }
-            try self.set(key, value, ttl_ms);
             return true;
         }
-
-        /// 永久设置（永不过期）
-        ///
-        /// 类似 Laravel 的 Cache::forever
-        pub fn forever(self: *Self, key: []const u8, value: V) !void {
-            try self.set(key, value, null);
-        }
-
-        /// 删除缓存
-        pub fn delete(self: *Self, key: []const u8) bool {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            if (self.map.fetchRemove(key)) |old| {
-                self.allocator.free(old.key);
-                self.stats.deletes += 1;
-                return true;
-            }
-            return false;
-        }
-
-        /// 检查键是否存在（且未过期）
-        pub fn exists(self: *Self, key: []const u8) bool {
-            self.lock.lockShared();
-            defer self.lock.unlockShared();
-
-            if (self.map.get(key)) |item| {
-                return !item.isExpired();
-            }
-            return false;
-        }
-
-        /// 获取剩余 TTL（毫秒）
-        pub fn ttl(self: *Self, key: []const u8) ?i64 {
-            self.lock.lockShared();
-            defer self.lock.unlockShared();
-
-            if (self.map.get(key)) |item| {
-                if (item.expire_at) |exp| {
-                    const remaining = exp - std.time.milliTimestamp();
-                    return if (remaining > 0) remaining else 0;
-                }
-                return null; // 永不过期
-            }
-            return null; // 不存在
-        }
-
-        /// 延长过期时间
-        pub fn touch(self: *Self, key: []const u8, ttl_ms: u64) bool {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            if (self.map.getPtr(key)) |item| {
-                if (!item.isExpired()) {
-                    const now = std.time.milliTimestamp();
-                    item.expire_at = now + @as(i64, @intCast(ttl_ms));
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /// 清理过期项
-        pub fn cleanup(self: *Self) usize {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            var count: usize = 0;
-            var to_remove: std.ArrayListUnmanaged([]const u8) = .empty;
-            defer to_remove.deinit(self.allocator);
-
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.isExpired()) {
-                    to_remove.append(self.allocator, entry.key_ptr.*) catch continue;
-                }
-            }
-
-            for (to_remove.items) |key| {
-                if (self.map.fetchRemove(key)) |old| {
-                    self.allocator.free(old.key);
-                    count += 1;
-                }
-            }
-
-            self.stats.expirations += count;
-            return count;
-        }
-
-        /// 清空所有缓存
-        pub fn flush(self: *Self) void {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            self.map.clearRetainingCapacity();
-        }
-
-        /// 获取缓存大小
-        pub fn size(self: *Self) usize {
-            self.lock.lockShared();
-            defer self.lock.unlockShared();
-            return self.map.count();
-        }
-
-        /// 获取所有键
-        pub fn keys(self: *Self) ![][]const u8 {
-            self.lock.lockShared();
-            defer self.lock.unlockShared();
-
-            var result = std.ArrayList([]const u8).init(self.allocator);
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                if (!entry.value_ptr.isExpired()) {
-                    try result.append(entry.key_ptr.*);
-                }
-            }
-            return try result.toOwnedSlice();
-        }
-
-        /// 获取统计信息
-        pub fn getStats(self: *Self) Stats {
-            return self.stats;
-        }
-
-        /// 重置统计
-        pub fn resetStats(self: *Self) void {
-            self.stats = .{};
-        }
-    };
-}
-
-/// 多表缓存管理器
-///
-/// 类似 V 语言 cache 的 table 概念
-pub fn CacheManager(comptime V: type) type {
-    return struct {
-        const Self = @This();
-        const Table = Cache(V);
-        const TableMap = std.StringHashMap(*Table);
-
-        allocator: Allocator,
-        tables: TableMap,
-        lock: Mutex,
-        config: CacheConfig,
-
-        pub fn init(allocator: Allocator, config: CacheConfig) Self {
-            return .{
-                .allocator = allocator,
-                .tables = TableMap.init(allocator),
-                .lock = .{},
-                .config = config,
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            var iter = self.tables.iterator();
-            while (iter.next()) |entry| {
-                entry.value_ptr.*.deinit();
-                self.allocator.destroy(entry.value_ptr.*);
-                self.allocator.free(entry.key_ptr.*);
-            }
-            self.tables.deinit();
-        }
-
-        /// 获取或创建表
-        pub fn table(self: *Self, name: []const u8) !*Table {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            if (self.tables.get(name)) |t| {
-                return t;
-            }
-
-            const owned_name = try self.allocator.dupe(u8, name);
-            errdefer self.allocator.free(owned_name);
-
-            const t = try self.allocator.create(Table);
-            t.* = Table.init(self.allocator, self.config);
-
-            try self.tables.put(owned_name, t);
-            return t;
-        }
-
-        /// 删除表
-        pub fn dropTable(self: *Self, name: []const u8) bool {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            if (self.tables.fetchRemove(name)) |entry| {
-                entry.value.deinit();
-                self.allocator.destroy(entry.value);
-                self.allocator.free(entry.key);
-                return true;
-            }
-            return false;
-        }
-
-        /// 清理所有表的过期项
-        pub fn cleanupAll(self: *Self) usize {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            var total: usize = 0;
-            var iter = self.tables.iterator();
-            while (iter.next()) |entry| {
-                total += entry.value_ptr.*.cleanup();
-            }
-            return total;
-        }
-
-        /// 获取所有表名
-        pub fn tableNames(self: *Self) ![][]const u8 {
-            self.lock.lock();
-            defer self.lock.unlock();
-
-            var result = std.ArrayListUnmanaged([]const u8){};
-            var iter = self.tables.iterator();
-            while (iter.next()) |entry| {
-                try result.append(self.allocator, entry.key_ptr.*);
-            }
-            return try result.toOwnedSlice(self.allocator);
-        }
-    };
-}
-
-// ============================================================================
-// 测试
-// ============================================================================
-
-test "Cache: 基本 set/get" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("key1", 100, null);
-    try c.set("key2", 200, null);
-
-    try std.testing.expectEqual(@as(?i32, 100), c.get("key1"));
-    try std.testing.expectEqual(@as(?i32, 200), c.get("key2"));
-    try std.testing.expectEqual(@as(?i32, null), c.get("key3"));
-}
-
-test "Cache: 字符串值" {
-    const allocator = std.testing.allocator;
-    var c = Cache([]const u8).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("name", "张三", null);
-    try c.set("city", "北京", null);
-
-    try std.testing.expectEqualStrings("张三", c.get("name").?);
-    try std.testing.expectEqualStrings("北京", c.get("city").?);
-}
-
-test "Cache: 过期时间" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    // 设置永不过期
-    try c.set("long", 2, null);
-    try std.testing.expect(c.exists("long"));
-    try std.testing.expectEqual(@as(?i64, null), c.ttl("long")); // 永不过期返回 null
-
-    // 设置有过期时间的项
-    try c.set("with_ttl", 1, 5000);
-    try std.testing.expect(c.exists("with_ttl"));
-    const remaining = c.ttl("with_ttl");
-    try std.testing.expect(remaining != null);
-    try std.testing.expect(remaining.? > 0);
-    try std.testing.expect(remaining.? <= 5000);
-
-    // 测试过期检测逻辑（通过手动模拟）
-    // 由于无法真正等待，验证 isExpired 逻辑
-}
-
-test "Cache: delete" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("key", 42, null);
-    try std.testing.expect(c.exists("key"));
-
-    try std.testing.expect(c.delete("key"));
-    try std.testing.expect(!c.exists("key"));
-    try std.testing.expect(!c.delete("key")); // 再次删除返回 false
-}
-
-test "Cache: flush" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("a", 1, null);
-    try c.set("b", 2, null);
-    try c.set("c", 3, null);
-
-    try std.testing.expectEqual(@as(usize, 3), c.size());
-
-    c.flush();
-
-    try std.testing.expectEqual(@as(usize, 0), c.size());
-}
-
-test "Cache: 统计信息" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("key", 1, null);
-    _ = c.get("key"); // hit
-    _ = c.get("key"); // hit
-    _ = c.get("noexist"); // miss
-
-    const stats = c.getStats();
-    try std.testing.expectEqual(@as(u64, 1), stats.sets);
-    try std.testing.expectEqual(@as(u64, 2), stats.hits);
-    try std.testing.expectEqual(@as(u64, 1), stats.misses);
-}
-
-test "Cache: touch 延长过期" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("key", 1, 100);
-
-    const ttl1 = c.ttl("key");
-    try std.testing.expect(ttl1 != null);
-
-    // 延长到 10 秒
-    try std.testing.expect(c.touch("key", 10000));
-
-    const ttl2 = c.ttl("key");
-    try std.testing.expect(ttl2.? > ttl1.?);
-}
-
-test "Cache: 覆盖已存在的键" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("key", 1, null);
-    try std.testing.expectEqual(@as(?i32, 1), c.get("key"));
-
-    try c.set("key", 2, null);
-    try std.testing.expectEqual(@as(?i32, 2), c.get("key"));
-
-    try std.testing.expectEqual(@as(usize, 1), c.size());
-}
-
-test "CacheManager: 多表管理" {
-    const allocator = std.testing.allocator;
-    var mgr = CacheManager(i32).init(allocator, .{});
-    defer mgr.deinit();
-
-    const users = try mgr.table("users");
-    const settings = try mgr.table("settings");
-
-    try users.set("id:1", 100, null);
-    try settings.set("theme", 1, null);
-
-    try std.testing.expectEqual(@as(?i32, 100), users.get("id:1"));
-    try std.testing.expectEqual(@as(?i32, 1), settings.get("theme"));
-
-    // 两个表独立
-    try std.testing.expectEqual(@as(?i32, null), users.get("theme"));
-}
-
-test "Cache: 结构体值" {
-    const User = struct {
-        id: i32,
-        name: []const u8,
-    };
-
-    const allocator = std.testing.allocator;
-    var c = Cache(User).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("user:1", .{ .id = 1, .name = "张三" }, null);
-    try c.set("user:2", .{ .id = 2, .name = "李四" }, null);
-
-    const user1 = c.get("user:1").?;
-    try std.testing.expectEqual(@as(i32, 1), user1.id);
-    try std.testing.expectEqualStrings("张三", user1.name);
-}
-
-test "Cache: remember 基本用法" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    var call_count: i32 = 0;
-
-    // 第一次调用，执行回调
-    const Callback = struct {
-        var count: *i32 = undefined;
-        pub fn call() !i32 {
-            count.* += 1;
-            return 42;
-        }
-    };
-    Callback.count = &call_count;
-
-    const v1 = try c.remember("key", 60_000, Callback.call);
-    try std.testing.expectEqual(@as(i32, 42), v1);
-    try std.testing.expectEqual(@as(i32, 1), call_count);
-
-    // 第二次调用，使用缓存，不执行回调
-    const v2 = try c.remember("key", 60_000, Callback.call);
-    try std.testing.expectEqual(@as(i32, 42), v2);
-    try std.testing.expectEqual(@as(i32, 1), call_count); // 计数不变
-}
-
-test "Cache: rememberCtx 带上下文" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    const Context = struct {
-        base: i32,
-        multiplier: i32,
-    };
-
-    const callback = struct {
-        pub fn call(ctx: Context) !i32 {
-            return ctx.base * ctx.multiplier;
-        }
-    }.call;
-
-    const ctx = Context{ .base = 10, .multiplier = 5 };
-    const v1 = try c.rememberCtx("computed", 60_000, ctx, callback);
-    try std.testing.expectEqual(@as(i32, 50), v1);
-
-    // 第二次使用缓存
-    const v2 = try c.rememberCtx("computed", 60_000, ctx, callback);
-    try std.testing.expectEqual(@as(i32, 50), v2);
-}
-
-test "Cache: rememberForever 永不过期" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    const v = try c.rememberForever("forever_key", struct {
-        pub fn call() !i32 {
-            return 999;
-        }
-    }.call);
-
-    try std.testing.expectEqual(@as(i32, 999), v);
-    try std.testing.expectEqual(@as(?i64, null), c.ttl("forever_key")); // 永不过期
-}
-
-test "Cache: pull 获取后删除" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.set("temp", 123, null);
-    try std.testing.expect(c.exists("temp"));
-
-    const v = c.pull("temp");
-    try std.testing.expectEqual(@as(?i32, 123), v);
-    try std.testing.expect(!c.exists("temp")); // 已删除
-
-    // 再次 pull 返回 null
-    try std.testing.expectEqual(@as(?i32, null), c.pull("temp"));
-}
-
-test "Cache: add 仅在不存在时设置" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    // 第一次 add 成功
-    const added1 = try c.add("new_key", 100, null);
-    try std.testing.expect(added1);
-    try std.testing.expectEqual(@as(?i32, 100), c.get("new_key"));
-
-    // 第二次 add 失败（键已存在）
-    const added2 = try c.add("new_key", 200, null);
-    try std.testing.expect(!added2);
-    try std.testing.expectEqual(@as(?i32, 100), c.get("new_key")); // 值未变
-}
-
-test "Cache: forever 永久设置" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    try c.forever("permanent", 888);
-    try std.testing.expectEqual(@as(?i32, 888), c.get("permanent"));
-    try std.testing.expectEqual(@as(?i64, null), c.ttl("permanent")); // 永不过期
-}
-
-test "Cache: 内存安全 - 键的内存管理" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    // 设置一个键值对
-    try c.set("test_key", 123, null);
-
-    // 验证键被正确复制（不是引用原始字符串）
-    const original_key = "test_key";
-    var buffer: [20]u8 = undefined;
-    const new_key = std.fmt.bufPrint(&buffer, "{s}", .{original_key}) catch "fallback";
-    _ = new_key;
-
-    // 即使原始字符串被修改，缓存中的键应该保持不变
-    try std.testing.expect(c.exists("test_key"));
-    try std.testing.expectEqual(@as(?i32, 123), c.get("test_key"));
-}
-
-test "Cache: 内存安全 - 大量键值对的清理" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{ .initial_capacity = 1000 });
-    defer c.deinit();
-
-    // 添加大量键值对
-    for (0..1000) |i| {
-        var key_buf: [20]u8 = undefined;
-        const key = std.fmt.bufPrint(&key_buf, "key_{d}", .{i}) catch continue;
-        try c.set(key, @intCast(i), 100); // 100ms过期
+        
+        return false;
     }
+    
+    /// 清空所有缓存
+    pub fn flush(self: *CacheService) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit(self.allocator);
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.cache.clearRetainingCapacity();
+    }
+    
+    /// 获取缓存统计信息
+    pub fn stats(self: *CacheService) !struct { count: usize, expired: usize } {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        var count: usize = 0;
+        var expired: usize = 0;
+        var iter = self.cache.valueIterator();
+        
+        while (iter.next()) |item| {
+            if (std.time.timestamp() > item.expiry) {
+                expired += 1;
+            } else {
+                count += 1;
+            }
+        }
+        
+        return .{ .count = count, .expired = expired };
+    }
+    
+    /// 定期清理过期项（非阻塞）
+    pub fn cleanupExpired(self: *CacheService) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        var to_remove = std.ArrayList([]const u8).init(self.allocator);
+        defer to_remove.deinit();
+        
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            if (std.time.timestamp() > entry.value.expiry) {
+                try to_remove.append(entry.key_ptr.*);
+            }
+        }
+        
+        for (to_remove.items) |key| {
+            if (self.cache.fetchRemove(key)) |removed_entry| {
+                removed_entry.value.deinit(self.allocator);
+                self.allocator.free(removed_entry.key);
+            }
+        }
+    }
+    
+    /// 根据前缀删除缓存项
+    pub fn delByPrefix(self: *CacheService, prefix: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        var to_remove = std.ArrayList([]const u8).init(self.allocator);
+        defer to_remove.deinit();
+        
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            if (std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
+                try to_remove.append(entry.key_ptr.*);
+            }
+        }
+        
+        for (to_remove.items) |key| {
+            if (self.cache.fetchRemove(key)) |removed_entry| {
+                removed_entry.value.deinit(self.allocator);
+                self.allocator.free(removed_entry.key);
+            }
+        }
+    }
+};
 
-    try std.testing.expect(c.size() > 900); // 应该有大部分键值对
+test "CacheService basic operations" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+    
+    // 测试设置和获取
+    try cache.set("test_key", "test_value", null);
+    const value = try cache.get("test_key");
+    try std.testing.expect(value != null);
+    try std.testing.expect(std.mem.eql(u8, value.?, "test_value"));
+    
+    // 测试存在性
+    try std.testing.expect(try cache.exists("test_key"));
+    try std.testing.expect(!try cache.exists("nonexistent"));
+    
+    // 测试删除
+    try cache.del("test_key");
+    try std.testing.expect(!try cache.exists("test_key"));
+}
 
-    // 等待过期
-    std.Thread.sleep(500_000_000); // 500ms
+test "CacheService expiration" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+    
+    // 设置1秒后过期的项
+    try cache.set("expiring_key", "expiring_value", 1);
+    
+    // 检查存在
+    try std.testing.expect(try cache.exists("expiring_key"));
+    
+    // 等待2秒后检查（应该已过期）
+    std.time.sleep(2 * std.time.ns_per_s);
+    
+    // 现在应该不存在了
+    try std.testing.expect(!try cache.exists("expiring_key"));
+    const value = try cache.get("expiring_key");
+    try std.testing.expect(value == null);
+}
 
+test "CacheService cleanup" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+    
+    // 添加几个不同过期时间的项
+    try cache.set("key1", "value1", 1);
+    try cache.set("key2", "value2", 2);
+    try cache.set("key3", "value3", 300);
+    
+    // 等待几秒让前两个过期
+    std.time.sleep(2 * std.time.ns_per_s);
+    
     // 清理过期项
-    const cleaned = c.cleanup();
-    try std.testing.expect(cleaned > 0); // 至少清理了一些
-
-    // 验证内存正确释放（允许更大的范围）
-    try std.testing.expect(c.size() < 500);
-}
-
-test "Cache: 内存安全 - 并发读写时的键释放" {
-    const allocator = std.testing.allocator;
-    var c = Cache([]const u8).init(allocator, .{});
-    defer c.deinit();
-
-    // 启动多个线程并发读写
-    const num_threads = 4;
-    var threads: [num_threads]std.Thread = undefined;
-
-    for (&threads, 0..) |*thread, i| {
-        thread.* = try std.Thread.spawn(.{}, concurrentCacheTest, .{ &c, i });
-    }
-
-    for (&threads) |*thread| {
-        thread.join();
-    }
-
-    // 验证缓存状态正常
-    try std.testing.expect(c.size() >= 0);
-    try std.testing.expect(c.size() <= 100); // 合理的上限
-}
-
-test "Cache: 线程安全 - 并发访问统计信息" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    const num_threads = 8;
-    const operations_per_thread = 100;
-
-    var threads: [num_threads]std.Thread = undefined;
-
-    // 启动多个线程并发操作
-    for (&threads) |*thread| {
-        thread.* = try std.Thread.spawn(.{}, stressTestCache, .{ &c, operations_per_thread });
-    }
-
-    for (&threads) |*thread| {
-        thread.join();
-    }
-
-    // 验证统计信息
-    const stats = c.getStats();
-
-    // 由于并发和可能的冲突，确切的数字可能有差异，只验证有操作发生
-    try std.testing.expect(stats.sets > 0);
-
-    // 重置统计后应该为0
-    c.resetStats();
-    const reset_stats = c.getStats();
-    try std.testing.expectEqual(@as(u64, 0), reset_stats.hits);
-    try std.testing.expectEqual(@as(u64, 0), reset_stats.misses);
-    try std.testing.expectEqual(@as(u64, 0), reset_stats.sets);
-}
-
-test "Cache: 线程安全 - 过期清理的并发安全" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    // 添加一些短期缓存项
-    for (0..50) |i| {
-        var key_buf: [20]u8 = undefined;
-        const key = std.fmt.bufPrint(&key_buf, "temp_{d}", .{i}) catch continue;
-        try c.set(key, @intCast(i), 10_000); // 10ms 过期
-    }
-
-    // 启动多个线程同时清理
-    const num_threads = 3;
-    var threads: [num_threads]std.Thread = undefined;
-    var results: [num_threads]usize = undefined;
-
-    for (&threads, 0..) |*thread, i| {
-        thread.* = try std.Thread.spawn(.{}, cleanupTest, .{ &c, &results[i] });
-    }
-
-    for (&threads) |*thread| {
-        thread.join();
-    }
-
-    // 验证清理结果合理
-    var total_cleaned: usize = 0;
-    for (results) |r| {
-        total_cleaned += r;
-    }
-
-    try std.testing.expect(total_cleaned >= 0);
-    try std.testing.expect(total_cleaned <= 50);
-
-    // 短暂等待让线程开始等待
-    std.Thread.sleep(1_000_000); // 1ms
-    const final_cleaned = c.cleanup();
-    try std.testing.expect(final_cleaned >= 0);
-}
-
-test "Cache: 内存安全 - 结构体值的深拷贝" {
-    const allocator = std.testing.allocator;
-
-    const TestStruct = struct {
-        id: i32,
-        data: []const u8,
-        allocator: std.mem.Allocator,
-    };
-
-    var c = Cache(TestStruct).init(allocator, .{});
-    defer c.deinit();
-
-    // 创建一个包含切片的结构体
-    const original_data = try allocator.dupe(u8, "test_data");
-    defer allocator.free(original_data);
-
-    const value = TestStruct{
-        .id = 123,
-        .data = original_data,
-        .allocator = allocator,
-    };
-
-    try c.set("struct_key", value, null);
-
-    // 验证能获取到值
-    if (c.get("struct_key")) |cached_value| {
-        try std.testing.expectEqual(@as(i32, 123), cached_value.id);
-        try std.testing.expectEqualStrings("test_data", cached_value.data);
-    } else {
-        try std.testing.expect(false); // 应该能获取到
-    }
-}
-
-test "CacheManager: 线程安全 - 多表并发操作" {
-    const allocator = std.testing.allocator;
-    var mgr = CacheManager(i32).init(allocator, .{});
-    defer mgr.deinit();
-
-    const num_threads = 4;
-    const operations_per_thread = 50;
-
-    var threads: [num_threads]std.Thread = undefined;
-
-    // 启动多个线程操作不同的表
-    for (&threads, 0..) |*thread, i| {
-        thread.* = try std.Thread.spawn(.{}, multiTableTest, .{ &mgr, i, operations_per_thread });
-    }
-
-    for (&threads) |*thread| {
-        thread.join();
-    }
-
-    // 验证表被正确创建
-    const table_names = try mgr.tableNames();
-    defer allocator.free(table_names);
-
-    try std.testing.expect(table_names.len >= 1); // 至少有一个表
-}
-
-test "Cache: 边界条件 - 空键操作" {
-    const allocator = std.testing.allocator;
-    var c = Cache(i32).init(allocator, .{});
-    defer c.deinit();
-
-    // 空字符串键
-    try c.set("", 42, null);
-    try std.testing.expect(c.exists(""));
-    try std.testing.expectEqual(@as(?i32, 42), c.get(""));
-
-    // 删除空字符串键
-    try std.testing.expect(c.delete(""));
-    try std.testing.expect(!c.exists(""));
-}
-
-test "Cache: 边界条件 - 超大值处理" {
-    const allocator = std.testing.allocator;
-    var c = Cache([]const u8).init(allocator, .{});
-    defer c.deinit();
-
-    // 创建一个大的字符串值
-    const large_value = try allocator.alloc(u8, 10000);
-    defer allocator.free(large_value);
-    @memset(large_value, 'X');
-
-    try c.set("large_key", large_value, null);
-
-    // 验证能正确存储和检索
-    if (c.get("large_key")) |retrieved| {
-        try std.testing.expectEqual(@as(usize, 10000), retrieved.len);
-        try std.testing.expectEqual(@as(u8, 'X'), retrieved[0]);
-        try std.testing.expectEqual(@as(u8, 'X'), retrieved[9999]);
-    } else {
-        try std.testing.expect(false);
-    }
-}
-
-/// 并发缓存测试函数
-fn concurrentCacheTest(cache: *Cache([]const u8), thread_id: usize) void {
-    var key_buf: [30]u8 = undefined;
-    var value_buf: [50]u8 = undefined;
-
-    for (0..25) |i| {
-        // 构造唯一的键
-        const key = std.fmt.bufPrint(&key_buf, "thread_{d}_key_{d}", .{ thread_id, i }) catch continue;
-        const value = std.fmt.bufPrint(&value_buf, "value_{d}_{d}", .{ thread_id, i }) catch continue;
-
-        // 随机操作：设置、获取、删除
-        const rand = std.crypto.random.int(u8);
-        if (rand < 85) {
-            // 80% 概率设置
-            cache.set(key, value, 60_000) catch {};
-        } else if (rand < 170) {
-            // 15% 概率获取
-            _ = cache.get(key);
-        } else {
-            // 5% 概率删除
-            _ = cache.delete(key);
-        }
-
-        // 短暂延迟增加竞争
-        std.atomic.spinLoopHint();
-    }
-}
-
-/// 缓存压力测试函数
-fn stressTestCache(cache: *Cache(i32), operations: usize) void {
-    var key_buf: [20]u8 = undefined;
-
-    for (0..operations) |i| {
-        const key = std.fmt.bufPrint(&key_buf, "stress_{d}", .{i}) catch continue;
-        const value = @as(i32, @intCast(i));
-
-        // 随机选择操作
-        const rand = std.crypto.random.int(u8);
-        if (rand < 60) {
-            // 60% 设置
-            cache.set(key, value, null) catch {};
-        } else if (rand < 80) {
-            // 20% 获取
-            _ = cache.get(key);
-        } else {
-            // 20% 删除
-            _ = cache.delete(key);
-        }
-    }
-}
-
-/// 清理测试函数
-fn cleanupTest(cache: *Cache(i32), result: *usize) void {
-    // 多次清理并累计结果
-    var total: usize = 0;
-    for (0..5) |_| {
-        total += cache.cleanup();
-        std.Thread.sleep(1_000_000); // 1ms
-    }
-    result.* = total;
-}
-
-/// 多表测试函数
-fn multiTableTest(mgr: *CacheManager(i32), table_id: usize, operations: usize) void {
-    var key_buf: [30]u8 = undefined;
-
-    // 获取或创建表
-    const table = mgr.table(std.fmt.bufPrint(&key_buf, "table_{d}", .{table_id}) catch "default") catch return;
-
-    // 在表上执行操作
-    for (0..operations) |i| {
-        const key = std.fmt.bufPrint(&key_buf, "key_{d}", .{i}) catch continue;
-        const value = @as(i32, @intCast(i + table_id * 1000));
-
-        table.set(key, value, 60_000) catch {};
-        _ = table.get(key);
-    }
+    try cache.cleanupExpired();
+    
+    // 统计应该显示出清理效果
+    const stats = try cache.stats();
+    try std.testing.expect(stats.expired == 0); // 已经清理了
+    try std.testing.expect(stats.count == 1);   // 只剩下key3
 }

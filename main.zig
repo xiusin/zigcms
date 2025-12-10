@@ -37,6 +37,7 @@ pub fn main() !void {
     try app.crud("upload", models.Upload);
     try app.crud("article", models.Article);
     try app.crud("role", models.Role);
+    try app.crud("dict", models.Dict);  // 添加字典模型的CRUD
 
     // ========================================================================
     // API 层 - 注册自定义控制器
@@ -62,6 +63,18 @@ pub fn main() !void {
     try app.route("/setting/get", &setting, &controllers.admin.Setting.get);
     try app.route("/setting/save", &setting, &controllers.admin.Setting.save);
     try app.route("/setting/send_email", &setting, &controllers.admin.Setting.send_mail);
+
+    // 字典管理控制器
+    var dict_ctrl = controllers.dict.Dict.init(allocator);
+    try app.route("/dict/types", &dict_ctrl, &controllers.dict.Dict.getDictTypes);
+    try app.route("/dict/by_type", &dict_ctrl, &controllers.dict.Dict.getDictByType);
+    try app.route("/dict/search", &dict_ctrl, &controllers.dict.Dict.searchDict);
+    try app.route("/dict/count", &dict_ctrl, &controllers.dict.Dict.countDict);
+    try app.route("/dict/validate", &dict_ctrl, &controllers.dict.Dict.validateDictValue);
+    try app.route("/dict/label", &dict_ctrl, &controllers.dict.Dict.getDictLabel);
+    try app.route("/dict/refresh_cache", &dict_ctrl, &controllers.dict.Dict.refreshCache);
+    try app.route("/dict/cache_stats", &dict_ctrl, &controllers.dict.Dict.getCacheStats);
+    try app.route("/dict/cleanup_cache", &dict_ctrl, &controllers.dict.Dict.cleanupCache);
 
     // ========================================================================
     // 启动服务器

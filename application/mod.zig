@@ -8,8 +8,8 @@
 
 const std = @import("std");
 
-// 应用服务
-pub const services = @import("../application/services/services.zig");
+// 应用服务管理器
+pub const services = @import("Services.zig").ServiceManager;
 
 /// 应用层配置
 pub const AppConfig = struct {
