@@ -133,6 +133,42 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // ========================================================================
+    // Database Migration Tool
+    // ========================================================================
+    const migrate_module = b.createModule(.{
+        .root_source_file = b.path("tools/migrate.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const migrate_exe = b.addExecutable(.{ .name = "migrate", .root_module = migrate_module });
+
+    // Add the same dependencies as the main executable for migrations
+    migrate_exe.root_module.addImport("zap", zap.module("zap"));
+    migrate_exe.root_module.addImport("regex", regex.module("regex"));
+    migrate_exe.root_module.addImport("pg", pg.module("pg"));
+    migrate_exe.root_module.addImport("pretty", pretty.module("pretty"));
+    migrate_exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
+    migrate_exe.root_module.addImport("curl", curl.module("curl"));
+    migrate_exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    
+    migrate_exe.linkLibrary(sqlite.artifact("sqlite"));
+    migrate_exe.linkLibC();
+
+    b.installArtifact(migrate_exe);
+
+    const run_migrate_cmd = b.addRunArtifact(migrate_exe);
+    run_migrate_cmd.step.dependOn(b.getInstallStep());
+
+    const migrate_step = b.step("migrate", "Run database migrations");
+    migrate_step.dependOn(&run_migrate_cmd.step);
+
+    if (b.args) |args| {
+        for (args) |arg| {
+            run_migrate_cmd.addArg(arg);
+        }
+    }
+
     // // ========================================================================
     // // MySQL 集成测试
     // // ========================================================================
