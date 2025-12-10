@@ -2004,6 +2004,182 @@ pub fn ModelQuery(comptime T: type) type {
             return self.orWhere(field, "=", value);
         }
 
+        /// 分组条件查询 (Laravel: ->where(function($query) { ... }))
+        /// 使用: .whereGroup(struct { fn apply(q: *Query) void { _ = q.whereEq("a", 1).orWhereEq("b", 2); } }.apply)
+        /// 生成: AND (a = 1 OR b = 2)
+        pub fn whereGroup(self: *Self, comptime callback: fn (*Self) void) *Self {
+            // 创建临时子查询来收集条件
+            var sub = Self.init(self.db, self.table);
+            callback(&sub);
+
+            // 将子查询条件合并为分组
+            if (sub.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){};
+                group_sql.appendSlice(self.db.allocator, "(") catch return self;
+
+                for (sub.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        // 检查是否是 OR 条件
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    sub.deinit();
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            // 释放临时子查询（不释放条件字符串，已转移）
+            for (sub.where_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            sub.where_clauses.deinit(self.db.allocator);
+            sub.select_fields.deinit(self.db.allocator);
+            sub.order_clauses.deinit(self.db.allocator);
+            sub.group_fields.deinit(self.db.allocator);
+            sub.join_clauses.deinit(self.db.allocator);
+
+            return self;
+        }
+
+        /// OR 分组条件查询
+        /// 使用: .orWhereGroup(struct { fn apply(q: *Query) void { _ = q.whereEq("a", 1).whereEq("b", 2); } }.apply)
+        /// 生成: OR (a = 1 AND b = 2)
+        pub fn orWhereGroup(self: *Self, comptime callback: fn (*Self) void) *Self {
+            var sub = Self.init(self.db, self.table);
+            callback(&sub);
+
+            if (sub.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){};
+                group_sql.appendSlice(self.db.allocator, "OR (") catch return self;
+
+                for (sub.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    sub.deinit();
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            for (sub.where_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            sub.where_clauses.deinit(self.db.allocator);
+            sub.select_fields.deinit(self.db.allocator);
+            sub.order_clauses.deinit(self.db.allocator);
+            sub.group_fields.deinit(self.db.allocator);
+            sub.join_clauses.deinit(self.db.allocator);
+
+            return self;
+        }
+
+        /// 嵌套条件构建器 - 更灵活的方式
+        /// 使用:
+        /// ```zig
+        /// var nested = query.newNested();
+        /// _ = nested.whereEq("role", "admin").orWhereEq("role", "mod");
+        /// _ = query.whereNested(&nested);
+        /// ```
+        pub fn newNested(self: *Self) Self {
+            return Self.init(self.db, self.table);
+        }
+
+        /// 添加嵌套条件 (AND)
+        pub fn whereNested(self: *Self, nested: *Self) *Self {
+            if (nested.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){};
+                group_sql.appendSlice(self.db.allocator, "(") catch return self;
+
+                for (nested.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            // 释放嵌套查询
+            nested.deinit();
+            return self;
+        }
+
+        /// 添加嵌套条件 (OR)
+        pub fn orWhereNested(self: *Self, nested: *Self) *Self {
+            if (nested.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){};
+                group_sql.appendSlice(self.db.allocator, "OR (") catch return self;
+
+                for (nested.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            nested.deinit();
+            return self;
+        }
+
         /// WHERE DATE (日期比较)
         pub fn whereDate(self: *Self, field: []const u8, op: []const u8, date: []const u8) *Self {
             const clause = std.fmt.allocPrint(self.db.allocator, "DATE({s}) {s} '{s}'", .{ field, op, date }) catch return self;

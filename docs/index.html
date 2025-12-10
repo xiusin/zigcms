@@ -2352,6 +2352,36 @@ defer query.deinit();
 // WHERE status = 1 OR role = 'admin'
 _ = query.whereEq("status", 1).orWhereEq("role", "admin");</code></pre>
 
+                <h3>分组条件 (Laravel 闭包风格)</h3>
+                <p>类似 Laravel 的 <code>->where(function($query) { ... })</code> 语法：</p>
+                <pre><code>var query = User.query(&db);
+defer query.deinit();
+
+// Laravel: ->where('active', 1)->where(function($q) { 
+//              $q->where('role', 'admin')->orWhere('role', 'mod') 
+//          })
+// SQL: WHERE active = 1 AND (role = 'admin' OR role = 'moderator')
+
+_ = query.whereEq("active", 1).whereGroup(struct {
+    fn apply(q: *@TypeOf(query)) void {
+        _ = q.whereEq("role", "admin").orWhereEq("role", "moderator");
+    }
+}.apply);</code></pre>
+
+                <h3>嵌套条件构建器（更灵活）</h3>
+                <pre><code>var query = User.query(&db);
+defer query.deinit();
+
+// 创建嵌套条件
+var nested = query.newNested();
+_ = nested.whereEq("city", "北京").orWhereEq("city", "上海");
+
+// 添加到主查询：WHERE active = 1 AND (city = '北京' OR city = '上海')
+_ = query.whereEq("active", 1).whereNested(&nested);
+
+// OR 嵌套：WHERE active = 1 OR (city = '北京' AND city = '上海')
+// _ = query.whereEq("active", 1).orWhereNested(&nested);</code></pre>
+
                 <h3>日期查询</h3>
                 <pre><code>// WHERE DATE(created_at) = '2025-01-01'
 _ = query.whereDate("created_at", "=", "2025-01-01");

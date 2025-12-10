@@ -960,6 +960,42 @@ fn testNewFeatures(allocator: std.mem.Allocator, db: *sql.Database) !void {
         std.debug.print("✓ 批量更新影响行数: {d}\n", .{affected});
     }
 
+    // 测试分组条件查询 (Laravel: ->where(function($q) { ... }))
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        // WHERE status = 1 AND (role = 'admin' OR role = 'moderator')
+        _ = query.whereEq("active", 1).whereGroup(struct {
+            fn apply(q: *@TypeOf(query)) void {
+                _ = q.whereEq("name", "张三").orWhereEq("name", "李四");
+            }
+        }.apply);
+        
+        const sql_str = try query.toSql();
+        defer db.allocator.free(sql_str);
+        
+        std.debug.print("✓ 分组条件 SQL: {s}\n", .{sql_str});
+    }
+
+    // 测试嵌套条件构建器（更灵活的方式）
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        // 创建嵌套条件
+        var nested = query.newNested();
+        _ = nested.whereEq("city", "北京").orWhereEq("city", "上海");
+        
+        // 添加到主查询
+        _ = query.whereEq("active", 1).whereNested(&nested);
+        
+        const sql_str = try query.toSql();
+        defer db.allocator.free(sql_str);
+        
+        std.debug.print("✓ 嵌套条件 SQL: {s}\n", .{sql_str});
+    }
+
     std.debug.print("\n", .{});
 }
 
