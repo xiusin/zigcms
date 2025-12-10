@@ -479,6 +479,9 @@ pub const Database = struct {
 // 模型构建器
 // ============================================================================
 
+/// 数据库方言
+pub const Dialect = enum { mysql, sqlite, postgresql };
+
 /// 模型配置
 pub const ModelConfig = struct {
     table_name: ?[]const u8 = null,
@@ -537,6 +540,159 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 return T.primary_key;
             }
             return "id";
+        }
+
+        // ====================================================================
+        // 数据库迁移 - Schema 生成
+        // ====================================================================
+
+        /// 将 Zig 类型映射到 SQL 类型（编译期）
+        fn zigTypeToSqlType(comptime ZigType: type, comptime dialect: Dialect, comptime field_name: []const u8) []const u8 {
+            const is_primary = std.mem.eql(u8, field_name, primaryKey());
+            const type_info = @typeInfo(ZigType);
+
+            if (type_info == .optional) {
+                return zigTypeToSqlType(type_info.optional.child, dialect, field_name);
+            }
+
+            if (ZigType == []const u8) {
+                if (std.mem.endsWith(u8, field_name, "content") or
+                    std.mem.endsWith(u8, field_name, "description") or
+                    std.mem.endsWith(u8, field_name, "body"))
+                {
+                    return switch (dialect) {
+                        .mysql => "LONGTEXT",
+                        .sqlite, .postgresql => "TEXT",
+                    };
+                }
+                return switch (dialect) {
+                    .mysql, .postgresql => "VARCHAR(255)",
+                    .sqlite => "TEXT",
+                };
+            }
+
+            if (type_info == .int) {
+                const bits = type_info.int.bits;
+                if (is_primary) {
+                    return switch (dialect) {
+                        .mysql => if (bits <= 32) "INT AUTO_INCREMENT" else "BIGINT AUTO_INCREMENT",
+                        .sqlite => "INTEGER",
+                        .postgresql => if (bits <= 32) "SERIAL" else "BIGSERIAL",
+                    };
+                }
+                return switch (dialect) {
+                    .mysql => if (bits <= 8) "TINYINT" else if (bits <= 16) "SMALLINT" else if (bits <= 32) "INT" else "BIGINT",
+                    .sqlite => "INTEGER",
+                    .postgresql => if (bits <= 16) "SMALLINT" else if (bits <= 32) "INTEGER" else "BIGINT",
+                };
+            }
+
+            if (type_info == .float) {
+                const bits = type_info.float.bits;
+                return switch (dialect) {
+                    .mysql => if (bits <= 32) "FLOAT" else "DOUBLE",
+                    .sqlite => "REAL",
+                    .postgresql => if (bits <= 32) "REAL" else "DOUBLE PRECISION",
+                };
+            }
+
+            if (ZigType == bool) {
+                return switch (dialect) {
+                    .mysql => "TINYINT(1)",
+                    .sqlite => "INTEGER",
+                    .postgresql => "BOOLEAN",
+                };
+            }
+
+            return switch (dialect) {
+                .mysql, .postgresql => "VARCHAR(255)",
+                .sqlite => "TEXT",
+            };
+        }
+
+        /// 生成 CREATE TABLE SQL 语句（编译期）
+        pub fn createTableSql(comptime dialect: Dialect) []const u8 {
+            comptime {
+                const fields = std.meta.fields(T);
+                const pk = primaryKey();
+                const tbl = tableName();
+
+                var pure_table_name: []const u8 = tbl;
+                for (tbl, 0..) |c, i| {
+                    if (c == '.') {
+                        pure_table_name = tbl[i + 1 ..];
+                        break;
+                    }
+                }
+
+                var sql: []const u8 = "CREATE TABLE IF NOT EXISTS " ++ pure_table_name ++ " (\n";
+                var first_field = true;
+
+                for (fields) |field| {
+                    if (@hasDecl(T, "ignore_fields")) {
+                        var skip = false;
+                        for (T.ignore_fields) |ignore| {
+                            if (std.mem.eql(u8, field.name, ignore)) {
+                                skip = true;
+                                break;
+                            }
+                        }
+                        if (skip) continue;
+                    }
+
+                    const is_pk = std.mem.eql(u8, field.name, pk);
+                    const sql_type = zigTypeToSqlType(field.type, dialect, field.name);
+
+                    if (!first_field) sql = sql ++ ",\n";
+                    first_field = false;
+                    sql = sql ++ "    " ++ field.name ++ " " ++ sql_type;
+
+                    if (is_pk and dialect != .sqlite) {
+                        sql = sql ++ " NOT NULL";
+                    }
+                }
+
+                sql = sql ++ ",\n    PRIMARY KEY (" ++ pk ++ ")\n)";
+
+                if (dialect == .mysql) {
+                    sql = sql ++ " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+                }
+
+                return sql ++ ";";
+            }
+        }
+
+        /// 生成 DROP TABLE SQL 语句
+        pub fn dropTableSql() []const u8 {
+            const tbl = tableName();
+            comptime var pure_table_name: []const u8 = tbl;
+            inline for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    pure_table_name = tbl[i + 1 ..];
+                    break;
+                }
+            }
+            return "DROP TABLE IF EXISTS " ++ pure_table_name ++ ";";
+        }
+
+        /// 执行建表
+        pub fn createTable(db: *Database) !void {
+            const dialect: Dialect = switch (db.driver_type) {
+                .mysql => .mysql,
+                .sqlite, .memory => .sqlite,
+                .postgresql => .postgresql,
+            };
+            const sql_str = switch (dialect) {
+                .mysql => createTableSql(.mysql),
+                .sqlite => createTableSql(.sqlite),
+                .postgresql => createTableSql(.postgresql),
+            };
+            _ = try db.rawExec(sql_str);
+        }
+
+        /// 执行删表
+        pub fn dropTable(db: *Database) !void {
+            _ = try db.rawExec(dropTableSql());
         }
 
         /// 释放模型中的字符串内存
@@ -1675,8 +1831,8 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE BETWEEN
-        pub fn whereBetween(self: *Self, field: []const u8, min: anytype, max: anytype) *Self {
-            const clause = std.fmt.allocPrint(self.db.allocator, "{s} BETWEEN {any} AND {any}", .{ field, min, max }) catch return self;
+        pub fn whereBetween(self: *Self, field: []const u8, min_val: anytype, max_val: anytype) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} BETWEEN {any} AND {any}", .{ field, min_val, max_val }) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
             };
@@ -1684,8 +1840,8 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE NOT BETWEEN
-        pub fn whereNotBetween(self: *Self, field: []const u8, min: anytype, max: anytype) *Self {
-            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT BETWEEN {any} AND {any}", .{ field, min, max }) catch return self;
+        pub fn whereNotBetween(self: *Self, field: []const u8, min_val: anytype, max_val: anytype) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT BETWEEN {any} AND {any}", .{ field, min_val, max_val }) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
             };
@@ -1794,6 +1950,264 @@ pub fn ModelQuery(comptime T: type) type {
                 self.db.allocator.free(clause);
             };
             return self;
+        }
+
+        /// RIGHT JOIN
+        pub fn rightJoin(self: *Self, table: []const u8, on: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "RIGHT JOIN {s} ON {s}", .{ table, on }) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// INNER JOIN
+        pub fn innerJoin(self: *Self, table: []const u8, on: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "INNER JOIN {s} ON {s}", .{ table, on }) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// CROSS JOIN
+        pub fn crossJoin(self: *Self, table: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "CROSS JOIN {s}", .{table}) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// OR WHERE 条件
+        pub fn orWhere(self: *Self, field: []const u8, op: []const u8, value: anytype) *Self {
+            const cond = formatWhere(self.db.allocator, field, op, value) catch return self;
+            defer self.db.allocator.free(cond);
+
+            if (self.where_clauses.items.len > 0) {
+                // 修改最后一个条件为 OR
+                const clause = std.fmt.allocPrint(self.db.allocator, "OR {s}", .{cond}) catch return self;
+                self.where_clauses.append(self.db.allocator, clause) catch {
+                    self.db.allocator.free(clause);
+                };
+            } else {
+                const clause = self.db.allocator.dupe(u8, cond) catch return self;
+                self.where_clauses.append(self.db.allocator, clause) catch {
+                    self.db.allocator.free(clause);
+                };
+            }
+            return self;
+        }
+
+        /// OR WHERE 简化版
+        pub fn orWhereEq(self: *Self, field: []const u8, value: anytype) *Self {
+            return self.orWhere(field, "=", value);
+        }
+
+        /// WHERE DATE (日期比较)
+        pub fn whereDate(self: *Self, field: []const u8, op: []const u8, date: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "DATE({s}) {s} '{s}'", .{ field, op, date }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE YEAR
+        pub fn whereYear(self: *Self, field: []const u8, op: []const u8, year: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "YEAR({s}) {s} {d}", .{ field, op, year }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE MONTH
+        pub fn whereMonth(self: *Self, field: []const u8, op: []const u8, month: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "MONTH({s}) {s} {d}", .{ field, op, month }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE DAY
+        pub fn whereDay(self: *Self, field: []const u8, op: []const u8, day: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "DAY({s}) {s} {d}", .{ field, op, day }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// 快捷方式：按字段降序
+        pub fn orderByDesc(self: *Self, field: []const u8) *Self {
+            return self.orderBy(field, .desc);
+        }
+
+        /// 快捷方式：按字段升序
+        pub fn orderByAsc(self: *Self, field: []const u8) *Self {
+            return self.orderBy(field, .asc);
+        }
+
+        /// 随机排序
+        pub fn inRandomOrder(self: *Self) *Self {
+            // MySQL: RAND(), SQLite: RANDOM(), PostgreSQL: RANDOM()
+            const clause = self.db.allocator.dupe(u8, "RAND()") catch return self;
+            self.order_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// 重置排序
+        pub fn reorder(self: *Self) *Self {
+            for (self.order_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            self.order_clauses.clearRetainingCapacity();
+            return self;
+        }
+
+        /// SELECT RAW
+        pub fn selectRaw(self: *Self, raw: []const u8) *Self {
+            self.select_fields.append(self.db.allocator, raw) catch {};
+            return self;
+        }
+
+        /// 条件查询 (when)
+        /// 使用: query.when(condition, struct { fn apply(q: *Query) *Query { return q.whereEq("status", 1); } }.apply)
+        pub fn when(self: *Self, condition: bool, comptime apply: fn (*Self) *Self) *Self {
+            if (condition) {
+                return apply(self);
+            }
+            return self;
+        }
+
+        /// SUM 聚合
+        pub fn sum(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("SUM", field);
+        }
+
+        /// AVG 聚合
+        pub fn avg(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("AVG", field);
+        }
+
+        /// MIN 聚合
+        pub fn min(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("MIN", field);
+        }
+
+        /// MAX 聚合
+        pub fn max(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("MAX", field);
+        }
+
+        /// 通用聚合函数
+        fn aggregate(self: *Self, func: []const u8, field: []const u8) !?f64 {
+            var sql = std.ArrayListUnmanaged(u8){};
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "SELECT ");
+            try sql.appendSlice(self.db.allocator, func);
+            try sql.append(self.db.allocator, '(');
+            try sql.appendSlice(self.db.allocator, field);
+            try sql.appendSlice(self.db.allocator, ") as agg_result FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            var result = try self.db.rawQuery(sql_str);
+            defer result.deinit();
+
+            if (result.next()) |row| {
+                if (row.getString("agg_result")) |v| {
+                    return std.fmt.parseFloat(f64, v) catch null;
+                }
+            }
+            return null;
+        }
+
+        /// 批量更新
+        pub fn updateBatch(self: *Self, data: anytype) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){};
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "UPDATE ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try sql.appendSlice(self.db.allocator, " SET ");
+
+            const DataType = @TypeOf(data);
+            const fields = std.meta.fields(DataType);
+
+            inline for (fields, 0..) |field, i| {
+                if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                try sql.appendSlice(self.db.allocator, field.name);
+                try sql.appendSlice(self.db.allocator, " = ");
+                const value = @field(data, field.name);
+                try appendValueToSql(self.db.allocator, &sql, value);
+            }
+
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.rawExec(sql_str);
+        }
+
+        fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype) !void {
+            const VT = @TypeOf(value);
+            const type_info = @typeInfo(VT);
+
+            if (VT == []const u8) {
+                try sql.append(allocator, '\'');
+                for (value) |c| {
+                    if (c == '\'') {
+                        try sql.appendSlice(allocator, "''");
+                    } else {
+                        try sql.append(allocator, c);
+                    }
+                }
+                try sql.append(allocator, '\'');
+            } else if (type_info == .pointer and type_info.pointer.size == .one) {
+                const child_info = @typeInfo(type_info.pointer.child);
+                if (child_info == .array and child_info.array.child == u8) {
+                    try sql.append(allocator, '\'');
+                    const str: []const u8 = value;
+                    for (str) |c| {
+                        if (c == '\'') {
+                            try sql.appendSlice(allocator, "''");
+                        } else {
+                            try sql.append(allocator, c);
+                        }
+                    }
+                    try sql.append(allocator, '\'');
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .optional) {
+                if (value) |v| {
+                    try appendValueToSql(allocator, sql, v);
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .int or type_info == .comptime_int) {
+                var buf: [32]u8 = undefined;
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                try sql.appendSlice(allocator, formatted);
+            } else if (type_info == .float or type_info == .comptime_float) {
+                var buf: [64]u8 = undefined;
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                try sql.appendSlice(allocator, formatted);
+            } else if (VT == bool) {
+                try sql.appendSlice(allocator, if (value) "1" else "0");
+            } else {
+                try sql.appendSlice(allocator, "NULL");
+            }
         }
 
         /// 执行查询
@@ -3118,3 +3532,88 @@ pub fn WithQuery(comptime T: type, comptime Related: type) type {
         }
     };
 }
+
+// ============================================================================
+// 数据库迁移器
+// ============================================================================
+
+/// 迁移器 - 支持多模型批量操作
+/// 使用示例:
+/// ```zig
+/// const Migrator = orm.Migrator;
+///
+/// // 创建所有表
+/// try Migrator.createAll(&db, .{
+///     orm_models.Admin,
+///     orm_models.Article,
+///     orm_models.Category,
+/// });
+///
+/// // 删除所有表
+/// try Migrator.dropAll(&db, .{
+///     orm_models.Category,
+///     orm_models.Article,
+///     orm_models.Admin,
+/// });
+///
+/// // 打印所有建表语句
+/// Migrator.printSql(.mysql, .{
+///     orm_models.Admin,
+///     orm_models.Article,
+/// });
+/// ```
+pub const Migrator = struct {
+    /// 批量创建表
+    pub fn createAll(db: *Database, comptime models: anytype) !void {
+        inline for (models) |Model| {
+            try Model.createTable(db);
+        }
+    }
+
+    /// 批量删除表
+    pub fn dropAll(db: *Database, comptime models: anytype) !void {
+        inline for (models) |Model| {
+            try Model.dropTable(db);
+        }
+    }
+
+    /// 刷新表（删除后重建）
+    pub fn refreshAll(db: *Database, comptime drop_order: anytype, comptime create_order: anytype) !void {
+        inline for (drop_order) |Model| {
+            try Model.dropTable(db);
+        }
+        inline for (create_order) |Model| {
+            try Model.createTable(db);
+        }
+    }
+
+    /// 打印所有建表语句（调试用）
+    pub fn printSql(comptime dialect: Dialect, comptime models: anytype) void {
+        std.debug.print("\n========== Migration SQL ({s}) ==========\n\n", .{@tagName(dialect)});
+        inline for (models) |Model| {
+            std.debug.print("-- {s}\n{s}\n\n", .{ Model.tableName(), Model.createTableSql(dialect) });
+        }
+        std.debug.print("==========================================\n", .{});
+    }
+
+    /// 打印所有删表语句
+    pub fn printDropSql(comptime models: anytype) void {
+        std.debug.print("\n========== Drop SQL ==========\n\n", .{});
+        inline for (models) |Model| {
+            std.debug.print("{s}\n", .{Model.dropTableSql()});
+        }
+        std.debug.print("==============================\n", .{});
+    }
+
+    /// 获取建表 SQL 数组（运行时）
+    pub fn getCreateSqlList(comptime dialect: Dialect, comptime models: anytype, allocator: Allocator) ![][]const u8 {
+        var list = std.ArrayList([]const u8).init(allocator);
+        errdefer list.deinit();
+
+        inline for (models) |Model| {
+            try list.append(Model.createTableSql(dialect));
+        }
+
+        return list.toOwnedSlice();
+    }
+};

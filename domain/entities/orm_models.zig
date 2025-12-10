@@ -193,3 +193,57 @@ pub fn init(db: *sql.Database) void {
 
 /// 获取 Database 类型（便于外部使用）
 pub const Database = sql.Database;
+
+/// 获取 Migrator 类型
+pub const Migrator = sql.Migrator;
+
+/// 获取方言类型
+pub const Dialect = sql.Dialect;
+
+// ============================================================================
+// 数据库迁移
+// ============================================================================
+
+/// 所有模型列表（用于批量操作）
+pub const AllModels = .{
+    Admin,
+    Article,
+    Banner,
+    Category,
+    Menu,
+    Role,
+    Setting,
+    Task,
+    Upload,
+};
+
+/// 迁移所有表（创建表）
+pub fn migrate(db: *sql.Database) !void {
+    try Migrator.createAll(db, AllModels);
+}
+
+/// 回滚所有表（删除表，按依赖倒序）
+pub fn rollback(db: *sql.Database) !void {
+    try Migrator.dropAll(db, .{
+        Upload,
+        Task,
+        Setting,
+        Role,
+        Menu,
+        Category,
+        Banner,
+        Article,
+        Admin,
+    });
+}
+
+/// 刷新所有表（删除后重建）
+pub fn refresh(db: *sql.Database) !void {
+    try rollback(db);
+    try migrate(db);
+}
+
+/// 打印所有建表语句
+pub fn printMigrationSql(comptime dialect: Dialect) void {
+    Migrator.printSql(dialect, AllModels);
+}

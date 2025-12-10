@@ -561,6 +561,8 @@
             <div class="sidebar-section">
                 <div class="sidebar-title">高级功能</div>
                 <ul class="sidebar-menu">
+                    <li><a href="#migrations">数据库迁移</a></li>
+                    <li><a href="#aggregates">聚合函数</a></li>
                     <li><a href="#subqueries">子查询</a></li>
                     <li><a href="#relations">关联查询</a></li>
                     <li><a href="#transactions">事务</a></li>
@@ -2212,6 +2214,180 @@ if (elapsed_ms > 100) {  // 超过 100ms
                         <li><strong>监控</strong>: 记录和分析查询性能</li>
                     </ul>
                 </div>
+            </section>
+
+            <!-- 数据库迁移 -->
+            <section id="migrations" class="section">
+                <h2>数据库迁移</h2>
+                <p>ORM 提供编译时 Schema 生成功能，可自动从模型定义生成建表语句，支持 MySQL、SQLite、PostgreSQL 三种方言。</p>
+
+                <h3>单模型迁移</h3>
+                <pre><code>const orm_models = @import("domain/entities/orm_models.zig");
+
+// 生成建表 SQL（编译期，零运行时开销）
+const create_sql = orm_models.Admin.createTableSql(.mysql);
+const drop_sql = orm_models.Admin.dropTableSql();
+
+// 执行建表/删表
+try orm_models.Admin.createTable(&db);
+try orm_models.Admin.dropTable(&db);</code></pre>
+
+                <h3>批量迁移（Migrator）</h3>
+                <pre><code>const sql = @import("application/services/sql/mod.zig");
+const Migrator = sql.Migrator;
+
+// 批量创建表
+try Migrator.createAll(&db, .{
+    orm_models.Admin,
+    orm_models.Article,
+    orm_models.Category,
+});
+
+// 批量删除表（按依赖倒序）
+try Migrator.dropAll(&db, .{
+    orm_models.Category,
+    orm_models.Article,
+    orm_models.Admin,
+});
+
+// 刷新表（删除后重建）
+try Migrator.refreshAll(&db, 
+    .{ Category, Article, Admin },  // drop order
+    .{ Admin, Article, Category },  // create order
+);</code></pre>
+
+                <h3>便捷函数</h3>
+                <pre><code>// 迁移所有表
+try orm_models.migrate(&db);
+
+// 回滚所有表
+try orm_models.rollback(&db);
+
+// 刷新所有表
+try orm_models.refresh(&db);
+
+// 打印所有建表 SQL（调试用）
+orm_models.printMigrationSql(.mysql);</code></pre>
+
+                <h3>类型映射</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Zig 类型</th>
+                            <th>MySQL</th>
+                            <th>SQLite</th>
+                            <th>PostgreSQL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>?i32</code> (主键)</td>
+                            <td>INT AUTO_INCREMENT</td>
+                            <td>INTEGER</td>
+                            <td>SERIAL</td>
+                        </tr>
+                        <tr>
+                            <td><code>i64</code></td>
+                            <td>BIGINT</td>
+                            <td>INTEGER</td>
+                            <td>BIGINT</td>
+                        </tr>
+                        <tr>
+                            <td><code>[]const u8</code></td>
+                            <td>VARCHAR(255)</td>
+                            <td>TEXT</td>
+                            <td>VARCHAR(255)</td>
+                        </tr>
+                        <tr>
+                            <td><code>*content</code> 字段</td>
+                            <td>LONGTEXT</td>
+                            <td>TEXT</td>
+                            <td>TEXT</td>
+                        </tr>
+                        <tr>
+                            <td><code>bool</code></td>
+                            <td>TINYINT(1)</td>
+                            <td>INTEGER</td>
+                            <td>BOOLEAN</td>
+                        </tr>
+                        <tr>
+                            <td><code>f32</code></td>
+                            <td>FLOAT</td>
+                            <td>REAL</td>
+                            <td>REAL</td>
+                        </tr>
+                        <tr>
+                            <td><code>f64</code></td>
+                            <td>DOUBLE</td>
+                            <td>REAL</td>
+                            <td>DOUBLE PRECISION</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- 聚合函数 -->
+            <section id="aggregates" class="section">
+                <h2>聚合函数</h2>
+                <p>支持 Laravel 风格的聚合查询：SUM、AVG、MIN、MAX、COUNT。</p>
+
+                <h3>基本用法</h3>
+                <pre><code>var query = Product.query(&db);
+defer query.deinit();
+
+// SUM
+const total = try query.whereEq("category", "电子").sum("price");
+// AVG
+const avg_price = try query.avg("price");
+// MIN / MAX
+const min_price = try query.min("price");
+const max_price = try query.max("price");
+// COUNT
+const count = try query.count();</code></pre>
+
+                <h3>OR 条件</h3>
+                <pre><code>var query = User.query(&db);
+defer query.deinit();
+
+// WHERE status = 1 OR role = 'admin'
+_ = query.whereEq("status", 1).orWhereEq("role", "admin");</code></pre>
+
+                <h3>日期查询</h3>
+                <pre><code>// WHERE DATE(created_at) = '2025-01-01'
+_ = query.whereDate("created_at", "=", "2025-01-01");
+
+// WHERE YEAR(created_at) = 2025
+_ = query.whereYear("created_at", "=", 2025);
+
+// WHERE MONTH(created_at) = 12
+_ = query.whereMonth("created_at", "=", 12);</code></pre>
+
+                <h3>更多 JOIN 类型</h3>
+                <pre><code>// RIGHT JOIN
+_ = query.rightJoin("orders", "users.id = orders.user_id");
+
+// INNER JOIN
+_ = query.innerJoin("profiles", "users.id = profiles.user_id");
+
+// CROSS JOIN
+_ = query.crossJoin("categories");</code></pre>
+
+                <h3>便捷方法</h3>
+                <pre><code>// 快捷排序
+_ = query.orderByDesc("created_at");
+_ = query.orderByAsc("name");
+
+// 随机排序
+_ = query.inRandomOrder();
+
+// 重置排序
+_ = query.reorder();
+
+// 批量更新
+_ = try query.whereEq("status", 0).updateBatch(.{ .status = 1 });
+
+// 原始 SELECT
+_ = query.selectRaw("COUNT(*) as total, SUM(price) as sum");</code></pre>
             </section>
 
             <!-- 测试 -->

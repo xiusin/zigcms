@@ -80,6 +80,8 @@ pub const define = orm.define;
 pub const ModelQuery = orm.ModelQuery;
 pub const HasMany = orm.HasMany;
 pub const BelongsTo = orm.BelongsTo;
+pub const Migrator = orm.Migrator;  // 数据库迁移器
+pub const Dialect = orm.Dialect;     // 数据库方言
 
 // 内部实现（不导出，用户不需要）
 // ConnectionPool、Transaction 等由 Database 内部自动管理

@@ -91,6 +91,8 @@ fn testSQLite(allocator: std.mem.Allocator) !void {
     try testTransactions(allocator, &db);
     try testAdvancedQueries(allocator, &db);
     try testJoins(allocator, &db);
+    try testNewFeatures(allocator, &db);
+    try testMigrations(allocator, &db);
     
     std.debug.print("\n✓ SQLite 所有测试通过！\n\n", .{});
 }
@@ -871,4 +873,128 @@ fn testPostgreSQL(allocator: std.mem.Allocator) !void {
     if (result.next()) |row| {
         std.debug.print("PostgreSQL 版本: {s}\n\n", .{row.getString("version") orelse "?"});
     }
+}
+
+// ============================================================================
+// 新功能测试（聚合、OR条件、日期查询、更多JOIN）
+// ============================================================================
+
+fn testNewFeatures(allocator: std.mem.Allocator, db: *sql.Database) !void {
+    _ = allocator;
+    std.debug.print("═══════════════════════════════════════════════════\n", .{});
+    std.debug.print("测试: 新功能（聚合/OR条件/JOIN）\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════\n\n", .{});
+
+    // 测试聚合函数
+    {
+        var query = User.query(db);
+        defer query.deinit();
+
+        const count = try query.count();
+        std.debug.print("✓ COUNT: {d}\n", .{count});
+
+        // SUM (views 字段在 posts 表中)
+        var post_query = Post.query(db);
+        defer post_query.deinit();
+        
+        if (try post_query.sum("views")) |total_views| {
+            std.debug.print("✓ SUM(views): {d}\n", .{total_views});
+        }
+
+        if (try post_query.avg("views")) |avg_views| {
+            std.debug.print("✓ AVG(views): {d}\n", .{avg_views});
+        }
+
+        if (try post_query.min("views")) |min_views| {
+            std.debug.print("✓ MIN(views): {d}\n", .{min_views});
+        }
+
+        if (try post_query.max("views")) |max_views| {
+            std.debug.print("✓ MAX(views): {d}\n", .{max_views});
+        }
+    }
+
+    // 测试 OR 条件
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        _ = query.whereEq("name", "张三").orWhereEq("name", "李四");
+        const sql_str = try query.toSql();
+        defer db.allocator.free(sql_str);
+        
+        std.debug.print("✓ OR 条件 SQL: {s}\n", .{sql_str});
+    }
+
+    // 测试快捷排序
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        _ = query.orderByDesc("id").limit(5);
+        const sql_str = try query.toSql();
+        defer db.allocator.free(sql_str);
+        
+        std.debug.print("✓ orderByDesc SQL: {s}\n", .{sql_str});
+    }
+
+    // 测试更多 JOIN 类型
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        _ = query.innerJoin("posts", "users.id = posts.user_id");
+        const sql_str = try query.toSql();
+        defer db.allocator.free(sql_str);
+        
+        std.debug.print("✓ INNER JOIN SQL: {s}\n", .{sql_str});
+    }
+
+    // 测试批量更新
+    {
+        var query = User.query(db);
+        defer query.deinit();
+        
+        _ = query.whereEq("active", 0);
+        const affected = try query.updateBatch(.{ .active = true });
+        std.debug.print("✓ 批量更新影响行数: {d}\n", .{affected});
+    }
+
+    std.debug.print("\n", .{});
+}
+
+// ============================================================================
+// 迁移功能测试
+// ============================================================================
+
+fn testMigrations(allocator: std.mem.Allocator, db: *sql.Database) !void {
+    _ = allocator;
+    std.debug.print("═══════════════════════════════════════════════════\n", .{});
+    std.debug.print("测试: 数据库迁移\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════\n\n", .{});
+
+    // 测试 createTableSql
+    const user_sql = User.createTableSql(.sqlite);
+    std.debug.print("✓ User 建表语句 (SQLite):\n{s}\n\n", .{user_sql});
+
+    const post_sql = Post.createTableSql(.sqlite);
+    std.debug.print("✓ Post 建表语句 (SQLite):\n{s}\n\n", .{post_sql});
+
+    // 测试 dropTableSql
+    const drop_sql = User.dropTableSql();
+    std.debug.print("✓ User 删表语句: {s}\n\n", .{drop_sql});
+
+    // 测试 MySQL 方言
+    const user_mysql = User.createTableSql(.mysql);
+    std.debug.print("✓ User 建表语句 (MySQL):\n{s}\n\n", .{user_mysql});
+
+    // 测试 PostgreSQL 方言
+    const user_pg = User.createTableSql(.postgresql);
+    std.debug.print("✓ User 建表语句 (PostgreSQL):\n{s}\n\n", .{user_pg});
+
+    // 测试批量迁移
+    std.debug.print("✓ Migrator.printSql 测试:\n", .{});
+    sql.Migrator.printSql(.sqlite, .{ User, Post });
+
+    _ = db;
 }
