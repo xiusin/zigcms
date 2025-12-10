@@ -97,6 +97,42 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
 
+    // ========================================================================
+    // Code Generation Tool
+    // ========================================================================
+    const codegen_module = b.createModule(.{
+        .root_source_file = b.path("tools/codegen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const codegen_exe = b.addExecutable(.{ .name = "codegen", .root_module = codegen_module });
+
+    // Add the same dependencies as the main executable
+    codegen_exe.root_module.addImport("zap", zap.module("zap"));
+    codegen_exe.root_module.addImport("regex", regex.module("regex"));
+    codegen_exe.root_module.addImport("pg", pg.module("pg"));
+    codegen_exe.root_module.addImport("pretty", pretty.module("pretty"));
+    codegen_exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
+    codegen_exe.root_module.addImport("curl", curl.module("curl"));
+    codegen_exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    
+    codegen_exe.linkLibrary(sqlite.artifact("sqlite"));
+    codegen_exe.linkLibC();
+
+    b.installArtifact(codegen_exe);
+
+    const run_codegen_cmd = b.addRunArtifact(codegen_exe);
+    run_codegen_cmd.step.dependOn(b.getInstallStep());
+
+    const codegen_step = b.step("codegen", "Run the code generation tool");
+    codegen_step.dependOn(&run_codegen_cmd.step);
+
+    if (b.args) |args| {
+        for (args) |arg| {
+            run_codegen_cmd.addArg(arg);
+        }
+    }
+
     // // ========================================================================
     // // MySQL 集成测试
     // // ========================================================================
