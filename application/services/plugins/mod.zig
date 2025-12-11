@@ -5,13 +5,13 @@
 const std = @import("std");
 
 // 插件核心接口
-pub const PluginInterface = @import("application/services/plugins/plugin_interface.zig").PluginInterface;
-pub const PluginHandle = @import("application/services/plugins/plugin_interface.zig").PluginHandle;
-pub const PluginManager = @import("application/services/plugins/plugin_manager.zig").PluginManager;
-pub const PluginSystemService = @import("application/services/plugins/plugin_system.zig").PluginSystemService;
+pub const PluginInterface = @import("plugin_interface.zig").PluginInterface;
+pub const PluginHandle = @import("plugin_interface.zig").PluginHandle;
+pub const PluginManager = @import("plugin_manager.zig").PluginManager;
+pub const PluginSystemService = @import("plugin_system.zig").PluginSystemService;
 
 // 缓存服务
-pub const CacheService = @import("application/services/cache/cache_service.zig").CacheService;
+pub const CacheService = @import("../cache/cache.zig").CacheService;
 
 // 插件能力定义
 pub const PluginCapabilities = packed struct(u32) {

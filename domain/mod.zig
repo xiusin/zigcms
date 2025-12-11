@@ -19,7 +19,7 @@ pub const DomainConfig = struct {
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
     std.log.info("领域层初始化完成", .{});
-    
+
     // 初始化实体模型
-    @import("entities/models.zig");
+    _ = @import("entities/models.zig");
 }
