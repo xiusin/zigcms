@@ -28,6 +28,9 @@ const role_model = @import("role.model.zig");
 const setting_model = @import("setting.model.zig");
 const task_model = @import("task.model.zig");
 const upload_model = @import("upload.model.zig");
+const department_model = @import("department.model.zig");
+const employee_model = @import("employee.model.zig");
+const position_model = @import("position.model.zig");
 
 // ============================================================================
 // ORM 模型定义
@@ -124,11 +127,81 @@ pub const Role = sql.define(struct {
 
     id: ?i32 = null,
     name: []const u8 = "",
+    code: []const u8 = "",
     description: []const u8 = "",
-    permissions: []const u8 = "",
-    status: i32 = 0,
+    permissions: []const u8 = "[]",
+    data_scope: i32 = 1,
+    sort: i32 = 0,
+    status: i32 = 1,
+    remark: []const u8 = "",
     create_time: ?i64 = null,
     update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
+/// 部门模型
+pub const Department = sql.define(struct {
+    pub const table_name = "zigcms.department";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    name: []const u8 = "",
+    code: []const u8 = "",
+    parent_id: i32 = 0,
+    leader_id: ?i32 = null,
+    phone: []const u8 = "",
+    email: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
+/// 员工模型
+pub const Employee = sql.define(struct {
+    pub const table_name = "zigcms.employee";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    employee_no: []const u8 = "",
+    name: []const u8 = "",
+    gender: i32 = 0,
+    phone: []const u8 = "",
+    email: []const u8 = "",
+    id_card: []const u8 = "",
+    department_id: ?i32 = null,
+    position_id: ?i32 = null,
+    role_id: ?i32 = null,
+    leader_id: ?i32 = null,
+    hire_date: ?i64 = null,
+    avatar: []const u8 = "",
+    status: i32 = 1,
+    sort: i32 = 0,
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
+/// 职位模型
+pub const Position = sql.define(struct {
+    pub const table_name = "zigcms.position";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    name: []const u8 = "",
+    code: []const u8 = "",
+    department_id: ?i32 = null,
+    level: i32 = 1,
+    sort: i32 = 0,
+    status: i32 = 1,
+    description: []const u8 = "",
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
 });
 
 /// 设置模型
@@ -189,6 +262,9 @@ pub fn init(db: *sql.Database) void {
     Setting.use(db);
     Task.use(db);
     Upload.use(db);
+    Department.use(db);
+    Employee.use(db);
+    Position.use(db);
 }
 
 /// 获取 Database 类型（便于外部使用）
@@ -215,6 +291,9 @@ pub const AllModels = .{
     Setting,
     Task,
     Upload,
+    Department,
+    Employee,
+    Position,
 };
 
 /// 迁移所有表（创建表）
@@ -225,6 +304,9 @@ pub fn migrate(db: *sql.Database) !void {
 /// 回滚所有表（删除表，按依赖倒序）
 pub fn rollback(db: *sql.Database) !void {
     try Migrator.dropAll(db, .{
+        Employee,
+        Position,
+        Department,
         Upload,
         Task,
         Setting,

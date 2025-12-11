@@ -1,13 +1,13 @@
-//! 角色管理模型
+//! 角色创建数据传输对象
 //!
-//! 系统角色权限实体
+//! 用于创建角色实体的数据结构
 
-/// 角色实体
-pub const Role = struct {
-    /// 角色ID
-    id: ?i32 = null,
+const std = @import("std");
+
+/// 角色创建 DTO
+pub const RoleCreateDto = struct {
     /// 角色名称
-    name: []const u8 = "",
+    name: []const u8,
     /// 角色编码
     code: []const u8 = "",
     /// 角色描述
@@ -22,10 +22,4 @@ pub const Role = struct {
     status: i32 = 1,
     /// 备注
     remark: []const u8 = "",
-    /// 创建时间
-    create_time: ?i64 = null,
-    /// 更新时间
-    update_time: ?i64 = null,
-    /// 软删除标记
-    is_delete: i32 = 0,
 };

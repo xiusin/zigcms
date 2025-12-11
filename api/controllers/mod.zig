@@ -24,6 +24,14 @@ pub const dict = struct {
     pub const Dict = @import("dict.controller.zig");
 };
 
+// 组织管理控制器
+pub const org = struct {
+    pub const Department = @import("department.controller.zig");
+    pub const Employee = @import("employee.controller.zig");
+    pub const Position = @import("position.controller.zig");
+    pub const Role = @import("role.controller.zig");
+};
+
 // 第三方服务控制器
 pub const external = struct {
     pub const Github = @import("github.controller.zig");
@@ -39,4 +47,8 @@ pub const ControllerType = enum {
     setting,
     task,
     dict,
+    department,
+    employee,
+    position,
+    role,
 };

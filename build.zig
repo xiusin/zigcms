@@ -115,7 +115,7 @@ pub fn build(b: *std.Build) void {
     codegen_exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
     codegen_exe.root_module.addImport("curl", curl.module("curl"));
     codegen_exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    
+
     codegen_exe.linkLibrary(sqlite.artifact("sqlite"));
     codegen_exe.linkLibC();
 
@@ -151,7 +151,7 @@ pub fn build(b: *std.Build) void {
     migrate_exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
     migrate_exe.root_module.addImport("curl", curl.module("curl"));
     migrate_exe.root_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    
+
     migrate_exe.linkLibrary(sqlite.artifact("sqlite"));
     migrate_exe.linkLibC();
 
@@ -166,6 +166,30 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         for (args) |arg| {
             run_migrate_cmd.addArg(arg);
+        }
+    }
+
+    // ========================================================================
+    // Plugin Code Generator
+    // ========================================================================
+    const plugin_gen_module = b.createModule(.{
+        .root_source_file = b.path("tools/plugin_gen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const plugin_gen_exe = b.addExecutable(.{ .name = "plugin-gen", .root_module = plugin_gen_module });
+
+    b.installArtifact(plugin_gen_exe);
+
+    const run_plugin_gen_cmd = b.addRunArtifact(plugin_gen_exe);
+    run_plugin_gen_cmd.step.dependOn(b.getInstallStep());
+
+    const plugin_gen_step = b.step("plugin-gen", "Generate plugin code from template");
+    plugin_gen_step.dependOn(&run_plugin_gen_cmd.step);
+
+    if (b.args) |args| {
+        for (args) |arg| {
+            run_plugin_gen_cmd.addArg(arg);
         }
     }
 

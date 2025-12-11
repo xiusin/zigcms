@@ -585,6 +585,16 @@
             </div>
 
             <div class="sidebar-section">
+                <div class="sidebar-title">插件系统</div>
+                <ul class="sidebar-menu">
+                    <li><a href="#plugin-system">插件概述</a></li>
+                    <li><a href="#plugin-manager">插件管理器</a></li>
+                    <li><a href="#plugin-interface">插件接口</a></li>
+                    <li><a href="#plugin-example">示例插件</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
                 <div class="sidebar-title">测试</div>
                 <ul class="sidebar-menu">
                     <li><a href="#testing">测试覆盖</a></li>
@@ -2325,7 +2335,7 @@ orm_models.printMigrationSql(.mysql);</code></pre>
                         </tr>
                     </tbody>
                 </table>
-            </table>
+                </table>
             </section>
 
             <!-- 命令行工具 -->
@@ -2578,6 +2588,305 @@ _ = try query.whereEq("status", 0).updateBatch(.{ .status = 1 });
 
 // 原始 SELECT
 _ = query.selectRaw("COUNT(*) as total, SUM(price) as sum");</code></pre>
+            </section>
+
+            <!-- 插件系统 -->
+            <section id="plugin-system" class="section">
+                <h2>插件系统</h2>
+
+                <p>
+                    ZigCMS 提供了强大的可插拔模块载入服务，支持动态加载共享库（.so/.dylib/.dll），
+                    具备完善的异常处理、内存安全保证和线程安全特性。
+                </p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔌</div>
+                        <div class="feature-title">动态加载</div>
+                        <div class="feature-desc">支持运行时加载/卸载插件，无需重启应用</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <div class="feature-title">内存安全</div>
+                        <div class="feature-desc">严格的资源管理，自动清理避免泄漏</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <div class="feature-title">线程安全</div>
+                        <div class="feature-desc">内置 Mutex 保护，支持并发访问</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <div class="feature-title">热重载</div>
+                        <div class="feature-desc">支持插件热更新，无缝升级</div>
+                    </div>
+                </div>
+
+                <h3>核心架构</h3>
+                <pre><code>plugins/
+├── mod.zig                 # 模块入口
+├── plugin_interface.zig    # 插件接口定义
+├── plugin_manager.zig      # 插件管理器
+├── plugin_test.zig         # 测试代码
+└── example_plugin.zig      # 示例插件</code></pre>
+            </section>
+
+            <section id="plugin-manager" class="section">
+                <h2>插件管理器</h2>
+
+                <h3>初始化管理器</h3>
+                <pre><code>const std = @import("std");
+const plugins = @import("plugins");
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // 创建插件管理器
+    var manager = try plugins.PluginManager.init(allocator, "plugins");
+    defer manager.deinit();
+
+    std.debug.print("插件管理器初始化完成\n", .{});
+}</code></pre>
+
+                <h3>加载插件</h3>
+                <pre><code>// 加载单个插件
+const plugin = try manager.loadPlugin("example");
+
+// 初始化插件
+try manager.initPlugin("example");
+
+// 启动插件
+try manager.startPlugin("example");
+
+// 获取插件信息
+std.debug.print("插件名: {s}\n", .{plugin.info.name});
+std.debug.print("版本: {s}\n", .{plugin.info.version});</code></pre>
+
+                <h3>批量加载</h3>
+                <pre><code>// 扫描目录并加载所有插件
+const count = try manager.loadAllFromDirectory();
+std.debug.print("已加载 {d} 个插件\n", .{count});
+
+// 获取所有插件
+const all_plugins = try manager.getAllPlugins();
+defer allocator.free(all_plugins);
+
+for (all_plugins) |p| {
+    std.debug.print("- {s} v{s}\n", .{ p.info.name, p.info.version });
+}</code></pre>
+
+                <h3>插件生命周期管理</h3>
+                <pre><code>// 停止插件
+try manager.stopPlugin("example");
+
+// 卸载插件
+try manager.unloadPlugin("example");
+
+// 热重载插件
+const reloaded = try manager.reloadPlugin("example");</code></pre>
+
+                <div class="note">
+                    <div class="note-title">💡 生命周期</div>
+                    <p>插件状态流转：<code>unloaded → loaded → initialized → running → stopped → unloaded</code></p>
+                </div>
+            </section>
+
+            <section id="plugin-interface" class="section">
+                <h2>插件接口</h2>
+
+                <h3>能力声明</h3>
+                <p>插件通过能力位图声明支持的功能：</p>
+                <pre><code>const PluginCapabilities = packed struct(u32) {
+    http_handlers: bool = false,      // HTTP 请求处理
+    middleware: bool = false,          // 中间件支持
+    scheduler: bool = false,           // 定时任务
+    database_hooks: bool = false,      // 数据库钩子
+    event_listener: bool = false,      // 事件监听
+    template_extension: bool = false,  // 模板扩展
+    custom_routes: bool = false,       // 自定义路由
+    websocket: bool = false,           // WebSocket 支持
+    _padding: u24 = 0,
+};</code></pre>
+
+                <h3>插件信息结构</h3>
+                <pre><code>const PluginInfo = struct {
+    name: [:0]const u8,           // 插件名称
+    version: [:0]const u8,        // 版本号
+    description: [:0]const u8,    // 描述
+    author: [:0]const u8,         // 作者
+    license: [:0]const u8,        // 许可证
+    api_version: u32 = 1,         // API 版本
+};</code></pre>
+
+                <h3>必需导出函数</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>函数名</th>
+                            <th>签名</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>plugin_get_info</code></td>
+                            <td><code>fn() *const PluginInfo</code></td>
+                            <td>返回插件元信息</td>
+                        </tr>
+                        <tr>
+                            <td><code>plugin_get_capabilities</code></td>
+                            <td><code>fn() u32</code></td>
+                            <td>返回能力位图</td>
+                        </tr>
+                        <tr>
+                            <td><code>plugin_init</code></td>
+                            <td><code>fn(Allocator) ?*anyopaque</code></td>
+                            <td>初始化插件</td>
+                        </tr>
+                        <tr>
+                            <td><code>plugin_deinit</code></td>
+                            <td><code>fn(?*anyopaque) void</code></td>
+                            <td>清理插件资源</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>可选导出函数</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>函数名</th>
+                            <th>签名</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>plugin_start</code></td>
+                            <td><code>fn(?*anyopaque) bool</code></td>
+                            <td>启动插件服务</td>
+                        </tr>
+                        <tr>
+                            <td><code>plugin_stop</code></td>
+                            <td><code>fn(?*anyopaque) bool</code></td>
+                            <td>停止插件服务</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="plugin-example" class="section">
+                <h2>示例插件</h2>
+
+                <h3>完整插件示例</h3>
+                <pre><code>const std = @import("std");
+const plugin = @import("plugin_interface.zig");
+
+// 插件元信息
+pub const info = plugin.PluginInfo{
+    .name = "MyPlugin",
+    .version = "1.0.0",
+    .description = "我的第一个插件",
+    .author = "开发者",
+    .license = "MIT",
+};
+
+// 能力声明
+pub const capabilities = plugin.PluginCapabilities{
+    .http_handlers = true,
+    .event_listener = true,
+};
+
+// 插件数据
+const PluginData = struct {
+    allocator: std.mem.Allocator,
+    counter: u32 = 0,
+
+    fn init(alloc: std.mem.Allocator) !*PluginData {
+        const self = try alloc.create(PluginData);
+        self.* = .{ .allocator = alloc };
+        return self;
+    }
+
+    fn deinit(self: *PluginData) void {
+        self.allocator.destroy(self);
+    }
+};
+
+var g_data: ?*PluginData = null;
+
+// 导出函数
+export fn plugin_get_info() callconv(.C) *const plugin.PluginInfo {
+    return &info;
+}
+
+export fn plugin_get_capabilities() callconv(.C) u32 {
+    return capabilities.toBitmap();
+}
+
+export fn plugin_init(allocator: std.mem.Allocator) callconv(.C) ?*anyopaque {
+    g_data = PluginData.init(allocator) catch return null;
+    return @ptrCast(g_data);
+}
+
+export fn plugin_deinit(handle: ?*anyopaque) callconv(.C) void {
+    _ = handle;
+    if (g_data) |data| {
+        data.deinit();
+        g_data = null;
+    }
+}
+
+export fn plugin_start(handle: ?*anyopaque) callconv(.C) bool {
+    _ = handle;
+    std.log.info("插件已启动", .{});
+    return true;
+}
+
+export fn plugin_stop(handle: ?*anyopaque) callconv(.C) bool {
+    _ = handle;
+    std.log.info("插件已停止", .{});
+    return true;
+}</code></pre>
+
+                <h3>编译为动态库</h3>
+                <pre><code># 在 build.zig 中添加
+const plugin_lib = b.addSharedLibrary(.{
+    .name = "myplugin",
+    .root_source_file = b.path("plugins/my_plugin.zig"),
+    .target = target,
+    .optimize = optimize,
+});
+b.installArtifact(plugin_lib);
+
+# 编译
+zig build
+
+# 生成文件
+# macOS: zig-out/lib/libmyplugin.dylib
+# Linux: zig-out/lib/libmyplugin.so
+# Windows: zig-out/lib/myplugin.dll</code></pre>
+
+                <div class="success">
+                    <div class="note-title">✓ 最佳实践</div>
+                    <ul>
+                        <li>使用 <code>callconv(.C)</code> 确保 ABI 兼容</li>
+                        <li>插件内部使用原子操作保证线程安全</li>
+                        <li>在 <code>deinit</code> 中释放所有分配的内存</li>
+                        <li>通过能力位图精确声明支持的功能</li>
+                    </ul>
+                </div>
+
+                <div class="warning">
+                    <div class="note-title">⚠️ 注意事项</div>
+                    <ul>
+                        <li>插件必须与主程序使用相同的 Zig 版本编译</li>
+                        <li>避免在插件中使用全局状态（除非必要）</li>
+                        <li>异常处理应在插件内部完成，不要跨边界传播</li>
+                    </ul>
+                </div>
             </section>
 
             <!-- 测试 -->

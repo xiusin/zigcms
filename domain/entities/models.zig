@@ -14,6 +14,9 @@ pub const Category = @import("category.model.zig").Category;
 pub const Task = @import("task.model.zig").Task;
 pub const Role = @import("role.model.zig").Role;
 pub const Dict = @import("dict.model.zig").Dict;
+pub const Department = @import("department.model.zig").Department;
+pub const Employee = @import("employee.model.zig").Employee;
+pub const Position = @import("position.model.zig").Position;
 
 /// 实体类型枚举，用于泛型操作
 pub const EntityType = enum {
@@ -26,24 +29,9 @@ pub const EntityType = enum {
     task,
     role,
     dict,
-};
-
-/// 通用实体接口
-pub const EntityInterface = struct {
-    /// 获取实体表名
-    pub fn getTableName(entity_type: EntityType) []const u8 {
-        return switch (entity_type) {
-            .admin => "admins",
-            .setting => "settings", 
-            .article => "articles",
-            .banner => "banners",
-            .upload => "uploads",
-            .category => "categories",
-            .task => "tasks",
-            .role => "roles",
-            .dict => "dicts",
-        };
-    }
+    department,
+    employee,
+    position,
 };
 
 /// 通用实体接口
@@ -59,6 +47,10 @@ pub const EntityInterface = struct {
             .category => "categories",
             .task => "tasks",
             .role => "roles",
+            .dict => "dicts",
+            .department => "departments",
+            .employee => "employees",
+            .position => "positions",
         };
     }
 };
