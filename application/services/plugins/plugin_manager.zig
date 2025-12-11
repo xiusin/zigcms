@@ -206,7 +206,7 @@ pub const PluginManager = struct {
 
     /// 从目录加载所有插件
     pub fn loadPluginsFromDirectory(self: *PluginManager, dir_path: []const u8) !void {
-        const dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| switch (err) {
+        var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| switch (err) {
             error.FileNotFound => {
                 // 目录不存在，创建它
                 std.fs.cwd().makeDir(dir_path) catch {};

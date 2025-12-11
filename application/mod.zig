@@ -7,6 +7,7 @@
 //! - 提供应用级别的接口
 
 const std = @import("std");
+const logger = @import("services/logger/logger.zig");
 
 // 应用服务管理器
 pub const ServiceManager = @import("services/services.zig").ServiceManager;
@@ -24,5 +25,5 @@ pub const AppConfig = struct {
 /// 应用层初始化函数
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
-    std.log.info("应用层初始化完成", .{});
+    logger.info("应用层初始化完成", .{});
 }

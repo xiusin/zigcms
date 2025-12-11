@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>部门管理</title>
+    <meta name="renderer" content="webkit" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <link rel="stylesheet" href="../../css/public.css" media="all" />
+    <link rel="stylesheet" href="../../css/themes/theme.css" media="all" />
+    <style>
+        .dept-tree-container {
+            display: flex;
+            height: calc(100vh - 120px);
+        }
+
+        .dept-tree-left {
+            width: 280px;
+            min-width: 280px;
+            border-right: 1px solid #e6e6e6;
+            padding: 15px;
+            overflow: auto;
+            background: #fafafa;
+        }
+
+        .dept-tree-right {
+            flex: 1;
+            padding: 15px;
+            overflow: auto;
+        }
+
+        .tree-node {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 2px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .tree-node:hover {
+            background: #e8f4ff;
+        }
+
+        .tree-node.active {
+            background: #1890ff;
+            color: #fff;
+        }
+
+        .tree-node .node-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .tree-node .node-name {
+            margin-left: 8px;
+        }
+
+        .tree-node .node-count {
+            font-size: 12px;
+            color: #999;
+            margin-left: 8px;
+        }
+
+        .tree-node.active .node-count {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .tree-children {
+            margin-left: 20px;
+        }
+
+        .dept-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e6e6e6;
+        }
+
+        .dept-header h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .dept-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            color: #fff;
+            min-width: 100px;
+        }
+
+        .stat-item.green {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .stat-item.orange {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-item .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .stat-item .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+    </style>
+    <script src="../../lib/layui/layui.js" charset="utf-8"></script>
+    <script src="../../js/lay-config.js" charset="utf-8"></script>
+    <script src="../../js/public.js"></script>
+</head>
+
+<body class="elem-style-win7">
+    <div class="layuimini-container">
+        <div class="dept-tree-container">
+            <!-- 左侧部门树 -->
+            <div class="dept-tree-left">
+                <div class="dept-header">
+                    <h3><i class="fa fa-sitemap"></i> 组织架构</h3>
+                    <button class="layui-btn layui-btn-xs layui-btn-normal" id="addRootDept">
+                        <i class="fa fa-plus"></i>
+                    </button>
+                </div>
+                <div id="deptTree"></div>
+            </div>
+
+            <!-- 右侧内容区 -->
+            <div class="dept-tree-right">
+                <div class="dept-header">
+                    <h3 id="currentDeptName">全部部门</h3>
+                    <div>
+                        <button class="layui-btn layui-btn-sm layui-btn-normal" id="addChildDept">
+                            <i class="fa fa-plus"></i> 添加子部门
+                        </button>
+                        <button class="layui-btn layui-btn-sm" id="refreshTable">
+                            <i class="fa fa-refresh"></i> 刷新
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 统计信息 -->
+                <div class="dept-stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="statDeptCount">0</div>
+                        <div class="stat-label">子部门数</div>
+                    </div>
+                    <div class="stat-item green">
+                        <div class="stat-value" id="statEmpCount">0</div>
+                        <div class="stat-label">员工数</div>
+                    </div>
+                    <div class="stat-item orange">
+                        <div class="stat-value" id="statPosCount">0</div>
+                        <div class="stat-label">职位数</div>
+                    </div>
+                </div>
+
+                <table id="currentTable" class="layui-table layui-hide" lay-filter="currentTable"></table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 工具栏模板 -->
+    <script type="text/html" id="toolbar">
+            <button class="layui-btn layui-btn-sm layuimini-btn-primary" lay-event="refresh">
+                <i class="fa fa-refresh"></i>
+            </button>
+        </script>
+
+    <!-- 行操作按钮模板 -->
+    <script type="text/html" id="currentTableBar">
+            <a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>
+            <a class="layui-btn layui-btn-xs layui-btn-normal" lay-event="addChild">添加子部门</a>
+            <a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>
+        </script>
+
+    <!-- 状态模板 -->
+    <script type="text/html" id="statusTpl">
+            {{# if(d.status === 1){ }}
+                <span class="layui-badge layui-bg-green">启用</span>
+            {{# } else { }}
+                <span class="layui-badge layui-bg-gray">禁用</span>
+            {{# } }}
+        </script>
+
+    <script src="./js/list.js"></script>
+</body>
+
+</html>

@@ -2942,12 +2942,14 @@ pub const ConnectionPool = struct {
             }
             self.state_mutex.unlock();
 
-            std.time.sleep(self.config.keepalive_interval_ms * std.time.ns_per_ms);
+            // 安全计算 sleep 时间，避免整数溢出
+            const sleep_ns: u64 = @as(u64, self.config.keepalive_interval_ms) * @as(u64, std.time.ns_per_ms);
+            std.Thread.sleep(sleep_ns);
 
             // 1. 快速加锁：只收集需要 ping 的连接（标记为 pinging）
             // 只检测空闲连接，因为使用中的连接被认为是最新的
-            var conns_to_ping = std.ArrayList(*PooledConnection).init(self.allocator);
-            defer conns_to_ping.deinit();
+            var conns_to_ping = std.ArrayListUnmanaged(*PooledConnection){};
+            defer conns_to_ping.deinit(self.allocator);
 
             {
                 self.idle_mutex.lock();
@@ -2960,7 +2962,7 @@ pub const ConnectionPool = struct {
                     // 增加 borrowed 检查，防止借出后仍在 idle 列表的极端情况
                     if (!pooled.borrowed and !pooled.in_use and !pooled.is_pinging.load(.seq_cst)) {
                         pooled.is_pinging.store(true, .seq_cst);
-                        conns_to_ping.append(pooled) catch {};
+                        conns_to_ping.append(self.allocator, pooled) catch {};
                     }
                 }
 

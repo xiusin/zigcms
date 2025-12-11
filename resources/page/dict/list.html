@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>字典管理</title>
+        <meta name="renderer" content="webkit" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <link rel="stylesheet" href="../../css/public.css" media="all" />
+        <link rel="stylesheet" href="../../css/themes/theme.css" media="all" />
+        <script src="../../lib/layui/layui.js" charset="utf-8"></script>
+        <script src="../../js/lay-config.js" charset="utf-8"></script>
+        <script src="../../js/public.js"></script>
+    </head>
+
+    <body class="elem-style-win7">
+        <div class="layuimini-container">
+            <div class="layuimini-main">
+                <!-- 搜索区域 -->
+                <fieldset class="table-search-fieldset">
+                    <legend>搜索条件</legend>
+                    <div style="margin: 10px 10px 10px 10px">
+                        <form class="layui-form layui-form-pane" action="">
+                            <div class="layui-form-item">
+                                <div class="layui-inline">
+                                    <label class="layui-form-label">字典类型</label>
+                                    <div class="layui-input-inline">
+                                        <input type="text" name="dict_type" placeholder="请输入字典类型" autocomplete="off" class="layui-input" />
+                                    </div>
+                                </div>
+                                <div class="layui-inline">
+                                    <label class="layui-form-label">字典标签</label>
+                                    <div class="layui-input-inline">
+                                        <input type="text" name="dict_label" placeholder="请输入字典标签" autocomplete="off" class="layui-input" />
+                                    </div>
+                                </div>
+                                <div class="layui-inline">
+                                    <label class="layui-form-label">状态</label>
+                                    <div class="layui-input-inline">
+                                        <select name="status">
+                                            <option value="">全部</option>
+                                            <option value="1">启用</option>
+                                            <option value="0">禁用</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="layui-inline">
+                                    <button type="submit" class="layui-btn layui-btn-primary" lay-submit lay-filter="data-search-btn">
+                                        <i class="layui-icon layui-icon-search"></i> 搜索
+                                    </button>
+                                    <button type="reset" class="layui-btn layui-btn-default">
+                                        <i class="layui-icon layui-icon-refresh"></i> 重置
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </fieldset>
+
+                <table id="currentTable" class="layui-table layui-hide" lay-filter="currentTable"></table>
+            </div>
+        </div>
+
+        <!-- 工具栏模板 -->
+        <script type="text/html" id="toolbar">
+            <button class="layui-btn layui-btn-sm layuimini-btn-primary" data-treetable-refresh>
+                <i class="fa fa-refresh"></i>
+            </button>
+            <button class="layui-btn layui-btn-normal layui-btn-sm" data-open="/dict/save" data-title="添加字典">
+                <i class="fa fa-plus"></i> 添加
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-warm" data-href="javascript:;" lay-event="refreshCache">
+                <i class="fa fa-database"></i> 刷新缓存
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-danger" data-url="/dict/delete" data-table-delete="currentTableRenderId">
+                <i class="fa fa-trash-o"></i> 批量删除
+            </button>
+        </script>
+
+        <!-- 行操作按钮模板 -->
+        <script type="text/html" id="currentTableBar">
+            <a class="layui-btn layui-btn-xs" data-open="/dict/save?id={{d.id}}" data-title="编辑字典">编辑</a>
+            <a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>
+        </script>
+
+        <script src="./js/list.js"></script>
+    </body>
+</html>

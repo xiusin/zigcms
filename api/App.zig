@@ -7,11 +7,10 @@
 
 const std = @import("std");
 const zap = @import("zap");
+const logger = @import("../application/services/logger/logger.zig");
 
 // 导入各层组件
 const controllers = @import("controllers/mod.zig");
-const application = @import("../application/mod.zig");
-const domain = @import("../domain/mod.zig");
 
 /// 应用框架
 pub const App = struct {
@@ -22,10 +21,7 @@ pub const App = struct {
 
     /// 初始化应用
     pub fn init(allocator: std.mem.Allocator) !Self {
-        // 初始化各层（App本身只负责路由，不需要初始化API层）
-        try domain.init(allocator);
-        try application.init(allocator);
-
+        // 各层已在 zigcms.initSystem() 中初始化，这里只初始化路由
         return .{
             .allocator = allocator,
             .router = zap.Router.init(allocator, .{
@@ -69,7 +65,7 @@ pub const App = struct {
             .timeout = 3,
         });
         try listener.listen();
-        std.log.info("🚀 服务器启动于 http://127.0.0.1:{d}", .{port});
+        logger.info("🚀 服务器启动于 http://127.0.0.1:{d}", .{port});
         zap.start(.{ .threads = 4, .workers = 4 });
     }
 

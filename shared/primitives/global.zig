@@ -6,7 +6,6 @@
 //! - 服务管理器
 //! - 插件系统
 //! - 配置管理
-//! - 依赖注入容器
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -18,13 +17,13 @@ const base = @import("../../api/controllers/base.fn.zig");
 const services = @import("../../application/services/services.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
+pub const logger = @import("../../application/services/logger/logger.zig");
 
 // 全局单例实例
 var _allocator: ?Allocator = null;
 var _db: ?*sql.Database = null;
 var _service_manager: ?*services.ServiceManager = null;
 var _plugin_system: ?*PluginSystemService = null;
-var _di_container: ?services.Container = null;
 var config: std.StringHashMap([]const u8) = undefined;
 var mu: std.Thread.Mutex = std.Thread.Mutex{};
 
@@ -32,7 +31,7 @@ pub const JwtTokenSecret = "this is a secret";
 var initOnce = std.once(init_some);
 
 pub fn deinit() void {
-    std.log.info("global module deinit, cleaning up resources...", .{});
+    logger.info("global module deinit, cleaning up resources...", .{});
 
     // 1. 先执行插件系统清理
     if (_plugin_system) |plugin_sys| {
@@ -48,81 +47,88 @@ pub fn deinit() void {
         _service_manager = null;
     }
 
-    // 3. 清理 DI 容器
-    if (_di_container) |*c| {
-        c.deinit();
-        _di_container = null;
-    }
-
-    // 4. 清理 ORM 数据库连接
+    // 3. 清理 ORM 数据库连接
     if (_db) |db| {
         db.deinit();
         _allocator.?.destroy(db);
         _db = null;
     }
 
+    // 4. 清理日志器
+    logger.deinitDefault();
+
     // 5. 清理配置
     config.deinit();
     config = undefined;
     _allocator = undefined;
 
-    std.log.info("global module cleanup completed", .{});
+    std.debug.print("[INFO] global module cleanup completed\n", .{});
 }
 
 fn init_some() void {
     config = std.StringHashMap([]const u8).init(_allocator.?);
-    const password = std.process.getEnvVarOwned(_allocator.?, "DB_PASSWORD") catch unreachable;
-    defer _allocator.?.free(password);
 
-    // 初始化 SQL ORM 数据库连接
-    initOrmDatabase(password) catch |e| {
-        std.log.err("Failed to initialize ORM database: {}", .{e});
+    // 首先初始化日志器
+    logger.initDefault(_allocator.?, .{
+        .level = .debug,
+        .format = .colored,
+        .module_name = "zigcms",
+        .include_timestamp = true,
+        .sync_on_error = true,
+    }) catch |e| {
+        std.debug.print("[ERROR] 初始化日志器失败: {}\n", .{e});
+        @panic("无法初始化日志器");
     };
 
-    // 初始化 DI 容器
-    initDiContainer(_allocator.?);
+    logger.info("[global] 开始初始化全局模块...", .{});
+    logger.info("[global] 准备初始化 ORM 数据库连接...", .{});
+
+    // 初始化 SQL ORM 数据库连接（使用配置文件中的密码）
+    initOrmDatabase() catch |e| {
+        logger.err("[global] 初始化 ORM 数据库失败: {}", .{e});
+        @panic("无法初始化数据库连接，请检查数据库配置和网络连接");
+    };
 
     // 初始化服务管理器
     initServiceManager(_allocator.?) catch |e| {
-        std.log.err("Failed to initialize Service Manager: {}", .{e});
+        logger.err("Failed to initialize Service Manager: {}", .{e});
     };
 
     // 初始化插件系统
     initPluginSystem(_allocator.?) catch |e| {
-        std.log.err("Failed to initialize Plugin System: {}", .{e});
+        logger.err("Failed to initialize Plugin System: {}", .{e});
     };
 
     restore_setting() catch {};
 }
 
 /// 初始化 ORM 数据库连接
-fn initOrmDatabase(_: []const u8) !void {
+fn initOrmDatabase() !void {
+    logger.info("[global] 正在连接 MySQL 数据库...", .{});
+
     const db = try _allocator.?.create(sql.Database);
     errdefer _allocator.?.destroy(db);
 
-    db.* = try sql.Database.sqlite(_allocator.?, "database.sqlite3");
+    db.* = try sql.Database.mysql(_allocator.?, .{
+        .port = 3306,
+        .host = "117.72.107.213",
+        .user = "zigcms",
+        .password = "zigcms",
+        .database = "zigcms",
+        .keepalive_interval_ms = 0, // 暂时禁用 keepalive 避免线程问题
+    });
 
     _db = db;
 
     // 初始化所有 ORM 模型
     orm_models.init(db);
 
-    std.log.info("ORM database initialized successfully", .{});
-}
-
-/// 初始化 DI 容器
-fn initDiContainer(allocator: Allocator) void {
-    std.log.info("[global] 初始化 DI 容器...", .{});
-
-    // 使用现有的 services 模块创建容器
-    _di_container = services.createContainer(allocator);
-
-    std.log.info("[global] DI 容器初始化完成", .{});
+    logger.info("[global] ORM 数据库连接成功!", .{});
 }
 
 /// 初始化服务管理器
 fn initServiceManager(allocator: Allocator) !void {
-    std.log.info("[global] 初始化服务管理器...", .{});
+    logger.info("[global] 初始化服务管理器...", .{});
 
     if (_db == null) return error.DatabaseNotInitialized;
 
@@ -133,12 +139,12 @@ fn initServiceManager(allocator: Allocator) !void {
 
     _service_manager = service_mgr;
 
-    std.log.info("[global] 服务管理器初始化完成", .{});
+    logger.info("[global] 服务管理器初始化完成", .{});
 }
 
 /// 初始化插件系统
 fn initPluginSystem(allocator: Allocator) !void {
-    std.log.info("[global] 初始化插件系统...", .{});
+    logger.info("[global] 初始化插件系统...", .{});
 
     if (_service_manager == null) return error.ServiceManagerNotInitialized;
 
@@ -152,7 +158,7 @@ fn initPluginSystem(allocator: Allocator) !void {
 
     _plugin_system = plugin_sys_instance;
 
-    std.log.info("[global] 插件系统初始化完成", .{});
+    logger.info("[global] 插件系统初始化完成", .{});
 }
 
 pub fn init(allocator: Allocator) void {
@@ -179,10 +185,7 @@ pub fn getPluginSystem() *PluginSystemService {
     return _plugin_system orelse @panic("Plugin system not initialized");
 }
 
-/// 获取 DI 容器
-pub fn get_container() *services.Container {
-    return &_di_container.?;
-}
+// get_container 已弃用，使用 getServiceManager() 代替
 
 /// 获取配置项（直接返回 config 中存储的值或默认值）
 pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {

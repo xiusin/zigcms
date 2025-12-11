@@ -49,6 +49,26 @@ pub fn build(b: *std.Build) void {
     const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
     exe_module.addImport("smtp_client", smtp_client.module("smtp_client"));
 
+    // MySQL 客户端库链接
+    exe.linkSystemLibrary("mysqlclient");
+
+    // macOS: Homebrew 安装路径
+    if (target.result.os.tag == .macos) {
+        // Apple Silicon (M1/M2/M3)
+        // exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+        // exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+        // exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+        // exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+        // Intel Mac
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        exe.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
+    // Linux: 标准路径
+    if (target.result.os.tag == .linux) {
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+        exe.addIncludePath(.{ .cwd_relative = "/usr/include/mysql" });
+    }
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

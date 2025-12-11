@@ -8,6 +8,10 @@
 //! - 共享层: 跨层通用组件
 
 const std = @import("std");
+const logger = @import("application/services/logger/logger.zig");
+
+// ✅ 启用 MySQL 驱动（告诉 interface.zig 使用真正的 MySQL 驱动而非存根）
+pub const mysql_enabled = true;
 
 // 各层入口
 pub const api = @import("api/Api.zig");
@@ -37,16 +41,16 @@ pub fn getServiceManager() *ServiceManager {
 /// 初始化整个系统
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     _ = config; // 忽略未使用的参数
-    
+
     // 初始化各层，遵照依赖关系
     try shared.init(allocator);
     try domain.init(allocator);
     try infrastructure.init(allocator);
     try application.init(allocator);
     try api.init(allocator);
-    
-    std.log.info("系统初始化完成", .{});
-    
+
+    logger.info("系统初始化完成", .{});
+
     // 初始化服务管理器
     // 这里需要获取数据库实例并传入服务管理器
     // 由于数据库初始化可能在基础设施层，所以需要适当调整

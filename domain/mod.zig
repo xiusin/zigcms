@@ -7,6 +7,7 @@
 //! - 提供业务实体的仓储接口
 
 const std = @import("std");
+const logger = @import("../application/services/logger/logger.zig");
 
 /// 领域层配置
 pub const DomainConfig = struct {
@@ -18,7 +19,7 @@ pub const DomainConfig = struct {
 /// 领域层初始化函数
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
-    std.log.info("领域层初始化完成", .{});
+    logger.info("领域层初始化完成", .{});
 
     // 初始化实体模型
     _ = @import("entities/models.zig");

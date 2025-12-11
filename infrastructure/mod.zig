@@ -7,6 +7,7 @@
 //! - 与外部系统通信的适配器
 
 const std = @import("std");
+const logger = @import("../application/services/logger/logger.zig");
 
 /// 基础设施层配置
 pub const InfraConfig = struct {
@@ -16,11 +17,11 @@ pub const InfraConfig = struct {
     db_name: []const u8 = "zigcms",
     db_user: []const u8 = "postgres",
     db_password: []const u8 = "password",
-    
+
     // 缓存配置
     cache_host: []const u8 = "localhost",
     cache_port: u16 = 6379,
-    
+
     // HTTP 客户端配置
     http_timeout_ms: u32 = 5000,
 };
@@ -29,5 +30,5 @@ pub const InfraConfig = struct {
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
     // 初始化基础设施组件
-    std.log.info("基础设施层初始化完成", .{});
+    logger.info("基础设施层初始化完成", .{});
 }

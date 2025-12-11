@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>员工管理</title>
+    <meta name="renderer" content="webkit" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <link rel="stylesheet" href="../../css/public.css" media="all" />
+    <link rel="stylesheet" href="../../css/themes/theme.css" media="all" />
+    <style>
+        .employee-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #eee;
+        }
+
+        .employee-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .employee-name {
+            font-weight: 500;
+        }
+
+        .employee-no {
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+    <script src="../../lib/layui/layui.js" charset="utf-8"></script>
+    <script src="../../js/lay-config.js" charset="utf-8"></script>
+    <script src="../../js/public.js"></script>
+</head>
+
+<body class="elem-style-win7">
+    <div class="layuimini-container">
+        <div class="layuimini-main">
+            <!-- 搜索区域 -->
+            <fieldset class="table-search-fieldset">
+                <legend>搜索条件</legend>
+                <div style="margin: 10px 10px 10px 10px">
+                    <form class="layui-form layui-form-pane" action="">
+                        <div class="layui-form-item">
+                            <div class="layui-inline">
+                                <label class="layui-form-label">员工姓名</label>
+                                <div class="layui-input-inline">
+                                    <input type="text" name="name" placeholder="请输入员工姓名" autocomplete="off"
+                                        class="layui-input" />
+                                </div>
+                            </div>
+                            <div class="layui-inline">
+                                <label class="layui-form-label">工号</label>
+                                <div class="layui-input-inline">
+                                    <input type="text" name="employee_no" placeholder="请输入工号" autocomplete="off"
+                                        class="layui-input" />
+                                </div>
+                            </div>
+                            <div class="layui-inline">
+                                <label class="layui-form-label">所属部门</label>
+                                <div class="layui-input-inline">
+                                    <select name="department_id" id="searchDept" lay-filter="searchDept" lay-search>
+                                        <option value="">全部部门</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="layui-inline">
+                                <label class="layui-form-label">状态</label>
+                                <div class="layui-input-inline">
+                                    <select name="status">
+                                        <option value="">全部</option>
+                                        <option value="1">在职</option>
+                                        <option value="2">试用期</option>
+                                        <option value="0">离职</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="layui-form-item">
+                            <div class="layui-inline">
+                                <button type="submit" class="layui-btn layui-btn-primary" lay-submit
+                                    lay-filter="data-search-btn">
+                                    <i class="layui-icon layui-icon-search"></i> 搜索
+                                </button>
+                                <button type="reset" class="layui-btn layui-btn-default">
+                                    <i class="layui-icon layui-icon-refresh"></i> 重置
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </fieldset>
+
+            <table id="currentTable" class="layui-table layui-hide" lay-filter="currentTable"></table>
+        </div>
+    </div>
+
+    <!-- 工具栏模板 -->
+    <script type="text/html" id="toolbar">
+            <button class="layui-btn layui-btn-sm layuimini-btn-primary" data-treetable-refresh>
+                <i class="fa fa-refresh"></i>
+            </button>
+            <button class="layui-btn layui-btn-normal layui-btn-sm" data-open="/employee/save" data-title="添加员工">
+                <i class="fa fa-plus"></i> 添加
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-warm" lay-event="export">
+                <i class="fa fa-download"></i> 导出
+            </button>
+            <button class="layui-btn layui-btn-sm layui-btn-danger" data-url="/employee/delete" data-table-delete="currentTableRenderId">
+                <i class="fa fa-trash-o"></i> 批量删除
+            </button>
+        </script>
+
+    <!-- 行操作按钮模板 -->
+    <script type="text/html" id="currentTableBar">
+            <a class="layui-btn layui-btn-xs" lay-event="detail">详情</a>
+            <a class="layui-btn layui-btn-xs layui-btn-normal" data-open="/employee/save?id={{d.id}}" data-title="编辑员工">编辑</a>
+            <a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>
+        </script>
+
+    <!-- 员工信息模板 -->
+    <script type="text/html" id="employeeInfoTpl">
+            <div class="employee-info">
+                {{# if(d.avatar){ }}
+                    <img src="{{d.avatar}}" class="employee-avatar" onerror="this.src='../../images/default-avatar.png'" />
+                {{# } else { }}
+                    <img src="../../images/default-avatar.png" class="employee-avatar" />
+                {{# } }}
+                <div>
+                    <div class="employee-name">{{d.name}}</div>
+                    <div class="employee-no">{{d.employee_no}}</div>
+                </div>
+            </div>
+        </script>
+
+    <!-- 性别模板 -->
+    <script type="text/html" id="genderTpl">
+            {{# if(d.gender === 1){ }}
+                <span class="layui-badge layui-bg-blue">男</span>
+            {{# } else if(d.gender === 2){ }}
+                <span class="layui-badge layui-bg-red">女</span>
+            {{# } else { }}
+                <span class="layui-badge layui-bg-gray">未知</span>
+            {{# } }}
+        </script>
+
+    <!-- 状态模板 -->
+    <script type="text/html" id="statusTpl">
+            {{# if(d.status === 1){ }}
+                <span class="layui-badge layui-bg-green">在职</span>
+            {{# } else if(d.status === 2){ }}
+                <span class="layui-badge layui-bg-orange">试用期</span>
+            {{# } else { }}
+                <span class="layui-badge layui-bg-gray">离职</span>
+            {{# } }}
+        </script>
+
+    <script src="./js/list.js"></script>
+</body>
+
+</html>

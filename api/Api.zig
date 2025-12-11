@@ -5,6 +5,7 @@
 //! - 提供 HTTP 控制器、DTO、中间件的统一访问点
 
 const std = @import("std");
+const logger = @import("../application/services/logger/logger.zig");
 
 // API 层组件
 pub const controllers = @import("controllers/mod.zig");
@@ -24,5 +25,5 @@ pub const ServerConfig = struct {
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator;
     // 初始化 API 层组件
-    std.log.info("API 层初始化完成", .{});
+    logger.info("API 层初始化完成", .{});
 }

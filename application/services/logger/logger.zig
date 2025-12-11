@@ -3189,19 +3189,120 @@ fn testFlushStdout(ptr: *anyopaque) void {
 }
 
 /// 并发日志测试函数
-fn concurrentLoggingTest(logger: *Logger, thread_id: usize, num_logs: usize) void {
+fn concurrentLoggingTest(log: *Logger, thread_id: usize, num_logs: usize) void {
     for (0..num_logs) |i| {
         // 使用不同的日志级别和消息（5个级别：debug, info, warn, err, fatal）
         const level = @as(Level, @enumFromInt(@mod(i, 5)));
         switch (level) {
-            .debug => logger.debug("线程{d}调试日志#{d}", .{ thread_id, i }),
-            .info => logger.info("线程{d}信息日志#{d}", .{ thread_id, i }),
-            .warn => logger.warn("线程{d}警告日志#{d}", .{ thread_id, i }),
-            .err => logger.err("线程{d}错误日志#{d}", .{ thread_id, i }),
-            .fatal => logger.fatal("线程{d}致命日志#{d}", .{ thread_id, i }),
+            .debug => log.debug("线程{d}调试日志#{d}", .{ thread_id, i }),
+            .info => log.info("线程{d}信息日志#{d}", .{ thread_id, i }),
+            .warn => log.warn("线程{d}警告日志#{d}", .{ thread_id, i }),
+            .err => log.err("线程{d}错误日志#{d}", .{ thread_id, i }),
+            .fatal => log.fatal("线程{d}致命日志#{d}", .{ thread_id, i }),
         }
 
         // 短暂延迟以增加并发性
         std.atomic.spinLoopHint();
     }
+}
+
+// ============================================================================
+// 全局默认日志器 - 提供模块级便捷函数
+// ============================================================================
+
+/// 全局默认日志器实例
+var _default_logger: ?*Logger = null;
+var _default_allocator: ?Allocator = null;
+
+/// 初始化全局默认日志器
+///
+/// 使用示例:
+/// ```zig
+/// const logger = @import("logger.zig");
+/// logger.initDefault(allocator, .{ .level = .debug, .format = .colored });
+/// defer logger.deinitDefault();
+///
+/// logger.info("服务启动", .{});
+/// ```
+pub fn initDefault(allocator: Allocator, config: LoggerConfig) !void {
+    if (_default_logger != null) return; // 已初始化
+
+    const log = try allocator.create(Logger);
+    log.* = Logger.init(allocator, config);
+
+    // 添加默认的标准错误输出
+    try log.addWriter(StderrWriter.writer());
+
+    _default_logger = log;
+    _default_allocator = allocator;
+}
+
+/// 释放全局默认日志器
+pub fn deinitDefault() void {
+    if (_default_logger) |log| {
+        log.deinit();
+        if (_default_allocator) |alloc| {
+            alloc.destroy(log);
+        }
+        _default_logger = null;
+        _default_allocator = null;
+    }
+}
+
+/// 获取全局默认日志器
+pub fn getDefault() ?*Logger {
+    return _default_logger;
+}
+
+/// Debug 级别日志
+pub fn debug(comptime msg: []const u8, args: anytype) void {
+    if (_default_logger) |log| {
+        log.debug(msg, args);
+    } else {
+        std.debug.print("[DEBUG] " ++ msg ++ "\n", args);
+    }
+}
+
+/// Info 级别日志
+pub fn info(comptime msg: []const u8, args: anytype) void {
+    if (_default_logger) |log| {
+        log.info(msg, args);
+    } else {
+        std.debug.print("[INFO] " ++ msg ++ "\n", args);
+    }
+}
+
+/// Warn 级别日志
+pub fn warn(comptime msg: []const u8, args: anytype) void {
+    if (_default_logger) |log| {
+        log.warn(msg, args);
+    } else {
+        std.debug.print("[WARN] " ++ msg ++ "\n", args);
+    }
+}
+
+/// Error 级别日志
+pub fn err(comptime msg: []const u8, args: anytype) void {
+    if (_default_logger) |log| {
+        log.err(msg, args);
+    } else {
+        std.debug.print("[ERROR] " ++ msg ++ "\n", args);
+    }
+}
+
+/// Fatal 级别日志
+pub fn fatal(comptime msg: []const u8, args: anytype) void {
+    if (_default_logger) |log| {
+        log.fatal(msg, args);
+    } else {
+        std.debug.print("[FATAL] " ++ msg ++ "\n", args);
+    }
+}
+
+/// 创建带模块作用域的日志器（使用默认全局日志器）
+pub fn scopedDefault(comptime module: []const u8) ScopedLogger {
+    if (_default_logger) |log| {
+        return log.scoped(module);
+    }
+    @panic("Logger not initialized, call logger.initDefault() first");
 }

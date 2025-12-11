@@ -389,6 +389,15 @@ pub const Connection = struct {
         );
 
         if (result == null) {
+            // 获取详细错误信息
+            const err_code = c.mysql_errno(mysql);
+            const err_msg = c.mysql_error(mysql);
+            if (@intFromPtr(err_msg) != 0) {
+                std.log.err("MySQL 连接失败 [错误码: {d}]: {s}", .{ err_code, std.mem.span(err_msg) });
+            } else {
+                std.log.err("MySQL 连接失败 [错误码: {d}]", .{err_code});
+            }
+            std.log.err("连接参数: host={s}, port={d}, user={s}, database={s}", .{ config.host, config.port, config.user, config.database });
             return MySQLError.ConnectionFailed;
         }
 

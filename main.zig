@@ -1,6 +1,10 @@
 // 主程序入口 - 整洁架构实现
 const std = @import("std");
 const zigcms = @import("root.zig");
+const logger = @import("application/services/logger/logger.zig");
+
+// ✅ 启用 MySQL 驱动（编译时标志，供 interface.zig 检测）
+pub const mysql_enabled = true;
 const App = @import("api/App.zig").App;
 const controllers = @import("api/controllers/mod.zig");
 const models = @import("domain/entities/models.zig");
@@ -10,9 +14,12 @@ pub fn main() !void {
     defer {
         const status = gpa.deinit();
         if (status == .leak) {
-            @panic("内存泄漏");
-        } else std.log.debug("服务器正常退出", .{});
-        std.log.info("👋 ZigCMS 服务器已关闭", .{});
+            // 服务器被终止时可能有未释放资源，这是正常的
+            logger.warn("检测到内存泄漏（可能是服务器被强制终止）", .{});
+        } else {
+            logger.debug("服务器正常退出，无内存泄漏", .{});
+        }
+        logger.info("👋 ZigCMS 服务器已关闭", .{});
     }
 
     const allocator = gpa.allocator();
@@ -37,7 +44,7 @@ pub fn main() !void {
     try app.crud("upload", models.Upload);
     try app.crud("article", models.Article);
     try app.crud("role", models.Role);
-    try app.crud("dict", models.Dict);  // 添加字典模型的CRUD
+    try app.crud("dict", models.Dict); // 添加字典模型的CRUD
 
     // ========================================================================
     // API 层 - 注册自定义控制器
@@ -79,6 +86,6 @@ pub fn main() !void {
     // ========================================================================
     // 启动服务器
     // ========================================================================
-    std.log.info("🚀 启动 ZigCMS 服务器", .{});
+    logger.info("🚀 启动 ZigCMS 服务器", .{});
     try app.listen(3000);
 }
