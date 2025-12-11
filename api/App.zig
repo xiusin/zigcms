@@ -16,8 +16,15 @@ const controllers = @import("controllers/mod.zig");
 pub const App = struct {
     const Self = @This();
 
+    const ControllerEntry = struct {
+        ptr: *anyopaque,
+        deinit_fn: *const fn (*anyopaque, std.mem.Allocator) void,
+    };
+
     allocator: std.mem.Allocator,
     router: zap.Router,
+    /// 存储已创建的控制器指针，用于清理
+    controllers: std.ArrayListUnmanaged(ControllerEntry),
 
     /// 初始化应用
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -27,11 +34,17 @@ pub const App = struct {
             .router = zap.Router.init(allocator, .{
                 .not_found = notFoundHandler,
             }),
+            .controllers = .{},
         };
     }
 
     /// 销毁应用
     pub fn deinit(self: *Self) void {
+        // 清理所有控制器
+        for (self.controllers.items) |entry| {
+            entry.deinit_fn(entry.ptr, self.allocator);
+        }
+        self.controllers.deinit(self.allocator);
         self.router.deinit();
     }
 
@@ -39,7 +52,22 @@ pub const App = struct {
     pub fn crud(self: *Self, comptime name: []const u8, comptime T: type) !void {
         const Controller = controllers.common.Crud(T, "zigcms");
         const ctrl_ptr = try self.allocator.create(Controller);
+        errdefer self.allocator.destroy(ctrl_ptr);
+
         ctrl_ptr.* = Controller.init(self.allocator);
+
+        // 追踪控制器指针以便后续清理
+        const destroyFn = struct {
+            fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
+                const typed_ptr: *Controller = @ptrCast(@alignCast(ptr));
+                alloc.destroy(typed_ptr);
+            }
+        }.destroy;
+
+        try self.controllers.append(self.allocator, .{
+            .ptr = @ptrCast(ctrl_ptr),
+            .deinit_fn = destroyFn,
+        });
 
         try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, Controller.list);
         try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, Controller.get);
