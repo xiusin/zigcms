@@ -13,6 +13,7 @@ const global = @import("../../shared/primitives/global.zig");
 const json_mod = @import("../../application/services/json/json.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const mw = @import("../middleware/mod.zig");
+const orm_models = @import("../../domain/entities/orm_models.zig");
 
 const Self = @This();
 const MW = mw.Controller(Self);
@@ -54,6 +55,9 @@ pub const select = MW.requireAuth(selectImpl);
 
 /// 按部门筛选
 pub const byDepartment = MW.requireAuth(byDepartmentImpl);
+
+/// 带关联信息的详情
+pub const detail = MW.requireAuth(detailImpl);
 
 // ============================================================================
 // 实现方法
@@ -135,6 +139,93 @@ fn getImpl(self: *Self, req: zap.Request) !void {
     defer OrmEmployee.freeModel(self.allocator, &item);
 
     return base.send_ok(req, item);
+}
+
+/// 带关联信息的详情实现
+fn detailImpl(self: *Self, req: zap.Request) !void {
+    req.parseQuery();
+    const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
+    const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
+
+    const item_opt = OrmEmployee.Find(id) catch |e| return base.send_error(req, e);
+    if (item_opt == null) {
+        return base.send_failed(req, "员工不存在");
+    }
+
+    var item = item_opt.?;
+    defer OrmEmployee.freeModel(self.allocator, &item);
+
+    // 加载关联数据
+    const Relations = orm_models.Relations.EmployeeRelations;
+
+    // 获取部门信息
+    var dept_name: []const u8 = "";
+    if (Relations.department(item.department_id) catch null) |dept| {
+        dept_name = dept.name;
+    }
+
+    // 获取职位信息
+    var position_name: []const u8 = "";
+    if (Relations.position(item.position_id) catch null) |pos| {
+        position_name = pos.name;
+    }
+
+    // 获取角色信息
+    var role_name: []const u8 = "";
+    if (Relations.role(item.role_id) catch null) |r| {
+        role_name = r.name;
+    }
+
+    // 获取领导信息
+    var leader_name: []const u8 = "";
+    if (Relations.leader(item.leader_id) catch null) |l| {
+        leader_name = l.name;
+    }
+
+    // 构建带关联的响应
+    const EmployeeDetail = struct {
+        id: ?i32,
+        employee_no: []const u8,
+        name: []const u8,
+        gender: i32,
+        phone: []const u8,
+        email: []const u8,
+        department_id: ?i32,
+        department_name: []const u8,
+        position_id: ?i32,
+        position_name: []const u8,
+        role_id: ?i32,
+        role_name: []const u8,
+        leader_id: ?i32,
+        leader_name: []const u8,
+        hire_date: ?i64,
+        avatar: []const u8,
+        status: i32,
+        remark: []const u8,
+    };
+
+    const detail_data = EmployeeDetail{
+        .id = item.id,
+        .employee_no = item.employee_no,
+        .name = item.name,
+        .gender = item.gender,
+        .phone = item.phone,
+        .email = item.email,
+        .department_id = item.department_id,
+        .department_name = dept_name,
+        .position_id = item.position_id,
+        .position_name = position_name,
+        .role_id = item.role_id,
+        .role_name = role_name,
+        .leader_id = item.leader_id,
+        .leader_name = leader_name,
+        .hire_date = item.hire_date,
+        .avatar = item.avatar,
+        .status = item.status,
+        .remark = item.remark,
+    };
+
+    return base.send_ok(req, detail_data);
 }
 
 /// 保存实现（新增/更新）

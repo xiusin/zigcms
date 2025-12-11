@@ -329,3 +329,100 @@ pub fn refresh(db: *sql.Database) !void {
 pub fn printMigrationSql(comptime dialect: Dialect) void {
     Migrator.printSql(dialect, AllModels);
 }
+
+// ============================================================================
+// 关系定义
+// ============================================================================
+
+const relations = @import("../../application/services/sql/relations.zig");
+
+/// 模型关系定义
+/// 定义各模型之间的关联关系，便于业务层调用
+pub const Relations = struct {
+    /// 部门关系
+    pub const DepartmentRelations = struct {
+        /// 获取部门下的所有员工
+        pub fn employees(department_id: i32) ![]Employee.Model {
+            return relations.hasMany(Employee, department_id, "department_id");
+        }
+
+        /// 获取部门下的有效员工
+        pub fn activeEmployees(department_id: i32) ![]Employee.Model {
+            return relations.hasManyActive(Employee, department_id, "department_id");
+        }
+
+        /// 获取部门下的所有职位
+        pub fn positions(department_id: i32) ![]Position.Model {
+            return relations.hasMany(Position, department_id, "department_id");
+        }
+
+        /// 获取子部门
+        pub fn children(parent_id: i32) ![]Department.Model {
+            return relations.hasMany(Department, parent_id, "parent_id");
+        }
+
+        /// 获取父部门
+        pub fn parent(parent_id: ?i32) !?Department.Model {
+            return relations.belongsTo(Department, parent_id);
+        }
+
+        /// 获取部门负责人（员工）
+        pub fn leader(leader_id: ?i32) !?Employee.Model {
+            return relations.belongsTo(Employee, leader_id);
+        }
+    };
+
+    /// 员工关系
+    pub const EmployeeRelations = struct {
+        /// 获取员工所属部门
+        pub fn department(department_id: ?i32) !?Department.Model {
+            return relations.belongsTo(Department, department_id);
+        }
+
+        /// 获取员工职位
+        pub fn position(position_id: ?i32) !?Position.Model {
+            return relations.belongsTo(Position, position_id);
+        }
+
+        /// 获取员工角色
+        pub fn role(role_id: ?i32) !?Role.Model {
+            return relations.belongsTo(Role, role_id);
+        }
+
+        /// 获取员工的直属领导
+        pub fn leader(leader_id: ?i32) !?Employee.Model {
+            return relations.belongsTo(Employee, leader_id);
+        }
+
+        /// 获取员工的下属
+        pub fn subordinates(employee_id: i32) ![]Employee.Model {
+            return relations.hasMany(Employee, employee_id, "leader_id");
+        }
+    };
+
+    /// 职位关系
+    pub const PositionRelations = struct {
+        /// 获取职位所属部门
+        pub fn department(department_id: ?i32) !?Department.Model {
+            return relations.belongsTo(Department, department_id);
+        }
+
+        /// 获取该职位的所有员工
+        pub fn employees(position_id: i32) ![]Employee.Model {
+            return relations.hasMany(Employee, position_id, "position_id");
+        }
+    };
+
+    /// 角色关系
+    pub const RoleRelations = struct {
+        /// 获取该角色的所有员工
+        pub fn employees(role_id: i32) ![]Employee.Model {
+            return relations.hasMany(Employee, role_id, "role_id");
+        }
+
+        /// 获取角色的有效员工
+        pub fn activeEmployees(role_id: i32) ![]Employee.Model {
+            return relations.hasManyActive(Employee, role_id, "role_id");
+        }
+    };
+};
