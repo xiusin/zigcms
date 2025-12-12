@@ -170,7 +170,7 @@ pub const PluginHandle = struct {
     pub fn deinit(self: *PluginHandle, allocator: std.mem.Allocator) void {
         // 如果插件正在运行，则先停止
         if (self.is_running) {
-            _ = self.stop(allocator) catch {};
+            _ = self.stop() catch {};
         }
 
         // 如果插件已初始化，则销毁

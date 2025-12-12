@@ -25,3 +25,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
     primitives.init(allocator);
     primitives.logger.info("共享层初始化完成", .{});
 }
+
+/// 共享层清理函数
+pub fn deinit() void {
+    primitives.deinit();
+}

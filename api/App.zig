@@ -52,7 +52,9 @@ pub const App = struct {
     pub fn crud(self: *Self, comptime name: []const u8, comptime T: type) !void {
         const Controller = controllers.common.Crud(T, "zigcms");
         const ctrl_ptr = try self.allocator.create(Controller);
-        errdefer self.allocator.destroy(ctrl_ptr);
+
+        var owned = false;
+        errdefer if (!owned) self.allocator.destroy(ctrl_ptr);
 
         ctrl_ptr.* = Controller.init(self.allocator);
 
@@ -68,6 +70,7 @@ pub const App = struct {
             .ptr = @ptrCast(ctrl_ptr),
             .deinit_fn = destroyFn,
         });
+        owned = true;
 
         try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, Controller.list);
         try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, Controller.get);

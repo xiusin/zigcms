@@ -55,3 +55,14 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 这里需要获取数据库实例并传入服务管理器
     // 由于数据库初始化可能在基础设施层，所以需要适当调整
 }
+
+/// 清理整个系统
+pub fn deinitSystem() void {
+    logger.info("开始系统清理...", .{});
+
+    // 按照初始化相反的顺序进行清理
+    // 目前只有 shared 层包含需要显式清理的全局资源
+    shared.deinit();
+
+    logger.info("系统清理完成", .{});
+}

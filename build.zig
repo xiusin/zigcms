@@ -87,28 +87,91 @@ pub fn build(b: *std.Build) void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests_module = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("root.zig"),
         .target = target,
         .optimize = optimize,
     });
+    // 添加测试所需的依赖
+    lib_unit_tests_module.addImport("zap", zap.module("zap"));
+    lib_unit_tests_module.addImport("pg", pg.module("pg"));
+    lib_unit_tests_module.addImport("pretty", pretty.module("pretty"));
+    lib_unit_tests_module.addImport("regex", regex.module("regex"));
+    lib_unit_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+
     const lib_unit_tests = b.addTest(.{
         .name = "vendor-lib-tests",
         .root_module = lib_unit_tests_module,
     });
+    lib_unit_tests.linkSystemLibrary("mysqlclient");
+    lib_unit_tests.linkLibC();
+
+    if (target.result.os.tag == .macos) {
+        lib_unit_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        lib_unit_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     const exe_unit_tests_module = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    // 添加测试所需的依赖
+    exe_unit_tests_module.addImport("zap", zap.module("zap"));
+    exe_unit_tests_module.addImport("pg", pg.module("pg"));
+    exe_unit_tests_module.addImport("pretty", pretty.module("pretty"));
+    exe_unit_tests_module.addImport("regex", regex.module("regex"));
+    exe_unit_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    exe_unit_tests_module.addImport("sqlite", sqlite.module("sqlite"));
+    exe_unit_tests_module.addImport("curl", curl.module("curl"));
+
     const exe_unit_tests = b.addTest(.{
         .name = "vendor-exe-tests",
         .root_module = exe_unit_tests_module,
     });
+    exe_unit_tests.linkSystemLibrary("mysqlclient");
+    exe_unit_tests.linkLibC();
+
+    if (target.result.os.tag == .macos) {
+        exe_unit_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        exe_unit_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+
+    // 集成测试
+    const integration_tests_module = b.createModule(.{
+        .root_source_file = b.path("tests/integration/system_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    integration_tests_module.addImport("zap", zap.module("zap"));
+    integration_tests_module.addImport("pg", pg.module("pg"));
+    integration_tests_module.addImport("pretty", pretty.module("pretty"));
+    integration_tests_module.addImport("regex", regex.module("regex"));
+    integration_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+
+    // 添加项目内部模块引用
+    integration_tests_module.addImport("zigcms", lib_module);
+
+    const integration_tests = b.addTest(.{
+        .name = "integration-tests",
+        .root_module = integration_tests_module,
+    });
+    integration_tests.linkSystemLibrary("mysqlclient");
+    integration_tests.linkLibC();
+
+    if (target.result.os.tag == .macos) {
+        // Apple Silicon
+        integration_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+        integration_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+        // Intel Mac (可选，如果不存在也不会报错，只会警告)
+        // integration_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        // integration_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
+
+    const run_integration_tests = b.addRunArtifact(integration_tests);
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
@@ -116,6 +179,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_integration_tests.step);
 
     // ========================================================================
     // Code Generation Tool

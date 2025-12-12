@@ -15,11 +15,11 @@ pub fn main() !void {
         const status = gpa.deinit();
         if (status == .leak) {
             // 服务器被终止时可能有未释放资源，这是正常的
-            logger.warn("检测到内存泄漏（可能是服务器被强制终止）", .{});
+            std.debug.print("⚠️ 检测到内存泄漏（可能是服务器被强制终止）\n", .{});
         } else {
-            logger.debug("服务器正常退出，无内存泄漏", .{});
+            std.debug.print("✅ 服务器正常退出，无内存泄漏\n", .{});
         }
-        logger.info("👋 ZigCMS 服务器已关闭", .{});
+        std.debug.print("👋 ZigCMS 服务器已关闭\n", .{});
     }
 
     const allocator = gpa.allocator();
@@ -27,6 +27,7 @@ pub fn main() !void {
     // 初始化系统各层
     const config = zigcms.SystemConfig{};
     try zigcms.initSystem(allocator, config);
+    defer zigcms.deinitSystem();
 
     // 初始化应用框架
     var app = try App.init(allocator);

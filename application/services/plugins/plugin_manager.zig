@@ -20,14 +20,14 @@ pub const PluginManager = struct {
     plugins: std.StringHashMap(PluginHandle),
     plugin_paths: std.StringHashMap([]const u8),
     mutex: std.Thread.Mutex,
-    running_plugins: std.AutoHashMap([]const u8, []const u8),
+    running_plugins: std.StringHashMap([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) PluginManager {
         return .{
             .allocator = allocator,
             .plugins = std.StringHashMap(PluginHandle).init(allocator),
             .plugin_paths = std.StringHashMap([]const u8).init(allocator),
-            .running_plugins = std.AutoHashMap([]const u8, []const u8).init(allocator),
+            .running_plugins = std.StringHashMap([]const u8).init(allocator),
             .mutex = std.Thread.Mutex{},
         };
     }
@@ -82,13 +82,14 @@ pub const PluginManager = struct {
         defer self.mutex.unlock();
 
         if (self.plugins.fetchRemove(name)) |entry| {
+            var mut_entry = entry;
             // 如果插件正在运行，先停止它
             if (self.running_plugins.contains(name)) {
                 _ = self.stopPlugin(name) catch {};
             }
 
             // 销毁插件句柄
-            entry.value.deinit(self.allocator);
+            mut_entry.value.deinit(self.allocator);
 
             // 清理路径记录
             if (self.plugin_paths.fetchRemove(name)) |path_entry| {
@@ -115,7 +116,7 @@ pub const PluginManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.plugins.get(name)) |*handle| {
+        if (self.plugins.getPtr(name)) |handle| {
             if (handle.interface.data == null) {
                 try handle.load_and_init(self.allocator);
             }
@@ -129,7 +130,7 @@ pub const PluginManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.plugins.get(name)) |*handle| {
+        if (self.plugins.getPtr(name)) |handle| {
             try handle.start(self.allocator);
 
             // 记录插件为运行状态
@@ -145,12 +146,12 @@ pub const PluginManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.plugins.get(name)) |*handle| {
+        if (self.plugins.getPtr(name)) |handle| {
             try handle.stop();
 
             // 从运行列表中移除
-            if (self.running_plugins.remove(name)) |stored_name| {
-                self.allocator.free(stored_name);
+            if (self.running_plugins.fetchRemove(name)) |entry| {
+                self.allocator.free(entry.key);
             }
         } else {
             return PluginError.InvalidPlugin;
@@ -243,7 +244,7 @@ pub const PluginManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.plugins.get(name)) |*handle| {
+        if (self.plugins.getPtr(name)) |handle| {
             const was_running = self.running_plugins.contains(name);
 
             // 先停止插件（如果正在运行）
