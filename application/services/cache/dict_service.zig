@@ -51,7 +51,7 @@ pub const DictService = struct {
         defer self.allocator.free(cache_key);
 
         // 尝试从缓存获取
-        if (try self.cache.get(cache_key)) |_| {
+        if (self.cache.get(cache_key)) |_| {
             // TODO: 反序列化缓存数据
         }
 

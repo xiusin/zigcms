@@ -265,7 +265,7 @@ pub fn refreshCache(_: *Self, req: zap.Request) !void {
 /// 获取缓存状态
 pub fn getCacheStats(_: *Self, req: zap.Request) !void {
     const service_manager = global.getServiceManager();
-    const stats = try service_manager.getCacheStats();
+    const stats = service_manager.getCacheStats();
 
     base.send_ok(req, .{ .cache_items = stats.count, .expired_items = stats.expired, .message = "缓存统计数据" });
 }

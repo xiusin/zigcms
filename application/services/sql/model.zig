@@ -199,6 +199,10 @@ pub fn QueryBuilder(comptime T: type) type {
             self.orders.deinit(self.allocator);
             self.joins.deinit(self.allocator);
             self.groups.deinit(self.allocator);
+            // 释放 having_clause（如果已分配）
+            if (self.having_clause) |clause| {
+                self.allocator.free(clause);
+            }
         }
 
         // ====================================================================
@@ -470,7 +474,15 @@ pub fn QueryBuilder(comptime T: type) type {
 
         /// having("COUNT(*) > ?", .{5})
         pub fn having(self: *Self, clause: []const u8) *Self {
-            self.having_clause = clause;
+            // 释放旧的 having_clause（如果存在）
+            if (self.having_clause) |old_clause| {
+                self.allocator.free(old_clause);
+            }
+            // 复制字符串以确保内存安全
+            self.having_clause = self.allocator.dupe(u8, clause) catch {
+                self.having_clause = null;
+                return self;
+            };
             return self;
         }
 

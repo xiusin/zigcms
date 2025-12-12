@@ -88,8 +88,8 @@ pub const ServiceManager = struct {
     }
 
     /// 获取缓存统计
-    pub fn getCacheStats(self: *ServiceManager) !CacheService.CacheStats {
-        return try self.cache.stats();
+    pub fn getCacheStats(self: *ServiceManager) CacheService.CacheStats {
+        return self.cache.stats();
     }
 
     /// 清理过期缓存项

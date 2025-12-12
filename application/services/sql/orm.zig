@@ -55,19 +55,44 @@ pub const OrderDir = query_mod.OrderDir;
 // 公共辅助函数
 // ============================================================================
 
+/// 转义 SQL 字符串中的危险字符以防止 SQL 注入
+/// 转义: 单引号('), 反斜杠(\), NULL字节(\0), 换行(\n), 回车(\r), 双引号(")
+pub fn escapeSqlString(allocator: Allocator, str: []const u8) ![]u8 {
+    var result = std.ArrayListUnmanaged(u8){};
+    errdefer result.deinit(allocator);
+
+    for (str) |c| {
+        switch (c) {
+            '\'' => try result.appendSlice(allocator, "''"),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            0 => try result.appendSlice(allocator, "\\0"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '"' => try result.appendSlice(allocator, "\\\""),
+            else => try result.append(allocator, c),
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
 /// 格式化 WHERE 条件（顶层函数，供多处使用）
 pub fn formatWhere(allocator: Allocator, field: []const u8, op: []const u8, value: anytype) ![]u8 {
     const V = @TypeOf(value);
     const type_info = @typeInfo(V);
 
     if (V == []const u8) {
-        return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, value });
+        const escaped = try escapeSqlString(allocator, value);
+        defer allocator.free(escaped);
+        return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, escaped });
     } else if (type_info == .pointer and type_info.pointer.size == .one) {
         // 处理字符串字面量类型 *const [N:0]u8
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .array and child_info.array.child == u8) {
             const str: []const u8 = value;
-            return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, str });
+            const escaped = try escapeSqlString(allocator, str);
+            defer allocator.free(escaped);
+            return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, escaped });
         }
         return std.fmt.allocPrint(allocator, "{s} {s} NULL", .{ field, op });
     } else if (type_info == .int or type_info == .comptime_int) {
@@ -1536,14 +1561,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             // 处理字符串类型（包括 []const u8 和 *const [N:0]u8）
             if (T2 == []const u8) {
                 try sql.append(allocator, '\'');
-                // 转义单引号
-                for (value) |c| {
-                    if (c == '\'') {
-                        try sql.appendSlice(allocator, "''");
-                    } else {
-                        try sql.append(allocator, c);
-                    }
-                }
+                // 转义危险字符以防止 SQL 注入
+                try appendEscapedString(allocator, sql, value);
                 try sql.append(allocator, '\'');
             } else if (type_info == .pointer and type_info.pointer.size == .one) {
                 // 处理 *const [N:0]u8 类型（字符串字面量）
@@ -1551,13 +1570,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 if (child_info == .array and child_info.array.child == u8) {
                     try sql.append(allocator, '\'');
                     const str: []const u8 = value;
-                    for (str) |c| {
-                        if (c == '\'') {
-                            try sql.appendSlice(allocator, "''");
-                        } else {
-                            try sql.append(allocator, c);
-                        }
-                    }
+                    try appendEscapedString(allocator, sql, str);
                     try sql.append(allocator, '\'');
                 } else {
                     try sql.appendSlice(allocator, "NULL");
@@ -1580,6 +1593,22 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 try sql.appendSlice(allocator, if (value) "1" else "0");
             } else {
                 try sql.appendSlice(allocator, "NULL");
+            }
+        }
+
+        /// 转义字符串中的危险字符以防止 SQL 注入
+        /// 转义: 单引号('), 反斜杠(\), NULL字节(\0), 换行(\n), 回车(\r), 双引号(")
+        fn appendEscapedString(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), str: []const u8) !void {
+            for (str) |c| {
+                switch (c) {
+                    '\'' => try sql.appendSlice(allocator, "''"), // SQL 标准转义
+                    '\\' => try sql.appendSlice(allocator, "\\\\"),
+                    0 => try sql.appendSlice(allocator, "\\0"), // NULL 字节
+                    '\n' => try sql.appendSlice(allocator, "\\n"),
+                    '\r' => try sql.appendSlice(allocator, "\\r"),
+                    '"' => try sql.appendSlice(allocator, "\\\""),
+                    else => try sql.append(allocator, c),
+                }
             }
         }
     };
@@ -1637,6 +1666,12 @@ pub fn ModelQuery(comptime T: type) type {
             }
             self.join_clauses.deinit(self.db.allocator);
 
+            // 释放 having_clause（如果已分配）
+            if (self.having_clause) |clause| {
+                self.db.allocator.free(clause);
+            }
+
+            // select_fields 和 group_fields 存储的是外部引用（通常是编译时常量），不需要释放
             self.select_fields.deinit(self.db.allocator);
             self.group_fields.deinit(self.db.allocator);
         }
@@ -1933,7 +1968,15 @@ pub fn ModelQuery(comptime T: type) type {
 
         /// HAVING
         pub fn having(self: *Self, clause: []const u8) *Self {
-            self.having_clause = clause;
+            // 释放旧的 having_clause（如果存在）
+            if (self.having_clause) |old_clause| {
+                self.db.allocator.free(old_clause);
+            }
+            // 复制字符串以确保内存安全
+            self.having_clause = self.db.allocator.dupe(u8, clause) catch {
+                self.having_clause = null;
+                return self;
+            };
             return self;
         }
 
@@ -2341,26 +2384,15 @@ pub fn ModelQuery(comptime T: type) type {
 
             if (VT == []const u8) {
                 try sql.append(allocator, '\'');
-                for (value) |c| {
-                    if (c == '\'') {
-                        try sql.appendSlice(allocator, "''");
-                    } else {
-                        try sql.append(allocator, c);
-                    }
-                }
+                // 转义危险字符以防止 SQL 注入
+                try appendEscapedStrToSql(allocator, sql, value);
                 try sql.append(allocator, '\'');
             } else if (type_info == .pointer and type_info.pointer.size == .one) {
                 const child_info = @typeInfo(type_info.pointer.child);
                 if (child_info == .array and child_info.array.child == u8) {
                     try sql.append(allocator, '\'');
                     const str: []const u8 = value;
-                    for (str) |c| {
-                        if (c == '\'') {
-                            try sql.appendSlice(allocator, "''");
-                        } else {
-                            try sql.append(allocator, c);
-                        }
-                    }
+                    try appendEscapedStrToSql(allocator, sql, str);
                     try sql.append(allocator, '\'');
                 } else {
                     try sql.appendSlice(allocator, "NULL");
@@ -2383,6 +2415,21 @@ pub fn ModelQuery(comptime T: type) type {
                 try sql.appendSlice(allocator, if (value) "1" else "0");
             } else {
                 try sql.appendSlice(allocator, "NULL");
+            }
+        }
+
+        /// 转义字符串中的危险字符以防止 SQL 注入
+        fn appendEscapedStrToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), str: []const u8) !void {
+            for (str) |c| {
+                switch (c) {
+                    '\'' => try sql.appendSlice(allocator, "''"),
+                    '\\' => try sql.appendSlice(allocator, "\\\\"),
+                    0 => try sql.appendSlice(allocator, "\\0"),
+                    '\n' => try sql.appendSlice(allocator, "\\n"),
+                    '\r' => try sql.appendSlice(allocator, "\\r"),
+                    '"' => try sql.appendSlice(allocator, "\\\""),
+                    else => try sql.append(allocator, c),
+                }
             }
         }
 

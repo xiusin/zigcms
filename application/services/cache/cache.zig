@@ -27,9 +27,11 @@ pub const CacheService = struct {
     }
 
     pub fn deinit(self: *CacheService) void {
-        var iter = self.cache.valueIterator();
-        while (iter.next()) |item| {
-            item.deinit(self.allocator);
+        // 释放所有 key 和 value 的内存
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit(self.allocator);
+            self.allocator.free(entry.key_ptr.*);
         }
         self.cache.deinit(self.allocator);
     }
@@ -50,34 +52,44 @@ pub const CacheService = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const expiry_time = std.time.timestamp() + (ttl orelse self.default_ttl);
+        const now: u64 = @intCast(std.time.timestamp());
+        const expiry_time = now + (ttl orelse self.default_ttl);
 
-        // 检查是否已存在相同的键，如果存在则释放旧值
-        if (self.cache.get(key)) |existing_item| {
-            existing_item.deinit(self.allocator);
-            _ = self.cache.remove(key);
+        // 检查是否已存在相同的键，如果存在则释放旧值和旧键
+        if (self.cache.fetchRemove(key)) |existing| {
+            existing.value.deinit(self.allocator);
+            self.allocator.free(existing.key);
         }
 
         const value_copy = try self.allocator.dupe(u8, value);
+        errdefer self.allocator.free(value_copy);
+
+        const key_copy = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(key_copy);
+
         const item = CacheItem{
             .value = value_copy,
             .expiry = expiry_time,
-            .created_at = std.time.timestamp(),
+            .created_at = now,
         };
 
-        try self.cache.put(self.allocator, try self.allocator.dupe(u8, key), item);
+        try self.cache.put(self.allocator, key_copy, item);
     }
 
     /// 获取缓存项
-    pub fn get(self: *CacheService, key: []const u8) !?[]const u8 {
+    pub fn get(self: *CacheService, key: []const u8) ?[]const u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
 
         if (self.cache.get(key)) |item| {
             // 检查是否过期
-            if (std.time.timestamp() > item.expiry) {
-                // 过期了，删除它
-                _ = self.cache.remove(key);
+            const now: u64 = @intCast(std.time.timestamp());
+            if (now > item.expiry) {
+                // 过期了，删除它并释放内存
+                if (self.cache.fetchRemove(key)) |removed| {
+                    removed.value.deinit(self.allocator);
+                    self.allocator.free(removed.key);
+                }
                 return null;
             }
 
@@ -105,9 +117,13 @@ pub const CacheService = struct {
 
         if (self.cache.get(key)) |item| {
             // 检查是否过期
-            if (std.time.timestamp() > item.expiry) {
-                // 过期了，删除它
-                _ = self.cache.remove(key);
+            const now: u64 = @intCast(std.time.timestamp());
+            if (now > item.expiry) {
+                // 过期了，删除它并释放内存
+                if (self.cache.fetchRemove(key)) |removed| {
+                    removed.value.deinit(self.allocator);
+                    self.allocator.free(removed.key);
+                }
                 return false;
             }
             return true;
@@ -133,16 +149,17 @@ pub const CacheService = struct {
     pub const CacheStats = struct { count: usize, expired: usize };
 
     /// 获取缓存统计信息
-    pub fn stats(self: *CacheService) !CacheStats {
+    pub fn stats(self: *CacheService) CacheStats {
         self.mutex.lock();
         defer self.mutex.unlock();
 
         var count: usize = 0;
         var expired: usize = 0;
         var iter = self.cache.valueIterator();
+        const now: u64 = @intCast(std.time.timestamp());
 
         while (iter.next()) |item| {
-            if (std.time.timestamp() > item.expiry) {
+            if (now > item.expiry) {
                 expired += 1;
             } else {
                 count += 1;
@@ -160,9 +177,10 @@ pub const CacheService = struct {
         var to_remove = std.ArrayListUnmanaged([]const u8){};
         defer to_remove.deinit(self.allocator);
 
+        const now: u64 = @intCast(std.time.timestamp());
         var iter = self.cache.iterator();
         while (iter.next()) |entry| {
-            if (std.time.timestamp() > entry.value_ptr.expiry) {
+            if (now > entry.value_ptr.expiry) {
                 to_remove.append(self.allocator, entry.key_ptr.*) catch {};
             }
         }
@@ -209,17 +227,17 @@ test "CacheService basic operations" {
 
     // 测试设置和获取
     try cache.set("test_key", "test_value", null);
-    const value = try cache.get("test_key");
+    const value = cache.get("test_key");
     try std.testing.expect(value != null);
     try std.testing.expect(std.mem.eql(u8, value.?, "test_value"));
 
     // 测试存在性
-    try std.testing.expect(try cache.exists("test_key"));
-    try std.testing.expect(!try cache.exists("nonexistent"));
+    try std.testing.expect(cache.exists("test_key"));
+    try std.testing.expect(!cache.exists("nonexistent"));
 
     // 测试删除
     try cache.del("test_key");
-    try std.testing.expect(!try cache.exists("test_key"));
+    try std.testing.expect(!cache.exists("test_key"));
 }
 
 test "CacheService expiration" {
@@ -234,14 +252,14 @@ test "CacheService expiration" {
     try cache.set("expiring_key", "expiring_value", 1);
 
     // 检查存在
-    try std.testing.expect(try cache.exists("expiring_key"));
+    try std.testing.expect(cache.exists("expiring_key"));
 
     // 等待2秒后检查（应该已过期）
     std.time.sleep(2 * std.time.ns_per_s);
 
     // 现在应该不存在了
-    try std.testing.expect(!try cache.exists("expiring_key"));
-    const value = try cache.get("expiring_key");
+    try std.testing.expect(!cache.exists("expiring_key"));
+    const value = cache.get("expiring_key");
     try std.testing.expect(value == null);
 }
 
@@ -265,7 +283,7 @@ test "CacheService cleanup" {
     try cache.cleanupExpired();
 
     // 统计应该显示出清理效果
-    const stats = try cache.stats();
-    try std.testing.expect(stats.expired == 0); // 已经清理了
-    try std.testing.expect(stats.count == 1); // 只剩下key3
+    const cache_stats = cache.stats();
+    try std.testing.expect(cache_stats.expired == 0); // 已经清理了
+    try std.testing.expect(cache_stats.count == 1); // 只剩下key3
 }
