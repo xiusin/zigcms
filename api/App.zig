@@ -110,12 +110,20 @@ pub const App = struct {
         });
         owned = true;
 
-        // 注册动态 CRUD 路由
+        // 注册动态 CRUD 路由 - 基础操作
         try self.router.handle_func("/dynamic/list", ctrl_ptr, DynamicController.list);
         try self.router.handle_func("/dynamic/get", ctrl_ptr, DynamicController.get);
         try self.router.handle_func("/dynamic/save", ctrl_ptr, DynamicController.save);
         try self.router.handle_func("/dynamic/delete", ctrl_ptr, DynamicController.delete);
         try self.router.handle_func("/dynamic/schema", ctrl_ptr, DynamicController.schema);
+
+        // 扩展操作
+        try self.router.handle_func("/dynamic/query", ctrl_ptr, DynamicController.query);
+        try self.router.handle_func("/dynamic/count", ctrl_ptr, DynamicController.count);
+        try self.router.handle_func("/dynamic/exists", ctrl_ptr, DynamicController.exists);
+        try self.router.handle_func("/dynamic/tables", ctrl_ptr, DynamicController.tables);
+        try self.router.handle_func("/dynamic/batch_save", ctrl_ptr, DynamicController.batchSave);
+        try self.router.handle_func("/dynamic/batch_update", ctrl_ptr, DynamicController.batchUpdate);
     }
 
     /// 启动 HTTP 服务器
