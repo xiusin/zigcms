@@ -85,6 +85,39 @@ pub const App = struct {
         try self.router.handle_func(path, ctrl, handler);
     }
 
+    /// 注册动态 CRUD 路由
+    pub fn dynamicCrud(self: *Self) !void {
+        const DynamicController = controllers.common.Dynamic;
+        const ctrl_ptr = try self.allocator.create(DynamicController);
+
+        var owned = false;
+        errdefer if (!owned) self.allocator.destroy(ctrl_ptr);
+
+        ctrl_ptr.* = DynamicController.init(self.allocator);
+
+        // 追踪控制器指针以便后续清理
+        const destroyFn = struct {
+            fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
+                const typed_ptr: *DynamicController = @ptrCast(@alignCast(ptr));
+                typed_ptr.deinit();
+                alloc.destroy(typed_ptr);
+            }
+        }.destroy;
+
+        try self.controllers.append(self.allocator, .{
+            .ptr = @ptrCast(ctrl_ptr),
+            .deinit_fn = destroyFn,
+        });
+        owned = true;
+
+        // 注册动态 CRUD 路由
+        try self.router.handle_func("/dynamic/list", ctrl_ptr, DynamicController.list);
+        try self.router.handle_func("/dynamic/get", ctrl_ptr, DynamicController.get);
+        try self.router.handle_func("/dynamic/save", ctrl_ptr, DynamicController.save);
+        try self.router.handle_func("/dynamic/delete", ctrl_ptr, DynamicController.delete);
+        try self.router.handle_func("/dynamic/schema", ctrl_ptr, DynamicController.schema);
+    }
+
     /// 启动 HTTP 服务器
     pub fn listen(self: *Self, port: u16) !void {
         var listener = zap.HttpListener.init(.{

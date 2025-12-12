@@ -17,6 +17,7 @@ pub const common = struct {
     pub const Public = @import("public.controller.zig");
     pub const Generic = @import("generic.controller.zig");
     pub const Crud = @import("crud.controller.zig").Crud;
+    pub const Dynamic = @import("dynamic.controller.zig");
 };
 
 // 字典管理控制器
