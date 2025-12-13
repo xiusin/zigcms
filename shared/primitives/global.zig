@@ -109,19 +109,27 @@ fn initOrmDatabase() !void {
     const db = try _allocator.?.create(sql.Database);
     errdefer _allocator.?.destroy(db);
 
-    db.* = try sql.Database.mysql(_allocator.?, .{
-        .port = 3306,
-        .host = "117.72.107.213",
-        .user = "zigcms",
-        .password = "zigcms",
-        .database = "zigcms",
-        .keepalive_interval_ms = 0, // 暂时禁用 keepalive 避免线程问题
-    });
+    // db.* = try sql.Database.mysql(_allocator.?, .{
+    //     .port = 3306,
+    //     .host = "117.72.107.213",
+    //     .user = "zigcms",
+    //     .password = "zigcms",
+    //     .database = "zigcms",
+    //     .keepalive_interval_ms = 0, // 暂时禁用 keepalive 避免线程问题
+    // });
+
+    db.* = try sql.Database.sqlite(_allocator.?, "zigcms.db");
 
     _db = db;
 
     // 初始化所有 ORM 模型
     orm_models.init(db);
+
+    // 执行模型迁移，创建数据表
+    orm_models.migrate(db) catch |e| {
+        logger.err("[global] 模型迁移失败: {}", .{e});
+        @panic("无法执行模型迁移，请检查数据库权限或配置");
+    };
 
     logger.info("[global] ORM 数据库连接成功!", .{});
 }

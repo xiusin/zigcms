@@ -635,56 +635,75 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             };
         }
 
-        /// 生成 CREATE TABLE SQL 语句（编译期）
-        pub fn createTableSql(comptime dialect: Dialect) []const u8 {
-            comptime {
-                const fields = std.meta.fields(T);
-                const pk = primaryKey();
-                const tbl = tableName();
+        /// 生成 CREATE TABLE SQL 语句（运行时版本）
+        pub fn createTableSql(db: *Database, dialect: Dialect) ![]const u8 {
+            return switch (dialect) {
+                .mysql => createTableSqlForDialect(db, .mysql),
+                .sqlite => createTableSqlForDialect(db, .sqlite),
+                .postgresql => createTableSqlForDialect(db, .postgresql),
+            };
+        }
 
-                var pure_table_name: []const u8 = tbl;
-                for (tbl, 0..) |c, i| {
-                    if (c == '.') {
-                        pure_table_name = tbl[i + 1 ..];
-                        break;
-                    }
+        /// 为特定方言生成 CREATE TABLE SQL（编译时方言）
+        fn createTableSqlForDialect(db: *Database, comptime dialect: Dialect) ![]const u8 {
+            const fields = std.meta.fields(T);
+            const pk = primaryKey();
+            const tbl = tableName();
+
+            var pure_table_name: []const u8 = tbl;
+            for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    pure_table_name = tbl[i + 1 ..];
+                    break;
                 }
-
-                var sql: []const u8 = "CREATE TABLE IF NOT EXISTS " ++ pure_table_name ++ " (\n";
-                var first_field = true;
-
-                for (fields) |field| {
-                    if (@hasDecl(T, "ignore_fields")) {
-                        var skip = false;
-                        for (T.ignore_fields) |ignore| {
-                            if (std.mem.eql(u8, field.name, ignore)) {
-                                skip = true;
-                                break;
-                            }
-                        }
-                        if (skip) continue;
-                    }
-
-                    const is_pk = std.mem.eql(u8, field.name, pk);
-                    const sql_type = zigTypeToSqlType(field.type, dialect, field.name);
-
-                    if (!first_field) sql = sql ++ ",\n";
-                    first_field = false;
-                    sql = sql ++ "    " ++ field.name ++ " " ++ sql_type;
-
-                    if (is_pk and dialect != .sqlite) {
-                        sql = sql ++ " NOT NULL";
-                    }
-                }
-
-                sql = sql ++ ",\n    PRIMARY KEY (" ++ pk ++ ")\n)";
-
-                if (dialect == .mysql) {
-                    sql = sql ++ " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-                }
-
-                return sql ++ ";";
             }
+
+            var sql_builder = std.ArrayListUnmanaged(u8){};
+            errdefer sql_builder.deinit(db.allocator);
+
+            try sql_builder.appendSlice(db.allocator, "CREATE TABLE IF NOT EXISTS ");
+            try sql_builder.appendSlice(db.allocator, pure_table_name);
+            try sql_builder.appendSlice(db.allocator, " (\n");
+
+            var first_field = true;
+            inline for (fields) |field| {
+                if (@hasDecl(T, "ignore_fields")) {
+                    var skip = false;
+                    for (T.ignore_fields) |ignore| {
+                        if (std.mem.eql(u8, field.name, ignore)) {
+                            skip = true;
+                            break;
+                        }
+                    }
+                    if (skip) continue;
+                }
+
+                const is_pk = std.mem.eql(u8, field.name, pk);
+                const sql_type = zigTypeToSqlType(field.type, dialect, field.name);
+
+                if (!first_field) try sql_builder.appendSlice(db.allocator, ",\n");
+                first_field = false;
+                try sql_builder.appendSlice(db.allocator, "    ");
+                try sql_builder.appendSlice(db.allocator, field.name);
+                try sql_builder.appendSlice(db.allocator, " ");
+                try sql_builder.appendSlice(db.allocator, sql_type);
+
+                if (is_pk and dialect != .sqlite) {
+                    try sql_builder.appendSlice(db.allocator, " NOT NULL");
+                }
+            }
+
+            try sql_builder.appendSlice(db.allocator, ",\n    PRIMARY KEY (");
+            try sql_builder.appendSlice(db.allocator, pk);
+            try sql_builder.appendSlice(db.allocator, ")\n)");
+
+            if (dialect == .mysql) {
+                try sql_builder.appendSlice(db.allocator, " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+
+            try sql_builder.append(db.allocator, ';');
+
+            return sql_builder.toOwnedSlice(db.allocator);
         }
 
         /// 生成 DROP TABLE SQL 语句
@@ -707,11 +726,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 .sqlite, .memory => .sqlite,
                 .postgresql => .postgresql,
             };
-            const sql_str = switch (dialect) {
-                .mysql => createTableSql(.mysql),
-                .sqlite => createTableSql(.sqlite),
-                .postgresql => createTableSql(.postgresql),
-            };
+            const sql_str = try createTableSql(db, dialect);
+            defer db.allocator.free(sql_str);
             _ = try db.rawExec(sql_str);
         }
 
