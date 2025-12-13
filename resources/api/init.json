@@ -22,52 +22,111 @@
           "target": "_self"
         },
         {
+          "title": "管理员管理",
+          "href": "page/admin/list.html",
+          "icon": "fa fa-user-secret",
+          "target": "_self"
+        },
+        {
           "title": "菜单管理",
           "href": "page/menu/list.html",
-          "icon": "fa fa-window-maximize",
+          "icon": "fa fa-navicon",
           "target": "_self"
         },
         {
           "title": "角色管理",
           "href": "page/role/list.html",
-          "icon": "fa fa-window-maximize",
+          "icon": "fa fa-shield",
+          "target": "_self"
+        }
+      ]
+    },
+    {
+      "title": "组织架构",
+      "icon": "fa fa-building",
+      "href": "",
+      "target": "_self",
+      "child": [
+        {
+          "title": "部门管理",
+          "href": "page/department/list.html",
+          "icon": "fa fa-sitemap",
           "target": "_self"
         },
         {
-          "title": "文件系统",
-          "href": "js/lay-module/fileManager/demo/index.html",
-          "icon": "fa fa-window-maximize",
+          "title": "职位管理",
+          "href": "page/position/list.html",
+          "icon": "fa fa-briefcase",
           "target": "_self"
         },
         {
-          "title": "内容管理",
-          "icon": "fa fa-file-text",
-          "target": "_self",
-          "child": [
-            {
-              "title": "分类管理",
-              "href": "page/category/list.html",
-              "icon": "fa fa-list-alt",
-              "target": "_self"
-            },
-            {
-              "title": "文章管理",
-              "href": "page/article/list.html",
-              "icon": "fa fa-navicon",
-              "target": "_self"
-            },
-            {
-              "title": "文件管理",
-              "href": "page/upload/list.html",
-              "icon": "fa fa-upload",
-              "target": "_self"
-            }
-          ]
+          "title": "员工管理",
+          "href": "page/employee/list.html",
+          "icon": "fa fa-users",
+          "target": "_self"
+        }
+      ]
+    },
+    {
+      "title": "内容管理",
+      "icon": "fa fa-file-text",
+      "href": "",
+      "target": "_self",
+      "child": [
+        {
+          "title": "分类管理",
+          "href": "page/category/list.html",
+          "icon": "fa fa-list-alt",
+          "target": "_self"
+        },
+        {
+          "title": "文章管理",
+          "href": "page/article/list.html",
+          "icon": "fa fa-newspaper-o",
+          "target": "_self"
+        },
+        {
+          "title": "Banner管理",
+          "href": "page/banner/list.html",
+          "icon": "fa fa-picture-o",
+          "target": "_self"
+        }
+      ]
+    },
+    {
+      "title": "系统工具",
+      "icon": "fa fa-cogs",
+      "href": "",
+      "target": "_self",
+      "child": [
+        {
+          "title": "文件管理",
+          "href": "page/upload/list.html",
+          "icon": "fa fa-upload",
+          "target": "_self"
+        },
+        {
+          "title": "任务管理",
+          "href": "page/task/list.html",
+          "icon": "fa fa-tasks",
+          "target": "_self"
+        },
+        {
+          "title": "字典管理",
+          "href": "page/dict/list.html",
+          "icon": "fa fa-book",
+          "target": "_self"
         },
         {
           "title": "系统配置",
           "href": "page/setting.html",
           "icon": "fa fa-gears",
+          "target": "_self"
+        },
+        {
+          "title": "文件系统",
+          "href": "js/lay-module/fileManager/demo/index.html",
+          "icon": "fa fa-folder-open",
           "target": "_self"
         }
       ]
