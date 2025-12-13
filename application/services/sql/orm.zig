@@ -151,7 +151,12 @@ pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.Res
                 }
             } else if (@typeInfo(field.type) == .int) {
                 if (value) |v| {
-                    @field(model, field.name) = std.fmt.parseInt(field.type, v, 10) catch 0;
+                    var parsed = std.fmt.parseInt(field.type, v, 10) catch 0;
+                    if (std.mem.endsWith(u8, field.name, "_at")) {
+                        // 转换时间戳从秒到纳秒
+                        parsed *= 1_000_000_000;
+                    }
+                    @field(model, field.name) = parsed;
                 } else {
                     @field(model, field.name) = 0;
                 }
@@ -1365,12 +1370,89 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return values.toOwnedSlice();
         }
 
-        /// 释放 pluck 返回的数组
-        pub fn freePlucked(allocator: Allocator, values: [][]const u8) void {
-            for (values) |v| {
-                allocator.free(v);
+        /// 批量插入或更新 (Upsert)
+        /// unique_by: 用于判断唯一性的字段名数组
+        /// update_fields: 可选，要更新的字段名数组，为 null 则更新除 unique_by 外的所有字段
+        /// 返回影响的记录数
+        pub fn upsert(db: *Database, records: []const T, unique_by: []const []const u8, update_fields: ?[]const []const u8) !u64 {
+            if (records.len == 0) return 0;
+
+            var total_affected: u64 = 0;
+
+            for (records) |record| {
+                // 检查是否已存在
+                var q = Self.query(db);
+                defer q.deinit();
+
+                for (unique_by) |field_name| {
+                    inline for (std.meta.fields(T)) |field| {
+                        if (std.mem.eql(u8, field.name, field_name)) {
+                            _ = q.where(field.name, "=", @field(record, field.name));
+                            break;
+                        }
+                    }
+                }
+
+                const does_exist = try q.exists();
+
+                if (does_exist) {
+                    // 更新现有记录
+                    const pk = Self.primaryKey();
+                    var id: u64 = 0;
+
+                    // 从记录中获取 ID（假设 unique_by 包含主键或可以通过查询获取）
+                    // 这里简化：重新查询获取 ID
+                    const existing_records = try q.limit(1).get();
+                    defer db.allocator.free(existing_records);
+
+                    if (existing_records.len > 0) {
+                        const existing = existing_records[0];
+                        inline for (std.meta.fields(T)) |field| {
+                            if (std.mem.eql(u8, field.name, pk)) {
+                                id = @field(existing, field.name);
+                                break;
+                            }
+                        }
+
+                        // 构建更新数据
+                        var update_data: T = undefined;
+                        const fields_to_update = update_fields orelse blk: {
+                            // 默认更新除 unique_by 外的所有字段
+                            var all_fields: [std.meta.fields(T).len][]const u8 = undefined;
+                            var idx: usize = 0;
+                            inline for (std.meta.fields(T)) |field| {
+                                var is_unique = false;
+                                for (unique_by) |u| {
+                                    if (std.mem.eql(u8, field.name, u)) {
+                                        is_unique = true;
+                                        break;
+                                    }
+                                }
+                                if (!is_unique) {
+                                    all_fields[idx] = field.name;
+                                    idx += 1;
+                                }
+                            }
+                            break :blk all_fields[0..idx];
+                        };
+
+                        inline for (std.meta.fields(T), 0..) |field, i| {
+                            if (i < fields_to_update.len and std.mem.eql(u8, field.name, fields_to_update[i])) {
+                                @field(update_data, field.name) = @field(record, field.name);
+                            }
+                        }
+
+                        _ = try Self.update(db, id, update_data);
+                        total_affected += 1;
+                    }
+                } else {
+                    // 插入新记录
+                    _ = try Self.create(db, record);
+                    total_affected += 1;
+                }
             }
-            allocator.free(values);
+
+            return total_affected;
         }
 
         /// 按条件删除多条记录
@@ -1539,7 +1621,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             inline for (fields, 0..) |field, i| {
                 if (i > 0) try sql.appendSlice(allocator, ", ");
                 const value = @field(data, field.name);
-                try appendValue(allocator, &sql, value);
+                try appendValue(allocator, &sql, value, field.name);
             }
 
             try sql.append(allocator, ')');
@@ -1563,18 +1645,18 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 try sql.appendSlice(allocator, field.name);
                 try sql.appendSlice(allocator, " = ");
                 const value = @field(data, field.name);
-                try appendValue(allocator, &sql, value);
+                try appendValue(allocator, &sql, value, field.name);
             }
 
             try sql.appendSlice(allocator, " WHERE ");
             try sql.appendSlice(allocator, pk);
             try sql.appendSlice(allocator, " = ");
-            try appendValue(allocator, &sql, id);
+            try appendValue(allocator, &sql, id, pk);
 
             return sql.toOwnedSlice(allocator);
         }
 
-        fn appendValue(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype) !void {
+        fn appendValue(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype, field_name: []const u8) !void {
             const T2 = @TypeOf(value);
             const type_info = @typeInfo(T2);
 
@@ -1597,14 +1679,22 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 }
             } else if (type_info == .optional) {
                 if (value) |v| {
-                    try appendValue(allocator, sql, v);
+                    try appendValue(allocator, sql, v, field_name);
                 } else {
                     try sql.appendSlice(allocator, "NULL");
                 }
             } else if (type_info == .int or type_info == .comptime_int) {
-                var buf: [32]u8 = undefined;
-                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
-                try sql.appendSlice(allocator, formatted);
+                if (std.mem.endsWith(u8, field_name, "_at")) {
+                    // 转换时间戳从纳秒到秒
+                    const seconds = @as(u64, @intCast(value)) / 1_000_000_000;
+                    var buf: [32]u8 = undefined;
+                    const formatted = try std.fmt.bufPrint(&buf, "{d}", .{seconds});
+                    try sql.appendSlice(allocator, formatted);
+                } else {
+                    var buf: [32]u8 = undefined;
+                    const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                    try sql.appendSlice(allocator, formatted);
+                }
             } else if (type_info == .float or type_info == .comptime_float) {
                 var buf: [64]u8 = undefined;
                 const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
@@ -2469,6 +2559,74 @@ pub fn ModelQuery(comptime T: type) type {
         pub fn collect(self: *Self) !define(T).List {
             const data = try self.get();
             return define(T).List{ .allocator = self.db.allocator, .data = data };
+        }
+
+        /// Laravel 风格：查找或创建记录
+        /// 使用: const user = try User.query(db).firstOrCreate(.{.email = "test@example.com"}, .{.name = "Test User"});
+        pub fn firstOrCreate(self: *Self, attributes: anytype, values: anytype) !T {
+            // 应用查找条件
+            inline for (std.meta.fields(@TypeOf(attributes))) |field| {
+                _ = self.where(field.name, "=", @field(attributes, field.name));
+            }
+
+            const results = try self.get();
+            if (results.len > 0) {
+                defer self.db.allocator.free(results);
+                return results[0];
+            }
+
+            // 合并 attributes 和 values 创建新记录
+            var data: T = undefined;
+            inline for (std.meta.fields(T)) |field| {
+                if (@hasField(@TypeOf(attributes), field.name)) {
+                    @field(data, field.name) = @field(attributes, field.name);
+                } else if (@hasField(@TypeOf(values), field.name)) {
+                    @field(data, field.name) = @field(values, field.name);
+                }
+            }
+
+            return try Self.create(self.db, data);
+        }
+
+        /// Laravel 风格：查找或创建并更新记录
+        /// 使用: const user = try User.query(db).updateOrCreate(.{.email = "test@example.com"}, .{.name = "Updated Name"});
+        pub fn updateOrCreate(self: *Self, attributes: anytype, values: anytype) !T {
+            // 应用查找条件
+            inline for (std.meta.fields(@TypeOf(attributes))) |field| {
+                _ = self.where(field.name, "=", @field(attributes, field.name));
+            }
+
+            const results = try self.get();
+            if (results.len > 0) {
+                defer self.db.allocator.free(results);
+                const existing = results[0];
+
+                // 获取主键值
+                const pk = Self.primaryKey();
+                var id: u64 = 0;
+                inline for (std.meta.fields(T)) |field| {
+                    if (std.mem.eql(u8, field.name, pk)) {
+                        id = @field(existing, field.name);
+                        break;
+                    }
+                }
+
+                // 更新记录
+                _ = try Self.update(self.db, id, values);
+                return Self.find(self.db, id) orelse error.UpdateFailed;
+            } else {
+                // 合并 attributes 和 values 创建新记录
+                var data: T = undefined;
+                inline for (std.meta.fields(T)) |field| {
+                    if (@hasField(@TypeOf(attributes), field.name)) {
+                        @field(data, field.name) = @field(attributes, field.name);
+                    } else if (@hasField(@TypeOf(values), field.name)) {
+                        @field(data, field.name) = @field(values, field.name);
+                    }
+                }
+
+                return try Self.create(self.db, data);
+            }
         }
 
         /// 检查是否存在记录
