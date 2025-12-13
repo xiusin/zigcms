@@ -49,8 +49,6 @@ pub const PluginSystemService = struct {
         // 从 plugins 目录加载所有插件
         const plugins_dir = "plugins";
         try self.plugin_manager.loadPluginsFromDirectory(plugins_dir);
-
-        std.debug.print("系统插件加载完成，共加载 {} 个插件\n", .{self.plugin_manager.plugins.count()});
     }
 
     /// 加载单个插件

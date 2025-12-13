@@ -201,8 +201,8 @@ pub const Database = struct {
     conn: interface.Connection,
     pool: ?*ConnectionPool = null, // 内部连接池（MySQL 使用）
     driver_type: interface.DriverType,
-    debug: bool = false,
-    enable_logging: bool = false,
+    debug: bool = true,
+    enable_logging: bool = true,
     logger: ?*logger_mod.Logger = null,
 
     /// 从统一连接创建
@@ -551,11 +551,15 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
         /// 获取表名
         pub fn tableName() []const u8 {
-            if (config.table_name) |n| return n;
-            if (@hasDecl(T, "table_name")) {
-                return T.table_name;
+            const tbl = if (config.table_name) |n| n else if (@hasDecl(T, "table_name")) T.table_name else @typeName(T);
+            comptime var pure_table_name: []const u8 = tbl;
+            inline for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    pure_table_name = tbl[i + 1 ..];
+                    break;
+                }
             }
-            return @typeName(T);
+            return pure_table_name;
         }
 
         /// 获取主键名
@@ -2550,6 +2554,7 @@ pub fn ModelQuery(comptime T: type) type {
             try self.appendWhere(&sql);
 
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
+
             defer self.db.allocator.free(sql_str);
 
             var result = try self.db.rawQuery(sql_str);

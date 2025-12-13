@@ -72,6 +72,8 @@ pub fn login(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "缺少必要参数");
     }
 
+    std.log.info("用户登录: {s}", .{dto.username});
+
     // 使用 ORM 查询用户
     var q = Admin.WhereEq("username", dto.username);
     defer q.deinit();

@@ -23,3 +23,5 @@ resources/uploads/
 ai_modify.md
 ai_todo.md
 *.sqlite3
+zigcms.db-shm
+zigcms.db-wal
