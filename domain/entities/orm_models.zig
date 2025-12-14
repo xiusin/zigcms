@@ -247,6 +247,105 @@ pub const Upload = sql.define(struct {
     is_delete: i32 = 0,
 });
 
+/// CMS 模型管理
+pub const CmsModel = sql.define(struct {
+    pub const table_name = "zigcms.cms_model";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    name: []const u8 = "",
+    table_name_field: []const u8 = "",
+    description: []const u8 = "",
+    model_type: i32 = 2,
+    status: i32 = 1,
+    sort: i32 = 0,
+    icon: []const u8 = "",
+    is_system: i32 = 0,
+    list_template: []const u8 = "",
+    detail_template: []const u8 = "",
+    form_template: []const u8 = "",
+    list_fields: []const u8 = "[]",
+    search_fields: []const u8 = "[]",
+    order_field: []const u8 = "sort",
+    order_direction: []const u8 = "asc",
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
+/// CMS 字段管理
+pub const CmsField = sql.define(struct {
+    pub const table_name = "zigcms.cms_field";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    model_id: i32 = 0,
+    field_name: []const u8 = "",
+    field_label: []const u8 = "",
+    field_type: []const u8 = "text",
+    db_type: []const u8 = "VARCHAR(255)",
+    default_value: []const u8 = "",
+    is_required: i32 = 0,
+    is_list_show: i32 = 1,
+    is_search: i32 = 0,
+    is_sort: i32 = 0,
+    is_unique: i32 = 0,
+    validation: []const u8 = "{}",
+    options: []const u8 = "[]",
+    placeholder: []const u8 = "",
+    help_text: []const u8 = "",
+    min_length: i32 = 0,
+    max_length: i32 = 0,
+    pattern: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    field_group: []const u8 = "基本信息",
+    column_width: i32 = 0,
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
+/// 文档管理
+pub const Document = sql.define(struct {
+    pub const table_name = "zigcms.document";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    model_id: i32 = 0,
+    category_id: i32 = 0,
+    title: []const u8 = "",
+    sub_title: []const u8 = "",
+    keywords: []const u8 = "",
+    description: []const u8 = "",
+    thumb: []const u8 = "",
+    author: []const u8 = "",
+    source: []const u8 = "",
+    content: []const u8 = "",
+    attachments: []const u8 = "[]",
+    extra_fields: []const u8 = "{}",
+    view_count: i32 = 0,
+    like_count: i32 = 0,
+    comment_count: i32 = 0,
+    sort: i32 = 0,
+    status: i32 = 0,
+    is_recommend: i32 = 0,
+    is_top: i32 = 0,
+    is_hot: i32 = 0,
+    publish_time: ?i64 = null,
+    creator_id: i32 = 0,
+    updater_id: i32 = 0,
+    url_alias: []const u8 = "",
+    external_link: []const u8 = "",
+    template: []const u8 = "",
+    remark: []const u8 = "",
+    create_time: ?i64 = null,
+    update_time: ?i64 = null,
+    is_delete: i32 = 0,
+});
+
 // ============================================================================
 // 初始化函数
 // ============================================================================
@@ -265,6 +364,9 @@ pub fn init(db: *sql.Database) void {
     Department.use(db);
     Employee.use(db);
     Position.use(db);
+    CmsModel.use(db);
+    CmsField.use(db);
+    Document.use(db);
 }
 
 /// 获取 Database 类型（便于外部使用）
@@ -294,6 +396,9 @@ pub const AllModels = .{
     Department,
     Employee,
     Position,
+    CmsModel,
+    CmsField,
+    Document,
 };
 
 /// 迁移所有表（创建表）

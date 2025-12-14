@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角色管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👥 角色管理 API</h1>
+            <p>管理系统角色及权限分配</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="document.html">文档</a>
+            <a href="department.html">部门</a>
+            <a href="employee.html">员工</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取角色列表</h2>
+            <p>分页获取角色列表。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/role/list</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>默认值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>1</td>
+                        <td>页码</td>
+                    </tr>
+                    <tr>
+                        <td>limit</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>10</td>
+                        <td>每页数量</td>
+                    </tr>
+                    <tr>
+                        <td>sort[field]</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>asc</td>
+                        <td>排序方向</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>页码:</label>
+                        <input type="number" id="list-page" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>每页数量:</label>
+                        <input type="number" id="list-limit" value="10" min="1">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testListRoles()">获取列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "count": 5,
+                "data": [
+                {
+                "id": 1,
+                "name": "超级管理员",
+                "code": "admin",
+                "description": "系统最高权限",
+                "permissions": "[\"*\"]",
+                "data_scope": 1,
+                "sort": 1,
+                "status": 1
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取角色详情</h2>
+            <p>根据 ID 获取角色信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/role/get</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>角色 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>角色 ID:</label>
+                    <input type="number" id="get-id" placeholder="输入角色 ID">
+                </div>
+                <button class="btn success" onclick="testGetRole()">获取详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "name": "超级管理员",
+                "code": "admin",
+                "description": "系统最高权限",
+                "permissions": "[\"*\"]",
+                "data_scope": 1,
+                "sort": 1,
+                "status": 1,
+                "remark": ""
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存角色</h2>
+            <p>新增或更新角色。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/role/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>角色 ID（更新时）</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>角色名称</td>
+                        <td>required</td>
+                    </tr>
+                    <tr>
+                        <td>code</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>角色编码</td>
+                        <td>唯一</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>描述</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>permissions</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>权限</td>
+                        <td>JSON 数组</td>
+                    </tr>
+                    <tr>
+                        <td>data_scope</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>数据范围</td>
+                        <td>1-5</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0/1</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID (更新时填写):</label>
+                        <input type="number" id="save-id" placeholder="留空为新增">
+                    </div>
+                    <div class="form-group">
+                        <label>角色名称:</label>
+                        <input type="text" id="save-name" placeholder="输入角色名称">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>角色编码:</label>
+                        <input type="text" id="save-code" placeholder="输入角色编码">
+                    </div>
+                    <div class="form-group">
+                        <label>数据范围:</label>
+                        <select id="save-data-scope">
+                            <option value="1">全部数据</option>
+                            <option value="2">本部门数据</option>
+                            <option value="3">本部门及以下数据</option>
+                            <option value="4">仅本人数据</option>
+                            <option value="5">自定义数据</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>描述:</label>
+                    <textarea id="save-desc" placeholder="输入角色描述"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>权限 (JSON 数组):</label>
+                    <textarea id="save-permissions" placeholder='["cms:*", "user:list"]'>["cms:*"]</textarea>
+                </div>
+                <button class="btn success" onclick="testSaveRole()">保存角色</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "name": "内容编辑",
+                "code": "editor",
+                "description": "内容管理权限",
+                "permissions": "[\"cms:*\"]",
+                "data_scope": 2,
+                "status": 1
+                }</div>
+
+            <h3>错误响应</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>错误信息</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>角色名称不能为空</td>
+                        <td>name 为空</td>
+                    </tr>
+                    <tr>
+                        <td>角色编码已存在</td>
+                        <td>code 重复</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2><span class="method delete">DELETE</span> 删除角色</h2>
+            <p>软删除角色。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/role/delete</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>角色 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>角色 ID:</label>
+                    <input type="number" id="delete-id" placeholder="输入要删除的角色 ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteRole()">删除角色</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>错误响应</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>错误信息</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>系统角色不可删除</td>
+                        <td>id = 1 的角色</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取角色选项</h2>
+            <p>获取启用状态的角色列表（下拉选择用）。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/role/select</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testSelectRoles()">获取选项</button>
+                <div id="select-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                { "id": 1, "name": "超级管理员" },
+                { "id": 2, "name": "普通管理员" }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取角色权限</h2>
+            <p>获取指定角色的权限配置。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/role/permissions</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>角色 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>角色 ID:</label>
+                    <input type="number" id="permissions-id" placeholder="输入角色 ID">
+                </div>
+                <button class="btn success" onclick="testGetRolePermissions()">获取权限</button>
+                <div id="permissions-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 2,
+                "name": "普通管理员",
+                "permissions": "[\"cms:document:list\",\"cms:document:get\"]",
+                "data_scope": 2
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 更新角色权限</h2>
+            <p>更新角色的权限配置。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/role/update-permissions</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>角色 ID</td>
+                    </tr>
+                    <tr>
+                        <td>permissions</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>权限列表</td>
+                    </tr>
+                    <tr>
+                        <td>data_scope</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>数据范围</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>角色 ID:</label>
+                        <input type="number" id="update-perm-id" placeholder="输入角色 ID">
+                    </div>
+                    <div class="form-group">
+                        <label>数据范围:</label>
+                        <select id="update-data-scope">
+                            <option value="1">全部数据</option>
+                            <option value="2">本部门数据</option>
+                            <option value="3">本部门及以下数据</option>
+                            <option value="4">仅本人数据</option>
+                            <option value="5">自定义数据</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>权限 (JSON 数组):</label>
+                    <textarea id="update-permissions" placeholder='["cms:*", "user:list"]'>["cms:*"]</textarea>
+                </div>
+                <button class="btn success" onclick="testUpdateRolePermissions()">更新权限</button>
+                <div id="update-perm-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "id": 2,
+                "permissions": "[\"cms:*\", \"setting:get\"]",
+                "data_scope": 2
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 数据范围说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>全部数据</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>本部门数据</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>本部门及以下数据</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>仅本人数据</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>自定义数据</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>权限格式说明</h3>
+            <p>权限使用 JSON 数组格式，支持通配符：</p>
+            <div class="code-block">// 全部权限
+                ["*"]
+
+                // 模块全部权限
+                ["cms:*", "setting:*"]
+
+                // 具体接口权限
+                ["cms:document:list", "cms:document:get", "cms:document:save"]</div>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListRoles() {
+            const page = document.getElementById('list-page').value;
+            const limit = document.getElementById('list-limit').value;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/role/list?page=${page}&limit=${limit}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetRole() {
+            const id = document.getElementById('get-id').value;
+
+            if (!id) {
+                alert('请输入角色 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/role/get?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveRole() {
+            const id = document.getElementById('save-id').value;
+            const name = document.getElementById('save-name').value;
+            const code = document.getElementById('save-code').value;
+            const desc = document.getElementById('save-desc').value;
+            const dataScope = document.getElementById('save-data-scope').value;
+            const permissions = document.getElementById('save-permissions').value;
+
+            if (!name) {
+                alert('请输入角色名称');
+                return;
+            }
+
+            const body = {
+                name: name,
+                description: desc,
+                data_scope: parseInt(dataScope),
+                status: 1
+            };
+
+            if (id) body.id = parseInt(id);
+            if (code) body.code = code;
+
+            try {
+                body.permissions = JSON.parse(permissions);
+            } catch (e) {
+                alert('权限格式错误，请输入有效的 JSON 数组');
+                return;
+            }
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/role/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteRole() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                alert('请输入角色 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除这个角色吗？')) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/role/delete?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSelectRoles() {
+            const responseDiv = document.getElementById('select-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/role/select');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetRolePermissions() {
+            const id = document.getElementById('permissions-id').value;
+
+            if (!id) {
+                alert('请输入角色 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('permissions-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/role/permissions?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testUpdateRolePermissions() {
+            const id = document.getElementById('update-perm-id').value;
+            const dataScope = document.getElementById('update-data-scope').value;
+            const permissions = document.getElementById('update-permissions').value;
+
+            if (!id) {
+                alert('请输入角色 ID');
+                return;
+            }
+
+            const body = {
+                id: parseInt(id),
+                data_scope: parseInt(dataScope)
+            };
+
+            try {
+                body.permissions = JSON.parse(permissions);
+            } catch (e) {
+                alert('权限格式错误，请输入有效的 JSON 数组');
+                return;
+            }
+
+            const responseDiv = document.getElementById('update-perm-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/role/update-permissions', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

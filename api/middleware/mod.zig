@@ -53,6 +53,7 @@ const zap = @import("zap");
 // 导出子模块
 pub const chain = @import("chain.zig");
 pub const wrapper = @import("wrapper.zig");
+pub const security = @import("security.middleware.zig");
 
 // 类型导出
 pub const Context = chain.Context;

@@ -67,3 +67,26 @@ pub const menu = struct {
     pub const Save = @import("menu_save.dto.zig").MenuSaveDto;
     pub const Item = @import("menu_item.dto.zig").MenuItemDto;
 };
+
+// CMS 模型相关 DTO
+pub const cms_model = struct {
+    pub const Create = @import("cms_model.dto.zig").CmsModelCreateDto;
+    pub const Update = @import("cms_model.dto.zig").CmsModelUpdateDto;
+    pub const Response = @import("cms_model.dto.zig").CmsModelResponseDto;
+};
+
+// CMS 字段相关 DTO
+pub const cms_field = struct {
+    pub const Create = @import("cms_field.dto.zig").CmsFieldCreateDto;
+    pub const Update = @import("cms_field.dto.zig").CmsFieldUpdateDto;
+    pub const Sort = @import("cms_field.dto.zig").CmsFieldSortDto;
+    pub const BatchSort = @import("cms_field.dto.zig").CmsFieldBatchSortDto;
+};
+
+// 文档相关 DTO
+pub const document = struct {
+    pub const Create = @import("document.dto.zig").DocumentCreateDto;
+    pub const Update = @import("document.dto.zig").DocumentUpdateDto;
+    pub const Batch = @import("document.dto.zig").DocumentBatchDto;
+    pub const Query = @import("document.dto.zig").DocumentQueryDto;
+};

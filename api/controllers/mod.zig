@@ -33,6 +33,27 @@ pub const org = struct {
     pub const Role = @import("role.controller.zig");
 };
 
+// CMS 内容管理控制器
+pub const cms = struct {
+    pub const Model = @import("cms_model.controller.zig");
+    pub const Field = @import("cms_field.controller.zig");
+    pub const Document = @import("document.controller.zig");
+    pub const Category = @import("category.controller.zig");
+    pub const Material = @import("material.controller.zig");
+    pub const MaterialCategory = @import("material_category.controller.zig");
+};
+
+// 会员管理控制器
+pub const member = struct {
+    pub const Member = @import("member.controller.zig");
+    pub const MemberGroup = @import("member_group.controller.zig");
+};
+
+// 友链管理控制器
+pub const friendlink = struct {
+    pub const FriendLink = @import("friend_link.controller.zig");
+};
+
 // 第三方服务控制器
 pub const external = struct {
     pub const Github = @import("github.controller.zig");

@@ -47,6 +47,20 @@ pub fn main() !void {
     try app.crud("role", models.Role);
     try app.crud("dict", models.Dict); // 添加字典模型的CRUD
 
+    // CMS 内容管理模块
+    try app.crud("cms_model", models.CmsModel);
+    try app.crud("cms_field", models.CmsField);
+    try app.crud("document", models.Document);
+    try app.crud("material_category", models.MaterialCategory);
+    try app.crud("material", models.Material);
+
+    // 会员管理模块
+    try app.crud("member_group", models.MemberGroup);
+    try app.crud("member", models.Member);
+
+    // 友链管理模块
+    try app.crud("friend_link", models.FriendLink);
+
     // ========================================================================
     // API 层 - 注册自定义控制器
     // ========================================================================
@@ -71,6 +85,9 @@ pub fn main() !void {
     try app.route("/setting/get", &setting, &controllers.admin.Setting.get);
     try app.route("/setting/save", &setting, &controllers.admin.Setting.save);
     try app.route("/setting/send_email", &setting, &controllers.admin.Setting.send_mail);
+    try app.route("/setting/upload_config/get", &setting, &controllers.admin.Setting.get_upload_config);
+    try app.route("/setting/upload_config/save", &setting, &controllers.admin.Setting.save_upload_config);
+    try app.route("/setting/upload_config/test", &setting, &controllers.admin.Setting.test_upload_config);
 
     // 字典管理控制器
     var dict_ctrl = controllers.dict.Dict.init(allocator);

@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>友链管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .alert.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .btn.warning {
+            background: #f39c12;
+        }
+
+        .btn.warning:hover {
+            background: #e67e22;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔗 友链管理 API</h1>
+            <p>管理系统友情链接，支持申请审核</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="member.html">会员管理</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取友链列表</h2>
+            <p>分页获取友情链接列表，支持状态筛选</p>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>示例</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>页码</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>page_size</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>每页条数</td>
+                        <td>10</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>审核状态</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>is_show</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>显示状态</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>keyword</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>关键词搜索</td>
+                        <td>博客</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>审核状态:</label>
+                        <select id="list-status">
+                            <option value="">全部</option>
+                            <option value="0">待审核</option>
+                            <option value="1">已通过</option>
+                            <option value="2">已拒绝</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>显示状态:</label>
+                        <select id="list-is-show">
+                            <option value="">全部</option>
+                            <option value="1">显示</option>
+                            <option value="0">隐藏</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>关键词:</label>
+                    <input type="text" id="list-keyword" placeholder="输入关键词">
+                </div>
+                <button class="btn success" onclick="testListFriendLinks()">获取友链列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取单个友链</h2>
+            <p>根据ID获取单个友情链接详情</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/friend_link/get/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>友链ID:</label>
+                    <input type="number" id="get-link-id" placeholder="输入友链ID">
+                </div>
+                <button class="btn success" onclick="testGetFriendLink()">获取友链详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 保存友链</h2>
+            <p>新增或更新友情链接信息</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/friend_link/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>网站名称</td>
+                        <td>required, max:100</td>
+                    </tr>
+                    <tr>
+                        <td>url</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>网站URL</td>
+                        <td>required, url, max:500</td>
+                    </tr>
+                    <tr>
+                        <td>logo</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>网站Logo</td>
+                        <td>url, max:500</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>网站描述</td>
+                        <td>max:500</td>
+                    </tr>
+                    <tr>
+                        <td>email</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>联系邮箱</td>
+                        <td>email, max:100</td>
+                    </tr>
+                    <tr>
+                        <td>qq</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>QQ号码</td>
+                        <td>max:20</td>
+                    </tr>
+                    <tr>
+                        <td>is_show</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>是否显示</td>
+                        <td>0/1, default:1</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>排序权重</td>
+                        <td>default:0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>审核状态</td>
+                        <td>0/1/2, default:0</td>
+                    </tr>
+                    <tr>
+                        <td>applicant</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>申请人</td>
+                        <td>max:50</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>网站名称:</label>
+                        <input type="text" id="save-name" placeholder="输入网站名称">
+                    </div>
+                    <div class="form-group">
+                        <label>网站URL:</label>
+                        <input type="url" id="save-url" placeholder="https://example.com">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>联系邮箱:</label>
+                        <input type="email" id="save-email" placeholder="contact@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>QQ号码:</label>
+                        <input type="text" id="save-qq" placeholder="123456789">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>排序:</label>
+                        <input type="number" id="save-sort" placeholder="输入排序值">
+                    </div>
+                    <div class="form-group">
+                        <label>审核状态:</label>
+                        <select id="save-status">
+                            <option value="0">待审核</option>
+                            <option value="1">已通过</option>
+                            <option value="2">已拒绝</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>是否显示:</label>
+                    <select id="save-is-show">
+                        <option value="1">显示</option>
+                        <option value="0">隐藏</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>网站Logo:</label>
+                    <input type="url" id="save-logo" placeholder="https://example.com/logo.png">
+                </div>
+                <div class="form-group">
+                    <label>申请人:</label>
+                    <input type="text" id="save-applicant" placeholder="申请人姓名">
+                </div>
+                <div class="form-group">
+                    <label>网站描述:</label>
+                    <textarea id="save-description" placeholder="输入网站描述"></textarea>
+                </div>
+                <button class="btn success" onclick="testSaveFriendLink()">保存友链</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.delete">DELETE</span> 删除友链</h2>
+            <p>根据ID删除友情链接</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/friend_link/delete/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>友链ID:</label>
+                    <input type="number" id="delete-link-id" placeholder="输入要删除的友链ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteFriendLink()">删除友链</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 批量删除</h2>
+            <p>批量删除多个友情链接</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/friend_link/batch_delete</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>ids</td>
+                        <td>array</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>友链ID数组</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>友链ID列表 (JSON数组):</label>
+                    <textarea id="batch-delete-ids" placeholder='[1, 2, 3]'>[1, 2, 3]</textarea>
+                </div>
+                <button class="btn danger" onclick="testBatchDeleteFriendLinks()">批量删除友链</button>
+                <div id="batch-delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 通过审核</h2>
+            <p>审核通过友情链接申请</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/friend_link/approve/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>友链ID:</label>
+                    <input type="number" id="approve-link-id" placeholder="输入要通过审核的友链ID">
+                </div>
+                <button class="btn success" onclick="testApproveFriendLink()">通过审核</button>
+                <div id="approve-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 拒绝审核</h2>
+            <p>审核拒绝友情链接申请</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/friend_link/reject/{id}</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>reason</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>拒绝原因</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>友链ID:</label>
+                        <input type="number" id="reject-link-id" placeholder="输入要拒绝的友链ID">
+                    </div>
+                    <div class="form-group">
+                        <label>拒绝原因:</label>
+                        <input type="text" id="reject-reason" placeholder="审核未通过的原因">
+                    </div>
+                </div>
+                <button class="btn warning" onclick="testRejectFriendLink()">拒绝审核</button>
+                <div id="reject-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 前端显示友链</h2>
+            <p>获取已审核通过且设置为显示的友情链接，用于前端展示</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/friend_link/show</div>
+
+            <div class="alert info">
+                <strong>说明：</strong> 此接口不需要认证，用于前端页面显示友链。
+            </div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testShowFriendLinks()">获取显示友链</button>
+                <div id="show-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "id": 1,
+                "name": "示例博客",
+                "url": "https://example.com",
+                "logo": "https://example.com/logo.png",
+                "description": "一个优秀的博客",
+                "sort": 1,
+                "clicks": 1250
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 友链字段说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>字段</th>
+                        <th>类型</th>
+                        <th>说明</th>
+                        <th>默认值</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>i32</td>
+                        <td>友链ID</td>
+                        <td>auto</td>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td>网站名称</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>url</td>
+                        <td>string</td>
+                        <td>网站URL</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>logo</td>
+                        <td>string</td>
+                        <td>网站Logo</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td>网站描述</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>email</td>
+                        <td>string</td>
+                        <td>联系邮箱</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>qq</td>
+                        <td>string</td>
+                        <td>QQ号码</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>is_show</td>
+                        <td>i32</td>
+                        <td>是否显示 (0=隐藏 1=显示)</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>i32</td>
+                        <td>排序权重</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>clicks</td>
+                        <td>i32</td>
+                        <td>点击次数</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>i32</td>
+                        <td>审核状态 (0=待审核 1=已通过 2=已拒绝)</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>applicant</td>
+                        <td>string</td>
+                        <td>申请人</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>apply_time</td>
+                        <td>i64</td>
+                        <td>申请时间</td>
+                        <td>null</td>
+                    </tr>
+                    <tr>
+                        <td>pass_time</td>
+                        <td>i64</td>
+                        <td>通过时间</td>
+                        <td>null</td>
+                    </tr>
+                    <tr>
+                        <td>remark</td>
+                        <td>string</td>
+                        <td>备注</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>create_time</td>
+                        <td>i64</td>
+                        <td>创建时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>update_time</td>
+                        <td>i64</td>
+                        <td>更新时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>is_delete</td>
+                        <td>i32</td>
+                        <td>软删除标记</td>
+                        <td>0</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>使用示例</h3>
+            <div class="code-block">// 提交友链申请
+                const application = await fetch('/api/friend_link/save', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;' // 如果需要认证
+                },
+                body: JSON.stringify({
+                name: '我的博客',
+                url: 'https://myblog.com',
+                logo: 'https://myblog.com/logo.png',
+                description: '技术分享博客',
+                email: 'contact@myblog.com',
+                qq: '123456789',
+                applicant: '张三'
+                })
+                });
+
+                // 前端获取友链列表
+                const links = await fetch('/api/friend_link/show');
+                const data = await links.json();
+
+                // 点击友链时统计点击
+                async function onLinkClick(linkId, linkUrl) {
+                // 统计点击（可选）
+                await fetch(`/api/friend_link/show?click=${linkId}`);
+
+                // 跳转到目标网站
+                window.open(linkUrl, '_blank');
+                }
+
+                // 审核友链
+                await fetch(`/api/friend_link/approve/${linkId}`, {
+                method: 'POST',
+                headers: {
+                'Authorization': 'Bearer &lt;token&gt;'
+                }
+                });
+
+                // 拒绝友链
+                await fetch(`/api/friend_link/reject/${linkId}`, {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;'
+                },
+                body: JSON.stringify({
+                reason: '不符合友链要求'
+                })
+                });</div>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListFriendLinks() {
+            const status = document.getElementById('list-status').value;
+            const isShow = document.getElementById('list-is-show').value;
+            const keyword = document.getElementById('list-keyword').value;
+
+            let url = '/api/friend_link/list?';
+            if (status) url += `status=${status}&`;
+            if (isShow) url += `is_show=${isShow}&`;
+            if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetFriendLink() {
+            const id = document.getElementById('get-link-id').value;
+            if (!id) {
+                alert('请输入友链ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/friend_link/get/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveFriendLink() {
+            const name = document.getElementById('save-name').value;
+            const url = document.getElementById('save-url').value;
+            const logo = document.getElementById('save-logo').value;
+            const description = document.getElementById('save-description').value;
+            const email = document.getElementById('save-email').value;
+            const qq = document.getElementById('save-qq').value;
+            const isShow = document.getElementById('save-is-show').value;
+            const sort = document.getElementById('save-sort').value;
+            const status = document.getElementById('save-status').value;
+            const applicant = document.getElementById('save-applicant').value;
+
+            if (!name) {
+                alert('请输入网站名称');
+                return;
+            }
+
+            if (!url) {
+                alert('请输入网站URL');
+                return;
+            }
+
+            const body = {
+                name: name,
+                url: url,
+                is_show: parseInt(isShow),
+                status: parseInt(status)
+            };
+
+            if (logo) body.logo = logo;
+            if (description) body.description = description;
+            if (email) body.email = email;
+            if (qq) body.qq = qq;
+            if (sort) body.sort = parseInt(sort);
+            if (applicant) body.applicant = applicant;
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/friend_link/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteFriendLink() {
+            const id = document.getElementById('delete-link-id').value;
+            if (!id) {
+                alert('请输入友链ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/friend_link/delete/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testBatchDeleteFriendLinks() {
+            const idsStr = document.getElementById('batch-delete-ids').value;
+
+            try {
+                const ids = JSON.parse(idsStr);
+                if (!Array.isArray(ids) || ids.length === 0) {
+                    alert('请输入有效的ID数组');
+                    return;
+                }
+
+                const responseDiv = document.getElementById('batch-delete-response');
+                responseDiv.style.display = 'block';
+                responseDiv.textContent = '发送请求中...';
+
+                const response = await makeRequest('POST', '/api/friend_link/batch_delete', { ids: ids });
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                alert('JSON格式错误：' + error.message);
+            }
+        }
+
+        async function testApproveFriendLink() {
+            const id = document.getElementById('approve-link-id').value;
+            if (!id) {
+                alert('请输入友链ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('approve-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', `/api/friend_link/approve/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testRejectFriendLink() {
+            const id = document.getElementById('reject-link-id').value;
+            const reason = document.getElementById('reject-reason').value;
+
+            if (!id) {
+                alert('请输入友链ID');
+                return;
+            }
+
+            const body = {};
+            if (reason) body.reason = reason;
+
+            const responseDiv = document.getElementById('reject-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', `/api/friend_link/reject/${id}`, body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testShowFriendLinks() {
+            const responseDiv = document.getElementById('show-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                // 注意：这个接口可能不需要认证
+                const response = await fetch('http://localhost:8080/api/friend_link/show');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文档管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .btn.warning {
+            background: #f39c12;
+        }
+
+        .btn.warning:hover {
+            background: #e67e22;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 文档管理 API</h1>
+            <p>管理 CMS 内容文档，提供完整的内容生命周期管理</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="cms-model.html">CMS 模型</a>
+            <a href="cms-field.html">CMS 字段</a>
+            <a href="role.html">角色</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取文档列表</h2>
+            <p>分页获取文档列表，支持多条件筛选。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/cms/document/list</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>默认值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>1</td>
+                        <td>页码</td>
+                    </tr>
+                    <tr>
+                        <td>limit</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>10</td>
+                        <td>每页数量</td>
+                    </tr>
+                    <tr>
+                        <td>model_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>按模型筛选</td>
+                    </tr>
+                    <tr>
+                        <td>category_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>按分类筛选</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-1</td>
+                        <td>按状态筛选 (-1=全部)</td>
+                    </tr>
+                    <tr>
+                        <td>keyword</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>标题关键字搜索</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>页码:</label>
+                        <input type="number" id="list-page" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>每页数量:</label>
+                        <input type="number" id="list-limit" value="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>模型 ID:</label>
+                        <input type="number" id="list-model-id" placeholder="可选">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>分类 ID:</label>
+                        <input type="number" id="list-category-id" placeholder="可选">
+                    </div>
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="list-status">
+                            <option value="-1">全部</option>
+                            <option value="0">草稿</option>
+                            <option value="1">已发布</option>
+                            <option value="2">待审核</option>
+                            <option value="3">已下架</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>关键词:</label>
+                        <input type="text" id="list-keyword" placeholder="搜索标题">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testListDocuments()">获取列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "count": 50,
+                "data": [
+                {
+                "id": 1,
+                "model_id": 1,
+                "category_id": 5,
+                "title": "Hello World",
+                "keywords": "hello,world",
+                "description": "这是一篇示例文章",
+                "thumb": "/uploads/thumb.jpg",
+                "author": "Admin",
+                "source": "原创",
+                "status": 1,
+                "views": 100,
+                "is_recommend": 1,
+                "is_top": 0,
+                "publish_time": 1702540800000000,
+                "create_time": 1702540800000000
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取文档详情</h2>
+            <p>根据 ID 获取文档完整信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/cms/document/get</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>文档 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>文档 ID:</label>
+                    <input type="number" id="get-id" placeholder="输入文档 ID">
+                </div>
+                <button class="btn success" onclick="testGetDocument()">获取详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "model_id": 1,
+                "category_id": 5,
+                "title": "Hello World",
+                "keywords": "hello,world",
+                "description": "这是一篇示例文章",
+                "content": "&lt;p&gt;文章正文内容...&lt;/p&gt;",
+                "thumb": "/uploads/thumb.jpg",
+                "attachments": "[]",
+                "author": "Admin",
+                "source": "原创",
+                "url_alias": "hello-world",
+                "status": 1,
+                "views": 100,
+                "is_recommend": 1,
+                "is_top": 0,
+                "extra_fields": "{}",
+                "publish_time": 1702540800000000,
+                "create_time": 1702540800000000,
+                "update_time": 1702540800000000
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存文档</h2>
+            <p>新增或更新文档。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/document/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>文档 ID（更新时）</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>model_id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>所属模型 ID</td>
+                        <td>不能为 0</td>
+                    </tr>
+                    <tr>
+                        <td>category_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分类 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>title</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>标题</td>
+                        <td>min:2, max:200</td>
+                    </tr>
+                    <tr>
+                        <td>content</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>正文内容</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>author</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>作者</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0-3</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID (更新时填写):</label>
+                        <input type="number" id="save-id" placeholder="留空为新增">
+                    </div>
+                    <div class="form-group">
+                        <label>模型 ID:</label>
+                        <input type="number" id="save-model-id" placeholder="输入模型 ID">
+                    </div>
+                    <div class="form-group">
+                        <label>分类 ID:</label>
+                        <input type="number" id="save-category-id" placeholder="可选">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>标题:</label>
+                    <input type="text" id="save-title" placeholder="输入文档标题">
+                </div>
+                <div class="form-group">
+                    <label>作者:</label>
+                    <input type="text" id="save-author" placeholder="输入作者">
+                </div>
+                <div class="form-group">
+                    <label>内容:</label>
+                    <textarea id="save-content" placeholder="输入文档内容"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="save-status">
+                            <option value="0">草稿</option>
+                            <option value="1">已发布</option>
+                            <option value="2">待审核</option>
+                            <option value="3">已下架</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>推荐:</label>
+                        <select id="save-recommend">
+                            <option value="0">否</option>
+                            <option value="1">是</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn success" onclick="testSaveDocument()">保存文档</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "model_id": 1,
+                "category_id": 5,
+                "title": "新文章标题",
+                "keywords": "keyword1,keyword2",
+                "description": "文章摘要",
+                "content": "&lt;p&gt;正文内容&lt;/p&gt;",
+                "author": "张三",
+                "status": 0,
+                "is_recommend": 1
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method delete">DELETE</span> 删除文档</h2>
+            <p>软删除单个文档。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/cms/document/delete</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>文档 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>文档 ID:</label>
+                    <input type="number" id="delete-id" placeholder="输入要删除的文档 ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteDocument()">删除文档</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 发布文档</h2>
+            <p>将文档状态改为已发布。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/document/publish</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>文档 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>文档 ID:</label>
+                    <input type="number" id="publish-id" placeholder="输入要发布的文档 ID">
+                </div>
+                <button class="btn warning" onclick="testPublishDocument()">发布文档</button>
+                <div id="publish-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 下架文档</h2>
+            <p>将文档状态改为已下架。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/document/unpublish</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>文档 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>文档 ID:</label>
+                    <input type="number" id="unpublish-id" placeholder="输入要下架的文档 ID">
+                </div>
+                <button class="btn warning" onclick="testUnpublishDocument()">下架文档</button>
+                <div id="unpublish-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 批量删除</h2>
+            <p>批量软删除多个文档。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/document/batch-delete</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>ids</td>
+                        <td>array</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>文档 ID 数组</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>文档 ID 列表 (逗号分隔):</label>
+                    <input type="text" id="batch-delete-ids" placeholder="1,2,3,4,5">
+                </div>
+                <button class="btn danger" onclick="testBatchDeleteDocuments()">批量删除</button>
+                <div id="batch-delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 批量发布</h2>
+            <p>批量更新文档状态。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/document/batch-publish</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>默认值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>ids</td>
+                        <td>array</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>-</td>
+                        <td>文档 ID 数组</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>1</td>
+                        <td>目标状态</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>文档 ID 列表 (逗号分隔):</label>
+                        <input type="text" id="batch-publish-ids" placeholder="1,2,3">
+                    </div>
+                    <div class="form-group">
+                        <label>目标状态:</label>
+                        <select id="batch-publish-status">
+                            <option value="1">已发布</option>
+                            <option value="3">已下架</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn warning" onclick="testBatchPublishDocuments()">批量操作</button>
+                <div id="batch-publish-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 文档状态说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>值</th>
+                        <th>状态</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>0</td>
+                        <td>草稿</td>
+                        <td>未发布，仅后台可见</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>已发布</td>
+                        <td>公开可访问</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>待审核</td>
+                        <td>等待管理员审核</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>已下架</td>
+                        <td>已从前台隐藏</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListDocuments() {
+            const page = document.getElementById('list-page').value;
+            const limit = document.getElementById('list-limit').value;
+            const modelId = document.getElementById('list-model-id').value;
+            const categoryId = document.getElementById('list-category-id').value;
+            const status = document.getElementById('list-status').value;
+            const keyword = document.getElementById('list-keyword').value;
+
+            let url = `/api/cms/document/list?page=${page}&limit=${limit}`;
+            if (modelId) url += `&model_id=${modelId}`;
+            if (categoryId) url += `&category_id=${categoryId}`;
+            if (status !== '-1') url += `&status=${status}`;
+            if (keyword) url += `&keyword=${keyword}`;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetDocument() {
+            const id = document.getElementById('get-id').value;
+
+            if (!id) {
+                alert('请输入文档 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/cms/document/get?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveDocument() {
+            const id = document.getElementById('save-id').value;
+            const modelId = document.getElementById('save-model-id').value;
+            const categoryId = document.getElementById('save-category-id').value;
+            const title = document.getElementById('save-title').value;
+            const author = document.getElementById('save-author').value;
+            const content = document.getElementById('save-content').value;
+            const status = document.getElementById('save-status').value;
+            const isRecommend = document.getElementById('save-recommend').value;
+
+            if (!modelId || !title) {
+                alert('请填写模型 ID 和标题');
+                return;
+            }
+
+            const body = {
+                model_id: parseInt(modelId),
+                title: title,
+                author: author || 'Admin',
+                content: content,
+                status: parseInt(status),
+                is_recommend: parseInt(isRecommend)
+            };
+
+            if (id) body.id = parseInt(id);
+            if (categoryId) body.category_id = parseInt(categoryId);
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/cms/document/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteDocument() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                alert('请输入文档 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除这个文档吗？')) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/cms/document/delete?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testPublishDocument() {
+            const id = document.getElementById('publish-id').value;
+
+            if (!id) {
+                alert('请输入文档 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('publish-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', `/api/cms/document/publish?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testUnpublishDocument() {
+            const id = document.getElementById('unpublish-id').value;
+
+            if (!id) {
+                alert('请输入文档 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('unpublish-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', `/api/cms/document/unpublish?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testBatchDeleteDocuments() {
+            const idsStr = document.getElementById('batch-delete-ids').value;
+
+            if (!idsStr) {
+                alert('请输入文档 ID 列表');
+                return;
+            }
+
+            const ids = idsStr.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+            if (ids.length === 0) {
+                alert('请提供有效的文档 ID');
+                return;
+            }
+
+            if (!confirm(`确定要删除 ${ids.length} 个文档吗？`)) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('batch-delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/cms/document/batch-delete', { ids });
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testBatchPublishDocuments() {
+            const idsStr = document.getElementById('batch-publish-ids').value;
+            const status = document.getElementById('batch-publish-status').value;
+
+            if (!idsStr) {
+                alert('请输入文档 ID 列表');
+                return;
+            }
+
+            const ids = idsStr.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+            if (ids.length === 0) {
+                alert('请提供有效的文档 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('batch-publish-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/cms/document/batch-publish', {
+                    ids,
+                    status: parseInt(status)
+                });
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统设置 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .alert.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.warning {
+            background: #f39c12;
+        }
+
+        .btn.warning:hover {
+            background: #e67e22;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        .settings-table {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .setting-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .setting-item .key {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .setting-item .value {
+            font-family: monospace;
+            background: white;
+            padding: 5px 8px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+
+            .settings-table {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ 系统设置 API</h1>
+            <p>管理系统配置参数</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="menu.html">菜单</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取所有设置</h2>
+            <p>获取系统所有配置项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/setting/get</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetSettings()">获取所有设置</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "site_name": "ZigCMS",
+                "site_logo": "/logo.png",
+                "site_description": "基于 Zig 的内容管理系统",
+                "site_keywords": "zig,cms,content",
+                "site_icp": "京ICP备12345678号",
+                "upload_max_size": "10485760",
+                "upload_allowed_types": "jpg,png,gif,pdf,doc,docx",
+                "smtp_host": "smtp.example.com",
+                "smtp_port": "465",
+                "smtp_user": "noreply@example.com"
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存设置</h2>
+            <p>批量更新系统配置。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/setting/save</div>
+
+            <h3>请求参数</h3>
+            <p>以键值对形式提交配置项：</p>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>key</td>
+                        <td>string</td>
+                        <td>配置键</td>
+                    </tr>
+                    <tr>
+                        <td>value</td>
+                        <td>string</td>
+                        <td>配置值</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>设置数据 (JSON):</label>
+                    <textarea id="save-settings-data" placeholder='{
+  "site_name": "我的网站",
+  "site_description": "网站描述",
+  "upload_max_size": "20971520"
+}'>{
+  "site_name": "我的网站",
+  "site_description": "网站描述",
+  "upload_max_size": "20971520"
+}</textarea>
+                </div>
+                <button class="btn success" onclick="testSaveSettings()">保存设置</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "site_name": "我的网站",
+                "site_description": "网站描述",
+                "upload_max_size": "20971520"
+                }</div>
+
+            <h3>错误响应</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>错误信息</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>提交参数为空</td>
+                        <td>请求体为空</td>
+                    </tr>
+                    <tr>
+                        <td>参数格式错误</td>
+                        <td>不是有效的 JSON 对象</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 发送测试邮件</h2>
+            <p>测试 SMTP 邮件配置。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/setting/send-mail</div>
+
+            <div class="alert warning">
+                <strong>说明：</strong> 使用系统配置的 SMTP 参数发送测试邮件。
+            </div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn warning" onclick="testSendMail()">发送测试邮件</button>
+                <div id="mail-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": "邮件发送成功"
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取上传配置</h2>
+            <p>获取系统上传服务的配置信息</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/setting/upload_config/get</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetUploadConfig()">获取上传配置</button>
+                <div id="get-upload-config-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "upload_provider": "local",
+                "local": {
+                "root_path": "uploads",
+                "url_prefix": "/uploads",
+                "max_size": "10485760"
+                },
+                "cos": {
+                "secret_id": "",
+                "secret_key": "",
+                "region": "ap-beijing",
+                "bucket": "my-bucket-1234567890",
+                "domain": ""
+                },
+                "oss": {
+                "access_key_id": "",
+                "access_key_secret": "",
+                "endpoint": "oss-cn-beijing.aliyuncs.com",
+                "bucket": "my-bucket",
+                "domain": ""
+                }
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存上传配置</h2>
+            <p>保存系统上传服务的配置信息</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/setting/upload_config/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>upload_provider</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>上传提供者 (local/cos/oss/tos/qiniu/upyun)</td>
+                    </tr>
+                    <tr>
+                        <td>local</td>
+                        <td>object</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>本地存储配置</td>
+                    </tr>
+                    <tr>
+                        <td>cos</td>
+                        <td>object</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>腾讯云COS配置</td>
+                    </tr>
+                    <tr>
+                        <td>oss</td>
+                        <td>object</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>阿里云OSS配置</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>配置数据 (JSON):</label>
+                    <textarea id="save-upload-config-data" placeholder='{
+  "upload_provider": "local",
+  "local": {
+    "root_path": "uploads",
+    "url_prefix": "/uploads",
+    "max_size": "10485760"
+  }
+}'>{
+  "upload_provider": "local",
+  "local": {
+    "root_path": "uploads",
+    "url_prefix": "/uploads",
+    "max_size": "10485760"
+  }
+}</textarea>
+                </div>
+                <button class="btn success" onclick="testSaveUploadConfig()">保存上传配置</button>
+                <div id="save-upload-config-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 测试上传配置</h2>
+            <p>测试上传服务的配置是否正确</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/setting/upload_config/test</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>provider</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>要测试的提供者类型</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>提供者类型:</label>
+                    <select id="test-provider">
+                        <option value="local">本地存储</option>
+                        <option value="cos">腾讯云COS</option>
+                        <option value="oss">阿里云OSS</option>
+                    </select>
+                </div>
+                <button class="btn warning" onclick="testUploadConfig()">测试上传配置</button>
+                <div id="test-upload-config-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 常用配置项</h2>
+
+            <h3>站点配置</h3>
+            <div class="settings-table">
+                <div class="setting-item">
+                    <div class="key">site_name</div>
+                    <div class="value">"ZigCMS"</div>
+                    <small>站点名称</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">site_logo</div>
+                    <div class="value">"/logo.png"</div>
+                    <small>站点 Logo</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">site_description</div>
+                    <div class="value">"内容管理系统"</div>
+                    <small>站点描述</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">site_keywords</div>
+                    <div class="value">"zig,cms"</div>
+                    <small>SEO 关键词</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">site_icp</div>
+                    <div class="value">"京ICP备xxx号"</div>
+                    <small>ICP 备案号</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">site_copyright</div>
+                    <div class="value">"© 2025"</div>
+                    <small>版权信息</small>
+                </div>
+            </div>
+
+            <h3>上传配置</h3>
+            <div class="settings-table">
+                <div class="setting-item">
+                    <div class="key">upload_max_size</div>
+                    <div class="value">"10485760"</div>
+                    <small>最大上传大小 (字节)</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">upload_allowed_types</div>
+                    <div class="value">"jpg,png,gif,pdf"</div>
+                    <small>允许的文件类型</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">upload_path</div>
+                    <div class="value">"/uploads"</div>
+                    <small>上传路径</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">upload_url</div>
+                    <div class="value">"/uploads"</div>
+                    <small>访问 URL</small>
+                </div>
+            </div>
+
+            <h3>邮件配置</h3>
+            <div class="settings-table">
+                <div class="setting-item">
+                    <div class="key">smtp_host</div>
+                    <div class="value">"smtp.qq.com"</div>
+                    <small>SMTP 服务器</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">smtp_port</div>
+                    <div class="value">"465"</div>
+                    <small>SMTP 端口</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">smtp_user</div>
+                    <div class="value">"xxx@qq.com"</div>
+                    <small>SMTP 用户名</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">smtp_pass</div>
+                    <div class="value">"授权码"</div>
+                    <small>SMTP 密码</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">smtp_from</div>
+                    <div class="value">"xxx@qq.com"</div>
+                    <small>发件人地址</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">smtp_name</div>
+                    <div class="value">"系统通知"</div>
+                    <small>发件人名称</small>
+                </div>
+            </div>
+
+            <h3>其他配置</h3>
+            <div class="settings-table">
+                <div class="setting-item">
+                    <div class="key">cache_enabled</div>
+                    <div class="value">"1"</div>
+                    <small>启用缓存</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">cache_ttl</div>
+                    <div class="value">"3600"</div>
+                    <small>缓存时间 (秒)</small>
+                </div>
+                <div class="setting-item">
+                    <div class="key">debug_mode</div>
+                    <div class="value">"0"</div>
+                    <small>调试模式</small>
+                </div>
+            </div>
+
+            <h3>使用示例</h3>
+            <div class="code-block">// 获取单个配置
+                const response = await fetch('/api/setting/get');
+                const { data } = await response.json();
+                const siteName = data.site_name;
+
+                // 批量更新配置
+                await fetch('/api/setting/save', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;'
+                },
+                body: JSON.stringify({
+                site_name: '新站点名称',
+                site_description: '新描述'
+                })
+                });</div>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testGetSettings() {
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/setting/get');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveSettings() {
+            const settingsData = document.getElementById('save-settings-data').value;
+
+            try {
+                const body = JSON.parse(settingsData);
+
+                const responseDiv = document.getElementById('save-response');
+                responseDiv.style.display = 'block';
+                responseDiv.textContent = '发送请求中...';
+
+                const response = await makeRequest('POST', '/api/setting/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                alert('JSON 格式错误：' + error.message);
+            }
+        }
+
+        async function testSendMail() {
+            const responseDiv = document.getElementById('mail-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/setting/send-mail');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetUploadConfig() {
+            const responseDiv = document.getElementById('get-upload-config-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/setting/upload_config/get');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveUploadConfig() {
+            const configData = document.getElementById('save-upload-config-data').value;
+
+            try {
+                const body = JSON.parse(configData);
+
+                const responseDiv = document.getElementById('save-upload-config-response');
+                responseDiv.style.display = 'block';
+                responseDiv.textContent = '发送请求中...';
+
+                const response = await makeRequest('POST', '/setting/upload_config/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                alert('JSON 格式错误：' + error.message);
+            }
+        }
+
+        async function testUploadConfig() {
+            const provider = document.getElementById('test-provider').value;
+
+            const body = { provider: provider };
+
+            const responseDiv = document.getElementById('test-upload-config-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/setting/upload_config/test', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMS 字段管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 CMS 字段管理 API</h1>
+            <p>管理 CMS 模型的自定义字段，定义数据结构</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="cms-model.html">CMS 模型</a>
+            <a href="document.html">文档</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字段列表</h2>
+            <p>分页获取字段列表。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/cms/field/list</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>默认值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>1</td>
+                        <td>页码</td>
+                    </tr>
+                    <tr>
+                        <td>limit</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>50</td>
+                        <td>每页数量</td>
+                    </tr>
+                    <tr>
+                        <td>model_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>按模型筛选</td>
+                    </tr>
+                    <tr>
+                        <td>sort[field]</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>asc</td>
+                        <td>排序方向</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>页码:</label>
+                        <input type="number" id="list-page" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>每页数量:</label>
+                        <input type="number" id="list-limit" value="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>模型 ID:</label>
+                        <input type="number" id="list-model-id" placeholder="可选，筛选特定模型">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testListFields()">获取列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "count": 10,
+                "data": [
+                {
+                "id": 1,
+                "model_id": 1,
+                "field_name": "title",
+                "field_label": "标题",
+                "field_type": "text",
+                "db_type": "VARCHAR(255)",
+                "is_required": 1,
+                "is_list_show": 1,
+                "is_search": 1,
+                "sort": 1
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字段详情</h2>
+            <p>根据 ID 获取字段详情。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/cms/field/get</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字段 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字段 ID:</label>
+                    <input type="number" id="get-id" placeholder="输入字段 ID">
+                </div>
+                <button class="btn success" onclick="testGetField()">获取详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "model_id": 1,
+                "field_name": "title",
+                "field_label": "标题",
+                "field_type": "text",
+                "db_type": "VARCHAR(255)",
+                "default_value": "",
+                "placeholder": "请输入标题",
+                "options": "",
+                "validation": "required|min:2|max:200",
+                "is_required": 1,
+                "is_list_show": 1,
+                "is_detail_show": 1,
+                "is_search": 1,
+                "is_sort": 0,
+                "min_length": 2,
+                "max_length": 200,
+                "field_group": "基本信息",
+                "sort": 1,
+                "status": 1
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存字段</h2>
+            <p>新增或更新字段。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/field/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>字段 ID（更新时）</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>model_id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>所属模型 ID</td>
+                        <td>不能为 0</td>
+                    </tr>
+                    <tr>
+                        <td>field_name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字段名</td>
+                        <td>alpha_num, min:2, max:50, 同模型唯一</td>
+                    </tr>
+                    <tr>
+                        <td>field_label</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字段标签</td>
+                        <td>required</td>
+                    </tr>
+                    <tr>
+                        <td>field_type</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>字段类型</td>
+                        <td>见字段类型表</td>
+                    </tr>
+                    <tr>
+                        <td>is_required</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>是否必填</td>
+                        <td>0/1</td>
+                    </tr>
+                    <tr>
+                        <td>is_list_show</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>列表显示</td>
+                        <td>0/1</td>
+                    </tr>
+                    <tr>
+                        <td>max_length</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>最大长度</td>
+                        <td>-</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID (更新时填写):</label>
+                        <input type="number" id="save-id" placeholder="留空为新增">
+                    </div>
+                    <div class="form-group">
+                        <label>模型 ID:</label>
+                        <input type="number" id="save-model-id" placeholder="输入模型 ID">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字段名:</label>
+                        <input type="text" id="save-field-name" placeholder="输入字段名">
+                    </div>
+                    <div class="form-group">
+                        <label>字段标签:</label>
+                        <input type="text" id="save-field-label" placeholder="输入字段标签">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字段类型:</label>
+                        <select id="save-field-type">
+                            <option value="text">单行文本</option>
+                            <option value="textarea">多行文本</option>
+                            <option value="number">数字</option>
+                            <option value="select">下拉选择</option>
+                            <option value="radio">单选</option>
+                            <option value="checkbox">多选</option>
+                            <option value="switch">开关</option>
+                            <option value="date">日期</option>
+                            <option value="datetime">日期时间</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>是否必填:</label>
+                        <select id="save-required">
+                            <option value="0">否</option>
+                            <option value="1">是</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>最大长度:</label>
+                    <input type="number" id="save-max-length" placeholder="输入最大长度">
+                </div>
+                <button class="btn success" onclick="testSaveField()">保存字段</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "model_id": 1,
+                "field_name": "author",
+                "field_label": "作者",
+                "field_type": "text",
+                "placeholder": "请输入作者名",
+                "is_required": 0,
+                "is_list_show": 1,
+                "max_length": 50,
+                "sort": 5
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method delete">DELETE</span> 删除字段</h2>
+            <p>软删除字段。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/cms/field/delete</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字段 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字段 ID:</label>
+                    <input type="number" id="delete-id" placeholder="输入要删除的字段 ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteField()">删除字段</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 批量排序</h2>
+            <p>批量更新字段排序。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/cms/field/batch-sort</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>items</td>
+                        <td>array</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>排序项数组</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>items[].id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字段 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>items[].sort</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>新排序值</td>
+                        <td>-</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>排序数据 (JSON):</label>
+                    <textarea id="batch-sort-data"
+                        placeholder='[{"id": 1, "sort": 1}, {"id": 2, "sort": 2}]'>[{"id": 1, "sort": 1}, {"id": 2, "sort": 2}]</textarea>
+                </div>
+                <button class="btn success" onclick="testBatchSort()">批量排序</button>
+                <div id="batch-sort-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字段类型列表</h2>
+            <p>获取所有支持的字段类型。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/cms/field/types</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetFieldTypes()">获取字段类型</button>
+                <div id="types-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 字段类型说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>数据库类型</th>
+                        <th>说明</th>
+                        <th>适用场景</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>text</td>
+                        <td>VARCHAR(255)</td>
+                        <td>单行文本</td>
+                        <td>标题、名称</td>
+                    </tr>
+                    <tr>
+                        <td>textarea</td>
+                        <td>TEXT</td>
+                        <td>多行文本</td>
+                        <td>简介、摘要</td>
+                    </tr>
+                    <tr>
+                        <td>richtext</td>
+                        <td>TEXT</td>
+                        <td>富文本编辑器</td>
+                        <td>正文内容</td>
+                    </tr>
+                    <tr>
+                        <td>number</td>
+                        <td>INT</td>
+                        <td>整数</td>
+                        <td>数量、排序</td>
+                    </tr>
+                    <tr>
+                        <td>decimal</td>
+                        <td>DECIMAL(10,2)</td>
+                        <td>小数</td>
+                        <td>价格、金额</td>
+                    </tr>
+                    <tr>
+                        <td>select</td>
+                        <td>VARCHAR(100)</td>
+                        <td>下拉选择</td>
+                        <td>状态、分类</td>
+                    </tr>
+                    <tr>
+                        <td>radio</td>
+                        <td>VARCHAR(100)</td>
+                        <td>单选</td>
+                        <td>是否、性别</td>
+                    </tr>
+                    <tr>
+                        <td>checkbox</td>
+                        <td>TEXT</td>
+                        <td>多选</td>
+                        <td>标签、权限</td>
+                    </tr>
+                    <tr>
+                        <td>switch</td>
+                        <td>TINYINT(1)</td>
+                        <td>开关</td>
+                        <td>是否启用</td>
+                    </tr>
+                    <tr>
+                        <td>date</td>
+                        <td>DATE</td>
+                        <td>日期</td>
+                        <td>生日、日期</td>
+                    </tr>
+                    <tr>
+                        <td>datetime</td>
+                        <td>DATETIME</td>
+                        <td>日期时间</td>
+                        <td>发布时间</td>
+                    </tr>
+                    <tr>
+                        <td>image</td>
+                        <td>VARCHAR(500)</td>
+                        <td>图片上传</td>
+                        <td>封面图</td>
+                    </tr>
+                    <tr>
+                        <td>images</td>
+                        <td>TEXT</td>
+                        <td>多图上传</td>
+                        <td>相册、轮播</td>
+                    </tr>
+                    <tr>
+                        <td>file</td>
+                        <td>VARCHAR(500)</td>
+                        <td>文件上传</td>
+                        <td>附件</td>
+                    </tr>
+                    <tr>
+                        <td>relation</td>
+                        <td>INT</td>
+                        <td>关联模型</td>
+                        <td>外键关联</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListFields() {
+            const page = document.getElementById('list-page').value;
+            const limit = document.getElementById('list-limit').value;
+            const modelId = document.getElementById('list-model-id').value;
+
+            let url = `/api/cms/field/list?page=${page}&limit=${limit}`;
+            if (modelId) {
+                url += `&model_id=${modelId}`;
+            }
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetField() {
+            const id = document.getElementById('get-id').value;
+
+            if (!id) {
+                alert('请输入字段 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/cms/field/get?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveField() {
+            const id = document.getElementById('save-id').value;
+            const modelId = document.getElementById('save-model-id').value;
+            const fieldName = document.getElementById('save-field-name').value;
+            const fieldLabel = document.getElementById('save-field-label').value;
+            const fieldType = document.getElementById('save-field-type').value;
+            const isRequired = document.getElementById('save-required').value;
+            const maxLength = document.getElementById('save-max-length').value;
+
+            if (!modelId || !fieldName || !fieldLabel) {
+                alert('请填写必填字段：模型 ID、字段名、字段标签');
+                return;
+            }
+
+            const body = {
+                model_id: parseInt(modelId),
+                field_name: fieldName,
+                field_label: fieldLabel,
+                field_type: fieldType,
+                is_required: parseInt(isRequired),
+                is_list_show: 1,
+                status: 1
+            };
+
+            if (id) {
+                body.id = parseInt(id);
+            }
+
+            if (maxLength) {
+                body.max_length = parseInt(maxLength);
+            }
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/cms/field/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteField() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                alert('请输入字段 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除这个字段吗？')) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/cms/field/delete?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testBatchSort() {
+            const sortData = document.getElementById('batch-sort-data').value;
+
+            try {
+                const items = JSON.parse(sortData);
+                const body = { items };
+
+                const responseDiv = document.getElementById('batch-sort-response');
+                responseDiv.style.display = 'block';
+                responseDiv.textContent = '发送请求中...';
+
+                const response = await makeRequest('POST', '/api/cms/field/batch-sort', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                alert('JSON 格式错误：' + error.message);
+            }
+        }
+
+        async function testGetFieldTypes() {
+            const responseDiv = document.getElementById('types-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/cms/field/types');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

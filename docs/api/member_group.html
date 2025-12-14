@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会员分组 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👥 会员分组 API</h1>
+            <p>管理系统会员等级和权限分组</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="member.html">会员管理</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取会员分组列表</h2>
+            <p>分页获取会员分组列表，支持状态筛选</p>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>示例</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>页码</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>page_size</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>每页条数</td>
+                        <td>10</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>keyword</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>关键词搜索</td>
+                        <td>VIP</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="list-status">
+                            <option value="">全部</option>
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>关键词:</label>
+                        <input type="text" id="list-keyword" placeholder="输入关键词">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testListMemberGroups()">获取会员分组列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取单个会员分组</h2>
+            <p>根据ID获取单个会员分组详情</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/member_group/get/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>分组ID:</label>
+                    <input type="number" id="get-group-id" placeholder="输入分组ID">
+                </div>
+                <button class="btn success" onclick="testGetMemberGroup()">获取分组详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 保存会员分组</h2>
+            <p>新增或更新会员分组信息</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/member_group/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>分组名称</td>
+                        <td>required, max:100</td>
+                    </tr>
+                    <tr>
+                        <td>code</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分组编码</td>
+                        <td>unique, max:50</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分组描述</td>
+                        <td>max:500</td>
+                    </tr>
+                    <tr>
+                        <td>icon</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分组图标</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>permissions</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>权限列表</td>
+                        <td>JSON格式</td>
+                    </tr>
+                    <tr>
+                        <td>points_required</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>积分要求</td>
+                        <td>default:0</td>
+                    </tr>
+                    <tr>
+                        <td>discount_rate</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>折扣率(0-100)</td>
+                        <td>default:100</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>排序权重</td>
+                        <td>default:0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0/1, default:1</td>
+                    </tr>
+                    <tr>
+                        <td>is_default</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>是否默认分组</td>
+                        <td>0/1, default:0</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>分组名称:</label>
+                        <input type="text" id="save-name" placeholder="输入分组名称">
+                    </div>
+                    <div class="form-group">
+                        <label>分组编码:</label>
+                        <input type="text" id="save-code" placeholder="输入分组编码">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>积分要求:</label>
+                        <input type="number" id="save-points-required" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>折扣率:</label>
+                        <input type="number" id="save-discount-rate" placeholder="100" min="0" max="100">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>排序:</label>
+                        <input type="number" id="save-sort" placeholder="输入排序值">
+                    </div>
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="save-status">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>是否默认分组:</label>
+                    <select id="save-is-default">
+                        <option value="0">否</option>
+                        <option value="1">是</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>权限列表 (JSON):</label>
+                    <textarea id="save-permissions" placeholder='["read","write","delete"]'>["read","write"]</textarea>
+                </div>
+                <div class="form-group">
+                    <label>分组描述:</label>
+                    <textarea id="save-description" placeholder="输入分组描述"></textarea>
+                </div>
+                <button class="btn success" onclick="testSaveMemberGroup()">保存会员分组</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.delete">DELETE</span> 删除会员分组</h2>
+            <p>根据ID删除会员分组</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/member_group/delete/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>分组ID:</label>
+                    <input type="number" id="delete-group-id" placeholder="输入要删除的分组ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteMemberGroup()">删除会员分组</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取分组选项</h2>
+            <p>获取会员分组选项，用于下拉框等选择组件</p>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetMemberGroupSelect()">获取分组选项</button>
+                <div id="select-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "value": 1,
+                "label": "普通会员"
+                },
+                {
+                "value": 2,
+                "label": "VIP会员"
+                },
+                {
+                "value": 3,
+                "label": "钻石会员"
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 会员分组字段说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>字段</th>
+                        <th>类型</th>
+                        <th>说明</th>
+                        <th>默认值</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>i32</td>
+                        <td>分组ID</td>
+                        <td>auto</td>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td>分组名称</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>code</td>
+                        <td>string</td>
+                        <td>分组编码（唯一标识）</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td>分组描述</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>icon</td>
+                        <td>string</td>
+                        <td>分组图标</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>permissions</td>
+                        <td>string</td>
+                        <td>权限列表（JSON格式）</td>
+                        <td>"[]"</td>
+                    </tr>
+                    <tr>
+                        <td>points_required</td>
+                        <td>i32</td>
+                        <td>积分要求</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>discount_rate</td>
+                        <td>i32</td>
+                        <td>折扣率(0-100，100为不打折)</td>
+                        <td>100</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>i32</td>
+                        <td>排序权重</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>i32</td>
+                        <td>状态 (0=禁用 1=启用)</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>is_default</td>
+                        <td>i32</td>
+                        <td>是否默认分组 (0=否 1=是)</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>remark</td>
+                        <td>string</td>
+                        <td>备注</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>create_time</td>
+                        <td>i64</td>
+                        <td>创建时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>update_time</td>
+                        <td>i64</td>
+                        <td>更新时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>is_delete</td>
+                        <td>i32</td>
+                        <td>软删除标记</td>
+                        <td>0</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>使用示例</h3>
+            <div class="code-block">// 创建VIP分组
+                const group = await fetch('/api/member_group/save', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;'
+                },
+                body: JSON.stringify({
+                name: 'VIP会员',
+                code: 'vip',
+                points_required: 1000,
+                discount_rate: 90, // 9折
+                permissions: '["vip_content","priority_support"]',
+                status: 1
+                })
+                });
+
+                // 获取分组选项
+                const options = await fetch('/api/member_group/select');
+
+                // 根据积分自动升级会员等级
+                async function autoUpgradeMember(memberId, newPoints) {
+                // 获取所有分组
+                const groups = await fetch('/api/member_group/list?status=1');
+                const groupData = await groups.json();
+
+                // 找到合适的等级
+                let targetGroup = null;
+                for (const group of groupData.data) {
+                if (newPoints >= group.points_required) {
+                if (!targetGroup || group.points_required > targetGroup.points_required) {
+                targetGroup = group;
+                }
+                }
+                }
+
+                if (targetGroup) {
+                await fetch(`/api/member/save`, {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;'
+                },
+                body: JSON.stringify({
+                id: memberId,
+                group_id: targetGroup.id,
+                points: newPoints
+                })
+                });
+                }
+                }</div>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListMemberGroups() {
+            const status = document.getElementById('list-status').value;
+            const keyword = document.getElementById('list-keyword').value;
+
+            let url = '/api/member_group/list?';
+            if (status) url += `status=${status}&`;
+            if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetMemberGroup() {
+            const id = document.getElementById('get-group-id').value;
+            if (!id) {
+                alert('请输入分组ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/member_group/get/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveMemberGroup() {
+            const name = document.getElementById('save-name').value;
+            const code = document.getElementById('save-code').value;
+            const pointsRequired = document.getElementById('save-points-required').value;
+            const discountRate = document.getElementById('save-discount-rate').value;
+            const sort = document.getElementById('save-sort').value;
+            const status = document.getElementById('save-status').value;
+            const isDefault = document.getElementById('save-is-default').value;
+            const permissions = document.getElementById('save-permissions').value;
+            const description = document.getElementById('save-description').value;
+
+            if (!name) {
+                alert('请输入分组名称');
+                return;
+            }
+
+            const body = {
+                name: name,
+                status: parseInt(status),
+                is_default: parseInt(isDefault)
+            };
+
+            if (code) body.code = code;
+            if (pointsRequired) body.points_required = parseInt(pointsRequired);
+            if (discountRate) body.discount_rate = parseInt(discountRate);
+            if (sort) body.sort = parseInt(sort);
+            if (permissions) {
+                try {
+                    body.permissions = JSON.stringify(JSON.parse(permissions));
+                } catch (e) {
+                    body.permissions = permissions;
+                }
+            }
+            if (description) body.description = description;
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/member_group/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteMemberGroup() {
+            const id = document.getElementById('delete-group-id').value;
+            if (!id) {
+                alert('请输入分组ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/member_group/delete/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetMemberGroupSelect() {
+            const responseDiv = document.getElementById('select-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/member_group/select');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

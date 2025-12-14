@@ -595,6 +595,44 @@
             </div>
 
             <div class="sidebar-section">
+                <div class="sidebar-title">API 文档</div>
+                <ul class="sidebar-menu">
+                    <li><a href="api/index.html">API 总览</a></li>
+                    <li><a href="api/auth.html">认证接口</a></li>
+                    <li><a href="api/cms-model.html">CMS 模型</a></li>
+                    <li><a href="api/cms-field.html">CMS 字段</a></li>
+                    <li><a href="api/document.html">文档管理</a></li>
+                    <li><a href="api/role.html">角色管理</a></li>
+                    <li><a href="api/department.html">部门管理</a></li>
+                    <li><a href="api/employee.html">员工管理</a></li>
+                    <li><a href="api/dict.html">字典管理</a></li>
+                    <li><a href="api/menu.html">菜单管理</a></li>
+                    <li><a href="api/setting.html">系统设置</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">验证器</div>
+                <ul class="sidebar-menu">
+                    <li><a href="#validator">验证器概述</a></li>
+                    <li><a href="#validator-declarative">声明式验证</a></li>
+                    <li><a href="#validator-programmatic">编程式验证</a></li>
+                    <li><a href="#validator-rules">验证规则</a></li>
+                    <li><a href="#security">安全防护</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">CMS 模块</div>
+                <ul class="sidebar-menu">
+                    <li><a href="#cms-overview">CMS 概述</a></li>
+                    <li><a href="#cms-model">模型管理</a></li>
+                    <li><a href="#cms-field">字段管理</a></li>
+                    <li><a href="#cms-document">文档管理</a></li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
                 <div class="sidebar-title">测试</div>
                 <ul class="sidebar-menu">
                     <li><a href="#testing">测试覆盖</a></li>
@@ -2884,88 +2922,76 @@ zig build
                     <ul>
                         <li>插件必须与主程序使用相同的 Zig 版本编译</li>
                         <li>避免在插件中使用全局状态（除非必要）</li>
-                        <li>异常处理应在插件内部完成，不要跨边界传播</li>
-                    </ul>
-                </div>
-            </section>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>测试类别</th>
+                                    <th>覆盖内容</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>CRUD 操作</strong></td>
+                                    <td>创建、读取、更新、删除及结果验证</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>QueryBuilder</strong></td>
+                                    <td>SQL 构造器、链式调用、分页</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>事务</strong></td>
+                                    <td>手动提交/回滚、自动事务</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>高级查询</strong></td>
+                                    <td>子查询、EXISTS、NOT EXISTS</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>JOIN 查询</strong></td>
+                                    <td>INNER/LEFT/多表关联</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>ORM 模型</strong></td>
+                                    <td>find、count、update、destroy、query、collect</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>新 API</strong></td>
+                                    <td>List 包装器、whereEq/Gt/Lt、whereLike、exists、pluck</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Laravel 风格</strong></td>
+                                    <td>无 db 参数调用：Where/WhereEq/Find/Count/Collect</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>关联模型</strong></td>
+                                    <td>HasMany、BelongsTo、关联查询条件</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>withDB 事务</strong></td>
+                                    <td>withDB().Create/Update/Destroy、事务回滚</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>边界条件</strong></td>
+                                    <td>NULL 值、特殊字符、Unicode、大数据量</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>内存安全</strong></td>
+                                    <td>GPA 检测内存泄漏</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>连接池</strong></td>
+                                    <td>并发查询、连接复用（MySQL）</td>
+                                </tr>
+                            </tbody>
+                        </table>
 
-            <!-- 测试 -->
-            <section id="testing" class="section">
-                <h2>测试</h2>
-
-                <p>每种驱动都有完整的测试覆盖，确保功能正确性、内存安全和线程安全。</p>
-
-                <h3>测试覆盖</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>测试类别</th>
-                            <th>覆盖内容</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong>CRUD 操作</strong></td>
-                            <td>创建、读取、更新、删除及结果验证</td>
-                        </tr>
-                        <tr>
-                            <td><strong>QueryBuilder</strong></td>
-                            <td>SQL 构造器、链式调用、分页</td>
-                        </tr>
-                        <tr>
-                            <td><strong>事务</strong></td>
-                            <td>手动提交/回滚、自动事务</td>
-                        </tr>
-                        <tr>
-                            <td><strong>高级查询</strong></td>
-                            <td>子查询、EXISTS、NOT EXISTS</td>
-                        </tr>
-                        <tr>
-                            <td><strong>JOIN 查询</strong></td>
-                            <td>INNER/LEFT/多表关联</td>
-                        </tr>
-                        <tr>
-                            <td><strong>ORM 模型</strong></td>
-                            <td>find、count、update、destroy、query、collect</td>
-                        </tr>
-                        <tr>
-                            <td><strong>新 API</strong></td>
-                            <td>List 包装器、whereEq/Gt/Lt、whereLike、exists、pluck</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Laravel 风格</strong></td>
-                            <td>无 db 参数调用：Where/WhereEq/Find/Count/Collect</td>
-                        </tr>
-                        <tr>
-                            <td><strong>关联模型</strong></td>
-                            <td>HasMany、BelongsTo、关联查询条件</td>
-                        </tr>
-                        <tr>
-                            <td><strong>withDB 事务</strong></td>
-                            <td>withDB().Create/Update/Destroy、事务回滚</td>
-                        </tr>
-                        <tr>
-                            <td><strong>边界条件</strong></td>
-                            <td>NULL 值、特殊字符、Unicode、大数据量</td>
-                        </tr>
-                        <tr>
-                            <td><strong>内存安全</strong></td>
-                            <td>GPA 检测内存泄漏</td>
-                        </tr>
-                        <tr>
-                            <td><strong>连接池</strong></td>
-                            <td>并发查询、连接复用（MySQL）</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <h3>运行 SQLite 测试</h3>
-                <pre><code>cd src/services/sql
+                        <h3>运行 SQLite 测试</h3>
+                        <pre><code>cd src/services/sql
 zig build-exe sqlite_complete_test.zig -lc -lsqlite3
 ./sqlite_complete_test</code></pre>
 
-                <h3>运行 MySQL 测试</h3>
-                <pre><code>cd src/services/sql
+                        <h3>运行 MySQL 测试</h3>
+                        <pre><code>cd src/services/sql
 
 # macOS (Homebrew - Intel / MariaDB)
 zig build-exe mysql_complete_test.zig -lc -lmysqlclient \
@@ -2979,8 +3005,8 @@ zig build-exe mysql_complete_test.zig -lc -lmysqlclient \
 
 ./mysql_complete_test</code></pre>
 
-                <h3>测试输出示例</h3>
-                <pre><code>╔══════════════════════════════════════════════════════════╗
+                        <h3>测试输出示例</h3>
+                        <pre><code>╔══════════════════════════════════════════════════════════╗
 ║          SQLite ORM 完整测试                              ║
 ╚══════════════════════════════════════════════════════════╝
 
@@ -3002,15 +3028,15 @@ zig build-exe mysql_complete_test.zig -lc -lmysqlclient \
 ✓ SQLite 所有测试通过！
 ✓ 无内存泄漏</code></pre>
 
-                <div class="success">
-                    <div class="note-title">✓ 测试保障</div>
-                    <ul>
-                        <li>每次代码变更都运行完整测试套件</li>
-                        <li>使用 GPA (GeneralPurposeAllocator) 检测内存泄漏</li>
-                        <li>断言验证结果正确性</li>
-                        <li>覆盖各种边界条件和异常情况</li>
-                    </ul>
-                </div>
+                        <div class="success">
+                            <div class="note-title">✓ 测试保障</div>
+                            <ul>
+                                <li>每次代码变更都运行完整测试套件</li>
+                                <li>使用 GPA (GeneralPurposeAllocator) 检测内存泄漏</li>
+                                <li>断言验证结果正确性</li>
+                                <li>覆盖各种边界条件和异常情况</li>
+                            </ul>
+                        </div>
             </section>
 
             <!-- 底部 -->

@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>员工管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👥 员工管理 API</h1>
+            <p>管理组织中的员工信息</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="department.html">部门</a>
+            <a href="role.html">角色</a>
+            <a href="dict.html">字典</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取员工列表</h2>
+            <p>分页获取员工列表，支持条件筛选。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/employee/list</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>默认值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>1</td>
+                        <td>页码</td>
+                    </tr>
+                    <tr>
+                        <td>limit</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>10</td>
+                        <td>每页数量</td>
+                    </tr>
+                    <tr>
+                        <td>department_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>按部门筛选</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>-</td>
+                        <td>按状态筛选</td>
+                    </tr>
+                    <tr>
+                        <td>sort[field]</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>desc</td>
+                        <td>排序方向</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>页码:</label>
+                        <input type="number" id="list-page" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>每页数量:</label>
+                        <input type="number" id="list-limit" value="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>部门 ID:</label>
+                        <input type="number" id="list-dept-id" placeholder="可选">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>状态:</label>
+                    <select id="list-status">
+                        <option value="">全部</option>
+                        <option value="1">启用</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+                <button class="btn success" onclick="testListEmployees()">获取列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "count": 50,
+                "data": [
+                {
+                "id": 1,
+                "employee_no": "EMP001",
+                "name": "张三",
+                "gender": 1,
+                "phone": "13800138000",
+                "email": "zhangsan@company.com",
+                "department_id": 2,
+                "position_id": 3,
+                "role_id": 2,
+                "leader_id": null,
+                "hire_date": 1640966400000000,
+                "avatar": "/avatars/zhangsan.jpg",
+                "status": 1
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取员工详情</h2>
+            <p>根据 ID 获取员工基本信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/employee/get</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>员工 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>员工 ID:</label>
+                    <input type="number" id="get-id" placeholder="输入员工 ID">
+                </div>
+                <button class="btn success" onclick="testGetEmployee()">获取详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "employee_no": "EMP001",
+                "name": "张三",
+                "gender": 1,
+                "phone": "13800138000",
+                "email": "zhangsan@company.com",
+                "department_id": 2,
+                "position_id": 3,
+                "role_id": 2,
+                "leader_id": null,
+                "hire_date": 1640966400000000,
+                "avatar": "/avatars/zhangsan.jpg",
+                "status": 1,
+                "remark": ""
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取员工详情（含关联）</h2>
+            <p>获取员工详情，包含部门、职位、角色等关联信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/employee/detail</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>员工 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>员工 ID:</label>
+                    <input type="number" id="detail-id" placeholder="输入员工 ID">
+                </div>
+                <button class="btn success" onclick="testGetEmployeeDetail()">获取详情</button>
+                <div id="detail-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "employee_no": "EMP001",
+                "name": "张三",
+                "gender": 1,
+                "phone": "13800138000",
+                "email": "zhangsan@company.com",
+                "department_id": 2,
+                "department_name": "研发部",
+                "position_id": 3,
+                "position_name": "高级工程师",
+                "role_id": 2,
+                "role_name": "普通管理员",
+                "leader_id": 5,
+                "leader_name": "李四",
+                "hire_date": 1640966400000000,
+                "avatar": "/avatars/zhangsan.jpg",
+                "status": 1,
+                "remark": ""
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存员工</h2>
+            <p>新增或更新员工信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/employee/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>员工 ID（更新时）</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>employee_no</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>工号</td>
+                        <td>required, 唯一</td>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>姓名</td>
+                        <td>required</td>
+                    </tr>
+                    <tr>
+                        <td>gender</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>性别</td>
+                        <td>0=未知, 1=男, 2=女</td>
+                    </tr>
+                    <tr>
+                        <td>phone</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>手机号</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>email</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>邮箱</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>department_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>部门 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>position_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>职位 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>role_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>角色 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>leader_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>直属领导 ID</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>hire_date</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>入职日期</td>
+                        <td>时间戳</td>
+                    </tr>
+                    <tr>
+                        <td>avatar</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>头像</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0/1</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID (更新时填写):</label>
+                        <input type="number" id="save-id" placeholder="留空为新增">
+                    </div>
+                    <div class="form-group">
+                        <label>工号:</label>
+                        <input type="text" id="save-employee-no" placeholder="输入工号">
+                    </div>
+                    <div class="form-group">
+                        <label>姓名:</label>
+                        <input type="text" id="save-name" placeholder="输入姓名">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>性别:</label>
+                        <select id="save-gender">
+                            <option value="0">未知</option>
+                            <option value="1">男</option>
+                            <option value="2">女</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>手机号:</label>
+                        <input type="text" id="save-phone" placeholder="输入手机号">
+                    </div>
+                    <div class="form-group">
+                        <label>邮箱:</label>
+                        <input type="email" id="save-email" placeholder="输入邮箱">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>部门 ID:</label>
+                        <input type="number" id="save-dept-id" placeholder="输入部门 ID">
+                    </div>
+                    <div class="form-group">
+                        <label>职位 ID:</label>
+                        <input type="number" id="save-position-id" placeholder="输入职位 ID">
+                    </div>
+                    <div class="form-group">
+                        <label>角色 ID:</label>
+                        <input type="number" id="save-role-id" placeholder="输入角色 ID">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>领导 ID:</label>
+                        <input type="number" id="save-leader-id" placeholder="输入领导 ID">
+                    </div>
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="save-status">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn success" onclick="testSaveEmployee()">保存员工</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "employee_no": "EMP010",
+                "name": "王五",
+                "gender": 1,
+                "phone": "13900139000",
+                "email": "wangwu@company.com",
+                "department_id": 2,
+                "position_id": 4,
+                "status": 1
+                }</div>
+
+            <h3>错误响应</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>错误信息</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>员工姓名不能为空</td>
+                        <td>name 为空</td>
+                    </tr>
+                    <tr>
+                        <td>工号不能为空</td>
+                        <td>employee_no 为空</td>
+                    </tr>
+                    <tr>
+                        <td>工号已存在</td>
+                        <td>employee_no 重复</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2><span class="method delete">DELETE</span> 删除员工</h2>
+            <p>软删除员工。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/employee/delete</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>员工 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>员工 ID:</label>
+                    <input type="number" id="delete-id" placeholder="输入要删除的员工 ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteEmployee()">删除员工</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取员工选项</h2>
+            <p>获取启用状态的员工列表（下拉选择用）。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/employee/select</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testSelectEmployees()">获取选项</button>
+                <div id="select-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                { "id": 1, "name": "张三", "employee_no": "EMP001" },
+                { "id": 2, "name": "李四", "employee_no": "EMP002" }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 按部门查询员工</h2>
+            <p>获取指定部门的所有员工。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/employee/by-department</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>department_id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>部门 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>部门 ID:</label>
+                    <input type="number" id="by-dept-id" placeholder="输入部门 ID">
+                </div>
+                <button class="btn success" onclick="testGetEmployeesByDepartment()">按部门查询</button>
+                <div id="by-dept-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "id": 1,
+                "employee_no": "EMP001",
+                "name": "张三",
+                "position_id": 3,
+                "status": 1
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 性别和状态说明</h2>
+
+            <h3>性别 (gender)</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>0</td>
+                        <td>未知</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>男</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>女</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>状态 (status)</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>值</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>0</td>
+                        <td>禁用/离职</td>
+                    </tr>
+                    <tr>
+                        <td>1</td>
+                        <td>启用/在职</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListEmployees() {
+            const page = document.getElementById('list-page').value;
+            const limit = document.getElementById('list-limit').value;
+            const deptId = document.getElementById('list-dept-id').value;
+            const status = document.getElementById('list-status').value;
+
+            let url = `/api/employee/list?page=${page}&limit=${limit}`;
+            if (deptId) url += `&department_id=${deptId}`;
+            if (status !== '') url += `&status=${status}`;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetEmployee() {
+            const id = document.getElementById('get-id').value;
+
+            if (!id) {
+                alert('请输入员工 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/employee/get?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetEmployeeDetail() {
+            const id = document.getElementById('detail-id').value;
+
+            if (!id) {
+                alert('请输入员工 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('detail-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/employee/detail?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveEmployee() {
+            const id = document.getElementById('save-id').value;
+            const employeeNo = document.getElementById('save-employee-no').value;
+            const name = document.getElementById('save-name').value;
+            const gender = document.getElementById('save-gender').value;
+            const phone = document.getElementById('save-phone').value;
+            const email = document.getElementById('save-email').value;
+            const deptId = document.getElementById('save-dept-id').value;
+            const positionId = document.getElementById('save-position-id').value;
+            const roleId = document.getElementById('save-role-id').value;
+            const leaderId = document.getElementById('save-leader-id').value;
+            const status = document.getElementById('save-status').value;
+
+            if (!employeeNo || !name) {
+                alert('请填写工号和姓名');
+                return;
+            }
+
+            const body = {
+                employee_no: employeeNo,
+                name: name,
+                gender: parseInt(gender),
+                status: parseInt(status)
+            };
+
+            if (id) body.id = parseInt(id);
+            if (phone) body.phone = phone;
+            if (email) body.email = email;
+            if (deptId) body.department_id = parseInt(deptId);
+            if (positionId) body.position_id = parseInt(positionId);
+            if (roleId) body.role_id = parseInt(roleId);
+            if (leaderId) body.leader_id = parseInt(leaderId);
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/employee/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteEmployee() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                alert('请输入员工 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除这个员工吗？')) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/employee/delete?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSelectEmployees() {
+            const responseDiv = document.getElementById('select-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/employee/select');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetEmployeesByDepartment() {
+            const deptId = document.getElementById('by-dept-id').value;
+
+            if (!deptId) {
+                alert('请输入部门 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('by-dept-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/employee/by-department?department_id=${deptId}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

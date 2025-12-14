@@ -17,6 +17,14 @@ pub const Dict = @import("dict.model.zig").Dict;
 pub const Department = @import("department.model.zig").Department;
 pub const Employee = @import("employee.model.zig").Employee;
 pub const Position = @import("position.model.zig").Position;
+pub const CmsModel = @import("cms_model.model.zig").CmsModel;
+pub const CmsField = @import("cms_field.model.zig").CmsField;
+pub const Document = @import("document.model.zig").Document;
+pub const MaterialCategory = @import("material_category.model.zig").MaterialCategory;
+pub const Material = @import("material.model.zig").Material;
+pub const FriendLink = @import("friend_link.model.zig").FriendLink;
+pub const MemberGroup = @import("member_group.model.zig").MemberGroup;
+pub const Member = @import("member.model.zig").Member;
 
 /// 实体类型枚举，用于泛型操作
 pub const EntityType = enum {
@@ -32,6 +40,14 @@ pub const EntityType = enum {
     department,
     employee,
     position,
+    cms_model,
+    cms_field,
+    document,
+    material_category,
+    material,
+    friend_link,
+    member_group,
+    member,
 };
 
 /// 通用实体接口
@@ -51,6 +67,14 @@ pub const EntityInterface = struct {
             .department => "departments",
             .employee => "employees",
             .position => "positions",
+            .cms_model => "cms_models",
+            .cms_field => "cms_fields",
+            .document => "documents",
+            .material_category => "material_categories",
+            .material => "materials",
+            .friend_link => "friend_links",
+            .member_group => "member_groups",
+            .member => "members",
         };
     }
 };

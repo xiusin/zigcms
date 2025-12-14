@@ -1,9 +1,9 @@
-//! 分类管理模型
+//! 素材分类模型
 //!
-//! 系统分类实体，用于文章、产品等内容分类
+//! 系统素材分类实体，用于图片、视频、文档等素材分类管理
 
-/// 分类实体
-pub const Category = struct {
+/// 素材分类实体
+pub const MaterialCategory = struct {
     /// 分类ID
     id: ?i32 = null,
     /// 分类名称
@@ -12,26 +12,18 @@ pub const Category = struct {
     code: []const u8 = "",
     /// 父分类ID（0=顶级分类）
     parent_id: i32 = 0,
-    /// 分类类型（article=文章分类, product=产品分类, page=单页分类等）
-    category_type: []const u8 = "article",
     /// 分类描述
     description: []const u8 = "",
-    /// 封面图片
-    cover_image: []const u8 = "",
     /// 分类图标
     icon: []const u8 = "",
+    /// 允许的文件类型（JSON格式，如 ["jpg","png","gif"]）
+    allowed_types: []const u8 = "[]",
+    /// 最大文件大小（字节）
+    max_size: i32 = 10485760, // 10MB
     /// 排序权重
     sort: i32 = 0,
     /// 状态（0禁用 1启用）
     status: i32 = 1,
-    /// SEO标题
-    seo_title: []const u8 = "",
-    /// SEO关键词
-    seo_keywords: []const u8 = "",
-    /// SEO描述
-    seo_description: []const u8 = "",
-    /// 访问量
-    views: i32 = 0,
     /// 备注
     remark: []const u8 = "",
     /// 创建时间

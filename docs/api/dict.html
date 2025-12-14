@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>字典管理 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 字典管理 API</h1>
+            <p>管理系统数据字典，提供统一的枚举值管理和缓存功能</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="department.html">部门</a>
+            <a href="employee.html">员工</a>
+            <a href="menu.html">菜单</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字典类型列表</h2>
+            <p>获取所有字典类型。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/types</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetDictTypes()">获取字典类型</button>
+                <div id="types-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "id": 1,
+                "dict_type": "sys_status",
+                "dict_label": "状态",
+                "dict_value": "status"
+                },
+                {
+                "id": 5,
+                "dict_type": "gender",
+                "dict_label": "性别",
+                "dict_value": "gender"
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 根据类型获取字典项</h2>
+            <p>获取指定字典类型的所有选项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/by-type</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典类型</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字典类型:</label>
+                    <input type="text" id="by-type-dict-type" placeholder="输入字典类型，如：sys_status">
+                </div>
+                <button class="btn success" onclick="testGetDictByType()">获取字典项</button>
+                <div id="by-type-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "id": 1,
+                "dict_type": "sys_status",
+                "dict_label": "启用",
+                "dict_value": "1",
+                "sort": 1
+                },
+                {
+                "id": 2,
+                "dict_type": "sys_status",
+                "dict_label": "禁用",
+                "dict_value": "0",
+                "sort": 2
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字典项详情</h2>
+            <p>根据 ID 获取字典项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/get</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典项 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字典项 ID:</label>
+                    <input type="number" id="get-id" placeholder="输入字典项 ID">
+                </div>
+                <button class="btn success" onclick="testGetDict()">获取详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": {
+                "id": 1,
+                "dict_type": "sys_status",
+                "dict_label": "启用",
+                "dict_value": "1",
+                "sort": 1,
+                "status": 1,
+                "remark": ""
+                }
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 保存字典项</h2>
+            <p>新增或更新字典项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/dict/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>字典项 ID（更新时）</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典类型</td>
+                        <td>required</td>
+                    </tr>
+                    <tr>
+                        <td>dict_label</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>显示标签</td>
+                        <td>required, 同类型唯一</td>
+                    </tr>
+                    <tr>
+                        <td>dict_value</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典值</td>
+                        <td>required, 同类型唯一</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>排序</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0/1</td>
+                    </tr>
+                    <tr>
+                        <td>remark</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>备注</td>
+                        <td>-</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ID (更新时填写):</label>
+                        <input type="number" id="save-id" placeholder="留空为新增">
+                    </div>
+                    <div class="form-group">
+                        <label>字典类型:</label>
+                        <input type="text" id="save-dict-type" placeholder="输入字典类型">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>显示标签:</label>
+                        <input type="text" id="save-dict-label" placeholder="输入显示标签">
+                    </div>
+                    <div class="form-group">
+                        <label>字典值:</label>
+                        <input type="text" id="save-dict-value" placeholder="输入字典值">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>排序:</label>
+                    <input type="number" id="save-sort" placeholder="输入排序值">
+                </div>
+                <button class="btn success" onclick="testSaveDict()">保存字典项</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>请求示例</h3>
+            <div class="code-block">{
+                "dict_type": "gender",
+                "dict_label": "男",
+                "dict_value": "1",
+                "sort": 1,
+                "status": 1
+                }</div>
+
+            <h3>错误响应</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>错误信息</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>字典类型、标签和值不能为空</td>
+                        <td>必填字段为空</td>
+                    </tr>
+                    <tr>
+                        <td>相同字典类型下已存在相同的字典值</td>
+                        <td>dict_value 重复</td>
+                    </tr>
+                    <tr>
+                        <td>相同字典类型下已存在相同的字典标签</td>
+                        <td>dict_label 重复</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2><span class="method delete">DELETE</span> 删除字典项</h2>
+            <p>删除字典项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/dict/delete</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>int</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典项 ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字典项 ID:</label>
+                    <input type="number" id="delete-id" placeholder="输入要删除的字典项 ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteDict()">删除字典项</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 搜索字典项</h2>
+            <p>根据条件搜索字典项。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/search</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>字典类型</td>
+                    </tr>
+                    <tr>
+                        <td>keyword</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>关键字</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字典类型:</label>
+                        <input type="text" id="search-dict-type" placeholder="可选">
+                    </div>
+                    <div class="form-group">
+                        <label>关键字:</label>
+                        <input type="text" id="search-keyword" placeholder="搜索标签或值">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testSearchDict()">搜索字典项</button>
+                <div id="search-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 统计字典项数量</h2>
+            <p>统计指定类型的字典项数量。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/count</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典类型</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>字典类型:</label>
+                    <input type="text" id="count-dict-type" placeholder="输入字典类型">
+                </div>
+                <button class="btn success" onclick="testCountDict()">统计数量</button>
+                <div id="count-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取字典标签</h2>
+            <p>根据类型和值获取显示标签。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/label</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典类型</td>
+                    </tr>
+                    <tr>
+                        <td>dict_value</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典值</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字典类型:</label>
+                        <input type="text" id="label-dict-type" placeholder="输入字典类型">
+                    </div>
+                    <div class="form-group">
+                        <label>字典值:</label>
+                        <input type="text" id="label-dict-value" placeholder="输入字典值">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testGetDictLabel()">获取标签</button>
+                <div id="label-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 验证字典值是否存在</h2>
+            <p>验证字典值是否存在。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/validate</div>
+
+            <h3>查询参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>dict_type</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典类型</td>
+                    </tr>
+                    <tr>
+                        <td>dict_value</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>字典值</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字典类型:</label>
+                        <input type="text" id="validate-dict-type" placeholder="输入字典类型">
+                    </div>
+                    <div class="form-group">
+                        <label>字典值:</label>
+                        <input type="text" id="validate-dict-value" placeholder="输入字典值">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testValidateDictValue()">验证字典值</button>
+                <div id="validate-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 刷新字典缓存</h2>
+            <p>刷新字典缓存数据。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/dict/refresh-cache</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testRefreshCache()">刷新缓存</button>
+                <div id="refresh-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method get">GET</span> 获取缓存状态</h2>
+            <p>获取字典缓存统计信息。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/dict/cache-stats</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetCacheStats()">获取缓存状态</button>
+                <div id="cache-stats-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method post">POST</span> 清理过期缓存</h2>
+            <p>清理过期的缓存数据。</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/dict/cleanup-cache</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testCleanupCache()">清理缓存</button>
+                <div id="cleanup-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 常用字典类型</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>说明</th>
+                        <th>示例值</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>sys_status</td>
+                        <td>系统状态</td>
+                        <td>0=禁用, 1=启用</td>
+                    </tr>
+                    <tr>
+                        <td>gender</td>
+                        <td>性别</td>
+                        <td>0=未知, 1=男, 2=女</td>
+                    </tr>
+                    <tr>
+                        <td>yes_no</td>
+                        <td>是否</td>
+                        <td>0=否, 1=是</td>
+                    </tr>
+                    <tr>
+                        <td>data_scope</td>
+                        <td>数据范围</td>
+                        <td>1-5</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testGetDictTypes() {
+            const responseDiv = document.getElementById('types-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/dict/types');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetDictByType() {
+            const dictType = document.getElementById('by-type-dict-type').value;
+
+            if (!dictType) {
+                alert('请输入字典类型');
+                return;
+            }
+
+            const responseDiv = document.getElementById('by-type-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/dict/by-type?dict_type=${dictType}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetDict() {
+            const id = document.getElementById('get-id').value;
+
+            if (!id) {
+                alert('请输入字典项 ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/dict/get?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveDict() {
+            const id = document.getElementById('save-id').value;
+            const dictType = document.getElementById('save-dict-type').value;
+            const dictLabel = document.getElementById('save-dict-label').value;
+            const dictValue = document.getElementById('save-dict-value').value;
+            const sort = document.getElementById('save-sort').value;
+
+            if (!dictType || !dictLabel || !dictValue) {
+                alert('请填写字典类型、标签和值');
+                return;
+            }
+
+            const body = {
+                dict_type: dictType,
+                dict_label: dictLabel,
+                dict_value: dictValue,
+                status: 1
+            };
+
+            if (id) body.id = parseInt(id);
+            if (sort) body.sort = parseInt(sort);
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/dict/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteDict() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                alert('请输入字典项 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除这个字典项吗？')) {
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/dict/delete?id=${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSearchDict() {
+            const dictType = document.getElementById('search-dict-type').value;
+            const keyword = document.getElementById('search-keyword').value;
+
+            let url = '/api/dict/search';
+            const params = [];
+            if (dictType) params.push(`dict_type=${dictType}`);
+            if (keyword) params.push(`keyword=${keyword}`);
+            if (params.length > 0) url += '?' + params.join('&');
+
+            const responseDiv = document.getElementById('search-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testCountDict() {
+            const dictType = document.getElementById('count-dict-type').value;
+
+            if (!dictType) {
+                alert('请输入字典类型');
+                return;
+            }
+
+            const responseDiv = document.getElementById('count-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/dict/count?dict_type=${dictType}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetDictLabel() {
+            const dictType = document.getElementById('label-dict-type').value;
+            const dictValue = document.getElementById('label-dict-value').value;
+
+            if (!dictType || !dictValue) {
+                alert('请填写字典类型和值');
+                return;
+            }
+
+            const responseDiv = document.getElementById('label-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/dict/label?dict_type=${dictType}&dict_value=${dictValue}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testValidateDictValue() {
+            const dictType = document.getElementById('validate-dict-type').value;
+            const dictValue = document.getElementById('validate-dict-value').value;
+
+            if (!dictType || !dictValue) {
+                alert('请填写字典类型和值');
+                return;
+            }
+
+            const responseDiv = document.getElementById('validate-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/dict/validate?dict_type=${dictType}&dict_value=${dictValue}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testRefreshCache() {
+            const responseDiv = document.getElementById('refresh-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/dict/refresh-cache');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetCacheStats() {
+            const responseDiv = document.getElementById('cache-stats-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/dict/cache-stats');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testCleanupCache() {
+            const responseDiv = document.getElementById('cleanup-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/dict/cleanup-cache');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

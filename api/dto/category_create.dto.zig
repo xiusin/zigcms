@@ -1,13 +1,13 @@
-//! 分类管理模型
+//! 分类创建数据传输对象
 //!
-//! 系统分类实体，用于文章、产品等内容分类
+//! 用于创建分类实体的数据结构
 
-/// 分类实体
-pub const Category = struct {
-    /// 分类ID
-    id: ?i32 = null,
+const std = @import("std");
+
+/// 分类创建 DTO
+pub const CategoryCreateDto = struct {
     /// 分类名称
-    name: []const u8 = "",
+    name: []const u8,
     /// 分类编码（唯一标识）
     code: []const u8 = "",
     /// 父分类ID（0=顶级分类）
@@ -30,14 +30,6 @@ pub const Category = struct {
     seo_keywords: []const u8 = "",
     /// SEO描述
     seo_description: []const u8 = "",
-    /// 访问量
-    views: i32 = 0,
     /// 备注
     remark: []const u8 = "",
-    /// 创建时间
-    create_time: ?i64 = null,
-    /// 更新时间
-    update_time: ?i64 = null,
-    /// 软删除标记
-    is_delete: i32 = 0,
 };

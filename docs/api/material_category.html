@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>素材分类 API - ZigCMS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin: 30px 0 15px 0;
+            font-size: 1.3em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .badge.required {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .badge.optional {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.success:hover {
+            background: #219a52;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.danger:hover {
+            background: #c0392b;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .test-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .response-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .method.get {
+            background: #61affe;
+        }
+
+        .method.post {
+            background: #49cc90;
+        }
+
+        .method.delete {
+            background: #f93e3e;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .table {
+                font-size: 0.8em;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗂️ 素材分类 API</h1>
+            <p>管理系统文件和素材的分类，支持文件类型限制</p>
+        </div>
+
+        <div class="alert info">
+            <strong>注意：</strong> 所有接口都需要认证，请先在 <a href="auth.html" target="_blank">认证页面</a> 获取 Token
+        </div>
+
+        <div class="nav">
+            <a href="index.html">← 返回首页</a>
+            <a href="material.html">素材管理</a>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取素材分类列表</h2>
+            <p>分页获取素材分类列表，支持状态筛选</p>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>示例</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>page</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>页码</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>page_size</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>每页条数</td>
+                        <td>10</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>keyword</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>关键词搜索</td>
+                        <td>图片</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="list-status">
+                            <option value="">全部</option>
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>关键词:</label>
+                        <input type="text" id="list-keyword" placeholder="输入关键词">
+                    </div>
+                </div>
+                <button class="btn success" onclick="testListMaterialCategories()">获取素材分类列表</button>
+                <div id="list-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取单个素材分类</h2>
+            <p>根据ID获取单个素材分类详情</p>
+
+            <h3>请求</h3>
+            <div class="code-block">GET /api/material_category/get/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>分类ID:</label>
+                    <input type="number" id="get-category-id" placeholder="输入分类ID">
+                </div>
+                <button class="btn success" onclick="testGetMaterialCategory()">获取分类详情</button>
+                <div id="get-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.post">POST</span> 保存素材分类</h2>
+            <p>新增或更新素材分类信息</p>
+
+            <h3>请求</h3>
+            <div class="code-block">POST /api/material_category/save</div>
+
+            <h3>请求参数</h3>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>参数</th>
+                        <th>类型</th>
+                        <th>必填</th>
+                        <th>说明</th>
+                        <th>验证规则</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td><span class="badge required">✅</span></td>
+                        <td>分类名称</td>
+                        <td>required, max:100</td>
+                    </tr>
+                    <tr>
+                        <td>code</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分类编码</td>
+                        <td>unique, max:50</td>
+                    </tr>
+                    <tr>
+                        <td>parent_id</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>父分类ID</td>
+                        <td>0=顶级</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分类描述</td>
+                        <td>max:500</td>
+                    </tr>
+                    <tr>
+                        <td>icon</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>分类图标</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>allowed_types</td>
+                        <td>string</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>允许的文件类型</td>
+                        <td>JSON数组，如 ["jpg","png","gif"]</td>
+                    </tr>
+                    <tr>
+                        <td>max_size</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>最大文件大小(字节)</td>
+                        <td>default:10485760 (10MB)</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>排序权重</td>
+                        <td>default:0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>int</td>
+                        <td><span class="badge optional">❌</span></td>
+                        <td>状态</td>
+                        <td>0/1, default:1</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>分类名称:</label>
+                        <input type="text" id="save-name" placeholder="输入分类名称">
+                    </div>
+                    <div class="form-group">
+                        <label>分类编码:</label>
+                        <input type="text" id="save-code" placeholder="输入分类编码">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>父分类ID:</label>
+                        <input type="number" id="save-parent-id" placeholder="0=顶级分类">
+                    </div>
+                    <div class="form-group">
+                        <label>最大文件大小(MB):</label>
+                        <input type="number" id="save-max-size" placeholder="10" step="0.1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>排序:</label>
+                        <input type="number" id="save-sort" placeholder="输入排序值">
+                    </div>
+                    <div class="form-group">
+                        <label>状态:</label>
+                        <select id="save-status">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>允许的文件类型 (JSON数组):</label>
+                    <textarea id="save-allowed-types"
+                        placeholder='["jpg","png","gif","pdf"]'>["jpg","png","gif","pdf"]</textarea>
+                </div>
+                <div class="form-group">
+                    <label>分类描述:</label>
+                    <textarea id="save-description" placeholder="输入分类描述"></textarea>
+                </div>
+                <button class="btn success" onclick="testSaveMaterialCategory()">保存素材分类</button>
+                <div id="save-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.delete">DELETE</span> 删除素材分类</h2>
+            <p>根据ID删除素材分类</p>
+
+            <h3>请求</h3>
+            <div class="code-block">DELETE /api/material_category/delete/{id}</div>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>分类ID:</label>
+                    <input type="number" id="delete-category-id" placeholder="输入要删除的分类ID">
+                </div>
+                <button class="btn danger" onclick="testDeleteMaterialCategory()">删除素材分类</button>
+                <div id="delete-response" class="response-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取树形结构</h2>
+            <p>获取素材分类的树形结构</p>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetMaterialCategoryTree()">获取素材分类树</button>
+                <div id="tree-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "id": 1,
+                "name": "图片资源",
+                "code": "images",
+                "parent_id": 0,
+                "allowed_types": ["jpg","png","gif"],
+                "max_size": 10485760,
+                "sort": 1,
+                "status": 1,
+                "children": [
+                {
+                "id": 2,
+                "name": "产品图片",
+                "code": "product-images",
+                "parent_id": 1,
+                "allowed_types": ["jpg","png"],
+                "max_size": 5242880,
+                "sort": 1,
+                "status": 1,
+                "children": []
+                }
+                ]
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2><span class="method.get">GET</span> 获取分类选项</h2>
+            <p>获取素材分类选项，用于下拉框等选择组件</p>
+
+            <h3>测试接口</h3>
+            <div class="test-section">
+                <button class="btn success" onclick="testGetMaterialCategorySelect()">获取分类选项</button>
+                <div id="select-response" class="response-area" style="display: none;"></div>
+            </div>
+
+            <h3>响应示例</h3>
+            <div class="code-block">{
+                "code": 0,
+                "msg": "success",
+                "data": [
+                {
+                "value": 1,
+                "label": "图片资源"
+                },
+                {
+                "value": 2,
+                "label": "产品图片"
+                }
+                ]
+                }</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 素材分类字段说明</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>字段</th>
+                        <th>类型</th>
+                        <th>说明</th>
+                        <th>默认值</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>id</td>
+                        <td>i32</td>
+                        <td>分类ID</td>
+                        <td>auto</td>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td>分类名称</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>code</td>
+                        <td>string</td>
+                        <td>分类编码（唯一标识）</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>parent_id</td>
+                        <td>i32</td>
+                        <td>父分类ID (0=顶级)</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>string</td>
+                        <td>分类描述</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>icon</td>
+                        <td>string</td>
+                        <td>分类图标</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>allowed_types</td>
+                        <td>string</td>
+                        <td>允许的文件类型（JSON数组）</td>
+                        <td>"[]"</td>
+                    </tr>
+                    <tr>
+                        <td>max_size</td>
+                        <td>i32</td>
+                        <td>最大文件大小（字节）</td>
+                        <td>10485760</td>
+                    </tr>
+                    <tr>
+                        <td>sort</td>
+                        <td>i32</td>
+                        <td>排序权重</td>
+                        <td>0</td>
+                    </tr>
+                    <tr>
+                        <td>status</td>
+                        <td>i32</td>
+                        <td>状态 (0=禁用 1=启用)</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                        <td>remark</td>
+                        <td>string</td>
+                        <td>备注</td>
+                        <td>""</td>
+                    </tr>
+                    <tr>
+                        <td>create_time</td>
+                        <td>i64</td>
+                        <td>创建时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>update_time</td>
+                        <td>i64</td>
+                        <td>更新时间</td>
+                        <td>now</td>
+                    </tr>
+                    <tr>
+                        <td>is_delete</td>
+                        <td>i32</td>
+                        <td>软删除标记</td>
+                        <td>0</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>使用示例</h3>
+            <div class="code-block">// 创建图片分类
+                const category = await fetch('/api/material_category/save', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer &lt;token&gt;'
+                },
+                body: JSON.stringify({
+                name: '产品图片',
+                code: 'product-images',
+                allowed_types: '["jpg","png","gif"]',
+                max_size: 5242880, // 5MB
+                status: 1
+                })
+                });
+
+                // 获取分类树
+                const tree = await fetch('/api/material_category/tree');
+
+                // 获取分类选项
+                const options = await fetch('/api/material_category/select');</div>
+        </div>
+    </div>
+
+    <script>
+        let globalToken = '';
+
+        function getToken() {
+            if (window.parent && window.parent.getGlobalToken) {
+                return window.parent.getGlobalToken();
+            }
+            return localStorage.getItem('zigcms_token') || '';
+        }
+
+        async function makeRequest(method, url, body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const config = {
+                method: method,
+                headers: headers
+            };
+
+            if (body) {
+                config.body = JSON.stringify(body);
+            }
+
+            return await fetch(`http://localhost:8080${url}`, config);
+        }
+
+        async function testListMaterialCategories() {
+            const status = document.getElementById('list-status').value;
+            const keyword = document.getElementById('list-keyword').value;
+
+            let url = '/api/material_category/list?';
+            if (status) url += `status=${status}&`;
+            if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+
+            const responseDiv = document.getElementById('list-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', url);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetMaterialCategory() {
+            const id = document.getElementById('get-category-id').value;
+            if (!id) {
+                alert('请输入分类ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('get-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', `/api/material_category/get/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testSaveMaterialCategory() {
+            const name = document.getElementById('save-name').value;
+            const code = document.getElementById('save-code').value;
+            const parentId = document.getElementById('save-parent-id').value;
+            const maxSize = document.getElementById('save-max-size').value;
+            const sort = document.getElementById('save-sort').value;
+            const status = document.getElementById('save-status').value;
+            const allowedTypes = document.getElementById('save-allowed-types').value;
+            const description = document.getElementById('save-description').value;
+
+            if (!name) {
+                alert('请输入分类名称');
+                return;
+            }
+
+            const body = {
+                name: name,
+                status: parseInt(status)
+            };
+
+            if (code) body.code = code;
+            if (parentId) body.parent_id = parseInt(parentId);
+            if (maxSize) body.max_size = Math.round(parseFloat(maxSize) * 1024 * 1024); // MB to bytes
+            if (sort) body.sort = parseInt(sort);
+            if (allowedTypes) {
+                try {
+                    body.allowed_types = JSON.stringify(JSON.parse(allowedTypes));
+                } catch (e) {
+                    body.allowed_types = allowedTypes;
+                }
+            }
+            if (description) body.description = description;
+
+            const responseDiv = document.getElementById('save-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('POST', '/api/material_category/save', body);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testDeleteMaterialCategory() {
+            const id = document.getElementById('delete-category-id').value;
+            if (!id) {
+                alert('请输入分类ID');
+                return;
+            }
+
+            const responseDiv = document.getElementById('delete-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('DELETE', `/api/material_category/delete/${id}`);
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetMaterialCategoryTree() {
+            const responseDiv = document.getElementById('tree-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/material_category/tree');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        async function testGetMaterialCategorySelect() {
+            const responseDiv = document.getElementById('select-response');
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = '发送请求中...';
+
+            try {
+                const response = await makeRequest('GET', '/api/material_category/select');
+                const result = await response.json();
+                responseDiv.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                responseDiv.textContent = `错误: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>
