@@ -270,7 +270,6 @@ pub const DynamicModel = struct {
     }
 };
 
-
 // ============================================================================
 // 动态结果集
 // ============================================================================
@@ -496,7 +495,7 @@ pub const DynamicCrud = struct {
         try sql.appendSlice(self.allocator, values_sql.items);
         try sql.append(self.allocator, ')');
 
-        _ = try self.db.rawExec(sql.items);
+        _ = try self.db.rawExec(sql.items, .{});
         return self.db.lastInsertId();
     }
 
@@ -527,7 +526,7 @@ pub const DynamicCrud = struct {
 
         try sql.writer(self.allocator).print(" WHERE id = {d}", .{id});
 
-        return try self.db.rawExec(sql.items);
+        return try self.db.rawExec(sql.items, .{});
     }
 
     /// 动态 DELETE
@@ -537,7 +536,7 @@ pub const DynamicCrud = struct {
         const sql_query = try std.fmt.allocPrint(self.allocator, "DELETE FROM {s} WHERE id = {d}", .{ table_name, id });
         defer self.allocator.free(sql_query);
 
-        return try self.db.rawExec(sql_query);
+        return try self.db.rawExec(sql_query, .{});
     }
 
     /// 批量删除
@@ -559,7 +558,7 @@ pub const DynamicCrud = struct {
 
         try sql.append(self.allocator, ')');
 
-        return try self.db.rawExec(sql.items);
+        return try self.db.rawExec(sql.items, .{});
     }
 
     /// 将结果集映射为动态模型

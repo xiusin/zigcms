@@ -287,7 +287,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             ) catch return base.send_failed(req, "SQL 构建失败");
             defer self.allocator.free(sql_str);
 
-            _ = global.get_db().rawExec(sql_str) catch |e| return base.send_error(req, e);
+            _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
 
             return base.send_ok(req, "更新成功");
         }

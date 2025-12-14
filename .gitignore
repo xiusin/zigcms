@@ -25,3 +25,6 @@ ai_todo.md
 *.sqlite3
 zigcms.db-shm
 zigcms.db-wal
+application/services/sql/sqlite_complete_test
+sqlite_complete_test.dSYM/Contents/Resources/DWARF/sqlite_complete_test
+sqlite_complete_test

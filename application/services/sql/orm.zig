@@ -300,14 +300,18 @@ pub const Database = struct {
         }
     }
 
-    /// 执行原始查询（内部自动使用连接池，支持失败重试）
-    pub fn rawQuery(self: *Database, sql_query: []const u8) !interface.ResultSet {
+    /// 执行原始查询（支持参数绑定）
+    pub fn rawQuery(self: *Database, sql_query: []const u8, args: anytype) !interface.ResultSet {
         const start_time = std.time.nanoTimestamp();
 
+        // 格式化 SQL，绑定参数
+        const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
+        defer self.allocator.free(formatted_sql);
+
         if (self.logger) |log| {
-            if (self.debug) log.debug("[SQL] {s}", .{sql_query});
+            if (self.debug) log.debug("[SQL] {s}", .{formatted_sql});
         } else if (self.debug) {
-            std.debug.print("[SQL] {s}\n", .{sql_query});
+            std.debug.print("[SQL] {s}\n", .{formatted_sql});
         }
 
         var retry_count: u32 = 0;
@@ -325,7 +329,7 @@ pub const Database = struct {
                 if (self.pool) |pool| pool.release(pc);
             };
 
-            const result = conn.query(sql_query) catch |err| {
+            const result = conn.query(formatted_sql) catch |err| {
                 const is_conn_error = switch (err) {
                     error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
                     else => false,
@@ -346,12 +350,12 @@ pub const Database = struct {
                 if (self.logger) |log| {
                     if (self.enable_logging) {
                         log.err("Query failed: {s}", .{@errorName(err)});
-                        log.err("SQL: {s}", .{sql_query});
+                        log.err("SQL: {s}", .{formatted_sql});
                         log.err("Duration: {d:.2}ms", .{elapsed_ms});
                     }
                 } else if (self.enable_logging) {
                     std.debug.print("[ERROR] Query failed: {s}\n", .{@errorName(err)});
-                    std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
                     std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
                 }
                 return err;
@@ -363,11 +367,11 @@ pub const Database = struct {
             if (self.logger) |log| {
                 if (self.enable_logging) {
                     log.info("Query executed: {d} rows, {d:.2}ms", .{ row_count, elapsed_ms });
-                    log.debug("SQL: {s}", .{sql_query});
+                    log.debug("SQL: {s}", .{formatted_sql});
                 }
             } else if (self.enable_logging) {
                 std.debug.print("[INFO] Query executed: {d} rows, {d:.2}ms\n", .{ row_count, elapsed_ms });
-                std.debug.print("[SQL] {s}\n", .{sql_query});
+                std.debug.print("[SQL] {s}\n", .{formatted_sql});
             }
 
             return result;
@@ -375,14 +379,18 @@ pub const Database = struct {
         return error.QueryFailed; // Should not reach here
     }
 
-    /// 执行原始命令（内部自动使用连接池，支持失败重试）
-    pub fn rawExec(self: *Database, sql_query: []const u8) !u64 {
+    /// 执行原始命令（支持参数绑定）
+    pub fn rawExec(self: *Database, sql_query: []const u8, args: anytype) !u64 {
         const start_time = std.time.nanoTimestamp();
 
+        // 格式化 SQL，绑定参数
+        const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
+        defer self.allocator.free(formatted_sql);
+
         if (self.logger) |log| {
-            if (self.debug) log.debug("[SQL] {s}", .{sql_query});
+            if (self.debug) log.debug("[SQL] {s}", .{formatted_sql});
         } else if (self.debug) {
-            std.debug.print("[SQL] {s}\n", .{sql_query});
+            std.debug.print("[SQL] {s}\n", .{formatted_sql});
         }
 
         var retry_count: u32 = 0;
@@ -400,7 +408,7 @@ pub const Database = struct {
                 if (self.pool) |pool| pool.release(pc);
             };
 
-            const affected = conn.exec(sql_query) catch |err| {
+            const affected = conn.exec(formatted_sql) catch |err| {
                 const is_conn_error = switch (err) {
                     error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
                     else => false,
@@ -420,12 +428,12 @@ pub const Database = struct {
                 if (self.logger) |log| {
                     if (self.enable_logging) {
                         log.err("Exec failed: {s}", .{@errorName(err)});
-                        log.err("SQL: {s}", .{sql_query});
+                        log.err("SQL: {s}", .{formatted_sql});
                         log.err("Duration: {d:.2}ms", .{elapsed_ms});
                     }
                 } else if (self.enable_logging) {
                     std.debug.print("[ERROR] Exec failed: {s}\n", .{@errorName(err)});
-                    std.debug.print("[ERROR] SQL: {s}\n", .{sql_query});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
                     std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
                 }
                 return err;
@@ -436,11 +444,11 @@ pub const Database = struct {
             if (self.logger) |log| {
                 if (self.enable_logging) {
                     log.info("Exec executed: {d} rows affected, {d:.2}ms", .{ affected, elapsed_ms });
-                    log.debug("SQL: {s}", .{sql_query});
+                    log.debug("SQL: {s}", .{formatted_sql});
                 }
             } else if (self.enable_logging) {
                 std.debug.print("[INFO] Exec executed: {d} rows affected, {d:.2}ms\n", .{ affected, elapsed_ms });
-                std.debug.print("[SQL] {s}\n", .{sql_query});
+                std.debug.print("[SQL] {s}\n", .{formatted_sql});
             }
 
             return affected;
@@ -737,12 +745,12 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             };
             const sql_str = try createTableSql(db, dialect);
             defer db.allocator.free(sql_str);
-            _ = try db.rawExec(sql_str);
+            _ = try db.rawExec(sql_str, .{});
         }
 
         /// 执行删表
         pub fn dropTable(db: *Database) !void {
-            _ = try db.rawExec(dropTableSql());
+            _ = try db.rawExec(dropTableSql(), .{});
         }
 
         /// 释放模型中的字符串内存
@@ -1182,7 +1190,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try buildInsertSql(db.allocator, tableName(), data);
             defer db.allocator.free(sql);
 
-            _ = try db.rawExec(sql);
+            _ = try db.rawExec(sql, .{});
             const id = db.conn.lastInsertId();
 
             // 重新查询返回完整记录
@@ -1193,14 +1201,14 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn update(db: *Database, id: anytype, data: anytype) !u64 {
             const sql = try buildUpdateSql(db.allocator, tableName(), primaryKey(), id, data);
             defer db.allocator.free(sql);
-            return db.rawExec(sql);
+            return db.rawExec(sql, .{});
         }
 
         /// 删除记录
         pub fn destroy(db: *Database, id: anytype) !u64 {
             var buf: [256]u8 = undefined;
             const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
-            return db.rawExec(sql);
+            return db.rawExec(sql, .{});
         }
 
         /// 统计记录数
@@ -1208,7 +1216,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             var buf: [256]u8 = undefined;
             const sql = try std.fmt.bufPrint(&buf, "SELECT COUNT(*) as cnt FROM {s}", .{tableName()});
 
-            var result = try db.rawQuery(sql);
+            var result = try db.rawQuery(sql, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
@@ -1323,7 +1331,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 primaryKey(),
                 id,
             });
-            return db.rawExec(sql);
+            return db.rawExec(sql, .{});
         }
 
         /// 自减字段
@@ -1341,7 +1349,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 id,
             });
 
-            var result = try db.rawQuery(sql);
+            var result = try db.rawQuery(sql, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
@@ -1355,7 +1363,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             var buf: [256]u8 = undefined;
             const sql = try std.fmt.bufPrint(&buf, "SELECT {s} FROM {s}", .{ field_name, tableName() });
 
-            var result = try db.rawQuery(sql);
+            var result = try db.rawQuery(sql, .{});
             defer result.deinit();
 
             var values = std.ArrayList([]const u8).init(db.allocator);
@@ -1471,7 +1479,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try sql_buf.toOwnedSlice(db.allocator);
             defer db.allocator.free(sql);
 
-            return db.rawExec(sql);
+            return db.rawExec(sql, .{});
         }
 
         /// 按条件更新多条记录
@@ -1504,7 +1512,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try sql_buf.toOwnedSlice(db.allocator);
             defer db.allocator.free(sql);
 
-            return db.rawExec(sql);
+            return db.rawExec(sql, .{});
         }
 
         // ====================================================================
@@ -2449,7 +2457,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            var result = try self.db.rawQuery(sql_str);
+            var result = try self.db.rawQuery(sql_str, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
@@ -2485,7 +2493,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            return self.db.rawExec(sql_str);
+            return self.db.rawExec(sql_str, .{});
         }
 
         fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype) !void {
@@ -2548,7 +2556,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql = try self.toSql();
             defer self.db.allocator.free(sql);
 
-            var result = try self.db.rawQuery(sql);
+            var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
             return self.mapResults(&result);
@@ -2655,7 +2663,7 @@ pub fn ModelQuery(comptime T: type) type {
             self.select_fields.deinit(self.db.allocator);
             self.select_fields = old_fields;
 
-            var result = try self.db.rawQuery(sql);
+            var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
@@ -2678,7 +2686,7 @@ pub fn ModelQuery(comptime T: type) type {
             self.select_fields.deinit(self.db.allocator);
             self.select_fields = old_fields;
 
-            var result = try self.db.rawQuery(sql);
+            var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
             var values = std.ArrayList([]const u8).init(self.db.allocator);
@@ -2715,7 +2723,7 @@ pub fn ModelQuery(comptime T: type) type {
 
             defer self.db.allocator.free(sql_str);
 
-            var result = try self.db.rawQuery(sql_str);
+            var result = try self.db.rawQuery(sql_str, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
@@ -2736,7 +2744,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            return self.db.rawExec(sql_str);
+            return self.db.rawExec(sql_str, .{});
         }
 
         /// 生成 SQL
@@ -3696,7 +3704,7 @@ pub fn RelationQuery(comptime T: type) type {
             const sql = try sql_buf.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql);
 
-            var result = try self.db.rawQuery(sql);
+            var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
             return mapResults(T, self.db.allocator, &result);
@@ -3735,7 +3743,7 @@ pub fn RelationQuery(comptime T: type) type {
             const sql = try sql_buf.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql);
 
-            var result = try self.db.rawQuery(sql);
+            var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
             if (result.next()) |row| {
