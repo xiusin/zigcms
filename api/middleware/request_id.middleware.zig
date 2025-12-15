@@ -10,7 +10,7 @@ const Allocator = std.mem.Allocator;
 /// 请求上下文，包含 request_id 和 timing 信息
 pub const RequestContext = struct {
     request_id: [36]u8,
-    start_time: i64,
+    start_time: i128,
     timings: std.ArrayList(Timing),
     allocator: Allocator,
 
@@ -21,13 +21,14 @@ pub const RequestContext = struct {
     };
 
     /// 初始化请求上下文
-    pub fn init(allocator: Allocator) RequestContext {
+    pub fn init(allocator: Allocator) !RequestContext {
         var ctx = RequestContext{
             .request_id = undefined,
             .start_time = std.time.nanoTimestamp(),
-            .timings = std.ArrayList(Timing).init(allocator),
+            .timings = undefined,
             .allocator = allocator,
         };
+        ctx.timings = try std.ArrayList(Timing).initCapacity(allocator, 0);
         generateUUID(&ctx.request_id);
         return ctx;
     }
@@ -59,24 +60,24 @@ pub const RequestContext = struct {
 
     /// 生成 Server-Timing 响应头值
     pub fn getServerTimingHeader(self: *RequestContext) ![]u8 {
-        var buf = std.ArrayList(u8).init(self.allocator);
-        errdefer buf.deinit();
+        var buf = try std.ArrayList(u8).initCapacity(self.allocator, 0);
+        errdefer buf.deinit(self.allocator);
 
         // 添加总耗时
         const total_ms = self.getTotalDurationMs();
-        try buf.writer().print("total;dur={d:.2}", .{total_ms});
+        try buf.writer(self.allocator).print("total;dur={d:.2}", .{total_ms});
 
         // 添加各个计时点
         for (self.timings.items) |timing| {
             const dur_ms = @as(f64, @floatFromInt(timing.duration_ns)) / 1_000_000.0;
             if (timing.description) |desc| {
-                try buf.writer().print(", {s};dur={d:.2};desc=\"{s}\"", .{ timing.name, dur_ms, desc });
+                try buf.writer(self.allocator).print(", {s};dur={d:.2};desc=\"{s}\"", .{ timing.name, dur_ms, desc });
             } else {
-                try buf.writer().print(", {s};dur={d:.2}", .{ timing.name, dur_ms });
+                try buf.writer(self.allocator).print(", {s};dur={d:.2}", .{ timing.name, dur_ms });
             }
         }
 
-        return buf.toOwnedSlice();
+        return buf.toOwnedSlice(self.allocator);
     }
 };
 
@@ -109,9 +110,8 @@ fn generateUUID(buf: *[36]u8) void {
     var random_bytes: [16]u8 = undefined;
 
     // 使用时间戳和计数器生成伪随机数
-    const timestamp = @as(u64, @bitCast(std.time.nanoTimestamp()));
-    const seed = timestamp ^ (@as(u64, @intFromPtr(buf)) * 0x517cc1b727220a95);
-
+    const timestamp = std.time.nanoTimestamp();
+    const seed = @as(u64, @intCast(timestamp & 0xFFFFFFFFFFFFFFFF));
     var prng = std.Random.DefaultPrng.init(seed);
     prng.fill(&random_bytes);
 
@@ -200,7 +200,7 @@ pub fn startTimer(name: []const u8, description: ?[]const u8) ?Timer {
 
 test "RequestContext: 基本操作" {
     const allocator = std.testing.allocator;
-    var ctx = RequestContext.init(allocator);
+    var ctx = try RequestContext.init(allocator);
     defer ctx.deinit();
 
     // 验证 request_id 格式
@@ -214,7 +214,7 @@ test "RequestContext: 基本操作" {
 
 test "RequestContext: 计时" {
     const allocator = std.testing.allocator;
-    var ctx = RequestContext.init(allocator);
+    var ctx = try RequestContext.init(allocator);
     defer ctx.deinit();
 
     ctx.addTiming("db", 1_000_000, "数据库查询");
