@@ -34,7 +34,7 @@ pub const RequestContext = struct {
 
     /// 释放资源
     pub fn deinit(self: *RequestContext) void {
-        self.timings.deinit();
+        self.timings.deinit(self.allocator);
     }
 
     /// 获取 request_id 字符串
@@ -44,7 +44,7 @@ pub const RequestContext = struct {
 
     /// 记录一个计时点
     pub fn addTiming(self: *RequestContext, name: []const u8, duration_ns: i64, description: ?[]const u8) void {
-        self.timings.append(.{
+        self.timings.append(self.allocator, .{
             .name = name,
             .duration_ns = duration_ns,
             .description = description,
