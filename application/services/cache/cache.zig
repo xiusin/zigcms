@@ -77,7 +77,7 @@ pub const CacheService = struct {
         if (self.cache.get(key)) |item| {
             // 检查是否过期
             const now: u64 = @intCast(std.time.timestamp());
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 // 过期了，删除它并释放内存
                 if (self.cache.fetchRemove(key)) |removed| {
                     removed.value.deinit(self.allocator);
@@ -111,7 +111,7 @@ pub const CacheService = struct {
         if (self.cache.get(key)) |item| {
             // 检查是否过期
             const now: u64 = @intCast(std.time.timestamp());
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 // 过期了，删除它并释放内存
                 if (self.cache.fetchRemove(key)) |removed| {
                     removed.value.deinit(self.allocator);
@@ -152,7 +152,7 @@ pub const CacheService = struct {
         const now: u64 = @intCast(std.time.timestamp());
 
         while (iter.next()) |item| {
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 expired += 1;
             } else {
                 count += 1;
@@ -173,7 +173,7 @@ pub const CacheService = struct {
         const now: u64 = @intCast(std.time.timestamp());
         var iter = self.cache.iterator();
         while (iter.next()) |entry| {
-            if (now > entry.value_ptr.expiry) {
+            if (now >= entry.value_ptr.expiry) {
                 to_remove.append(self.allocator, entry.key_ptr.*) catch {};
             }
         }
@@ -341,12 +341,9 @@ test "CacheService cleanup" {
     defer cache.deinit();
 
     // 添加几个不同过期时间的项
-    try cache.set("key1", "value1", 1);
-    try cache.set("key2", "value2", 2);
-    try cache.set("key3", "value3", 300);
-
-    // 等待几秒让前两个过期
-    std.Thread.sleep(2 * std.time.ns_per_s);
+    try cache.set("key1", "value1", 0); // 立即过期
+    try cache.set("key2", "value2", 0); // 立即过期
+    try cache.set("key3", "value3", 300); // 5分钟后过期
 
     // 清理过期项
     try cache.cleanupExpired();
