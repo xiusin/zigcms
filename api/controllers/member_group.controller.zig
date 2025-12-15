@@ -112,6 +112,7 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 获取单条记录实现
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -189,6 +190,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 删除实现
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -229,13 +231,14 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 分组选项实现
 fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = r;
     var query = OrmMemberGroup.query(global.get_db());
     defer query.deinit();
 
     _ = query.where("status", "=", 1).orderBy("sort", .asc);
 
-    var list = try query.collect();
-    defer list.deinit();
+    var groups = try query.collect();
+    defer groups.deinit();
 
     // 转换为选项格式
     var options = std.ArrayList(struct {
@@ -249,7 +252,7 @@ fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         options.deinit();
     }
 
-    for (list.items()) |group| {
+    for (groups.items()) |group| {
         const label = try std.fmt.allocPrint(self.allocator, "{s}", .{group.name});
         try options.append(.{
             .value = group.id.?,

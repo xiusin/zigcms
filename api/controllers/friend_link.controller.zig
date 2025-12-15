@@ -128,6 +128,7 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 获取单条记录实现
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -187,6 +188,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 删除实现
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -238,6 +240,7 @@ fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 通过审核实现
 fn approveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -263,6 +266,7 @@ fn approveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 拒绝审核实现
 fn rejectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -290,6 +294,7 @@ fn rejectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 前端显示友链实现
 fn showImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     var query = OrmFriendLink.query(global.get_db());
     defer query.deinit();
 
@@ -299,8 +304,8 @@ fn showImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         .orderBy("sort", .asc)
         .orderBy("create_time", .desc);
 
-    var list = try query.collect();
-    defer list.deinit();
+    var links = try query.collect();
+    defer links.deinit();
 
     // 增加点击数（如果有点击参数）
     if (r.queryParameters().get("click")) |click_id_str| {
@@ -309,5 +314,5 @@ fn showImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         } else |_| {}
     }
 
-    try base.send_ok(response, list.items);
+    try base.send_ok(response, links.items);
 }

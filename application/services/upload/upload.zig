@@ -311,7 +311,6 @@ pub const LocalProvider = struct {
 
     fn getInfo(ptr: *anyopaque, allocator: Allocator, path: []const u8) anyerror!UploadResult {
         const self: *LocalProvider = @ptrCast(@alignCast(ptr));
-        _ = self;
 
         const stat = try std.fs.cwd().statFile(path);
         const filename = std.fs.path.basename(path);
@@ -535,7 +534,6 @@ pub const COSProvider = struct {
     /// 计算COS签名
     fn calculateSignature(self: *COSProvider, allocator: Allocator, method: []const u8, object_key: []const u8, params: []const u8, body: []const u8) ![]const u8 {
         _ = self;
-        _ = allocator;
         _ = method;
         _ = object_key;
         _ = params;
@@ -741,7 +739,6 @@ pub const OSSProvider = struct {
     /// 计算OSS签名
     fn calculateSignature(self: *OSSProvider, allocator: Allocator, method: []const u8, object_key: []const u8, content_type: []const u8, body: []const u8) ![]const u8 {
         _ = self;
-        _ = allocator;
         _ = method;
         _ = object_key;
         _ = content_type;
@@ -759,7 +756,6 @@ pub const OSSProvider = struct {
     /// 获取GMT格式的日期
     fn getGMTDate(self: *OSSProvider, allocator: Allocator) ![]const u8 {
         _ = self;
-        _ = allocator;
         // TODO: 实现GMT日期格式化
         // 返回类似 "Wed, 21 Oct 2015 07:28:00 GMT" 的格式
 

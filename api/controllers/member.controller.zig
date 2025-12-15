@@ -150,6 +150,7 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 获取单条记录实现
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -275,6 +276,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 删除实现
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -384,6 +386,7 @@ fn adjustLevelImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 启用/禁用实现
 fn toggleStatusImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;

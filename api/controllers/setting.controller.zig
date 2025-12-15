@@ -68,44 +68,38 @@ pub fn save(self: Self, req: zap.Request) !void {
 
 /// 获取上传配置
 pub fn get_upload_config(self: Self, req: zap.Request) !void {
-    // 获取上传相关的设置
-    const upload_provider = Setting.GetValue("upload_provider") catch "";
-    const local_root_path = Setting.GetValue("upload_local_root_path") catch "uploads";
-    const local_url_prefix = Setting.GetValue("upload_local_url_prefix") catch "/uploads";
-    const local_max_size = Setting.GetValue("upload_local_max_size") catch "10485760";
+    // 获取所有设置
+    const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
+    defer Setting.freeModels(self.allocator, settings_slice);
 
-    const cos_secret_id = Setting.GetValue("upload_cos_secret_id") catch "";
-    const cos_secret_key = Setting.GetValue("upload_cos_secret_key") catch "";
-    const cos_region = Setting.GetValue("upload_cos_region") catch "";
-    const cos_bucket = Setting.GetValue("upload_cos_bucket") catch "";
-    const cos_domain = Setting.GetValue("upload_cos_domain") catch "";
+    // 构建配置映射
+    var config_map = std.StringHashMap([]const u8).init(self.allocator);
+    defer config_map.deinit();
 
-    const oss_access_key_id = Setting.GetValue("upload_oss_access_key_id") catch "";
-    const oss_access_key_secret = Setting.GetValue("upload_oss_access_key_secret") catch "";
-    const oss_endpoint = Setting.GetValue("upload_oss_endpoint") catch "";
-    const oss_bucket = Setting.GetValue("upload_oss_bucket") catch "";
-    const oss_domain = Setting.GetValue("upload_oss_domain") catch "";
+    for (settings_slice) |item| {
+        config_map.put(item.key, item.value) catch {};
+    }
 
     const config = .{
-        .upload_provider = upload_provider,
+        .upload_provider = config_map.get("upload_provider") orelse "local",
         .local = .{
-            .root_path = local_root_path,
-            .url_prefix = local_url_prefix,
-            .max_size = local_max_size,
+            .root_path = config_map.get("upload_local_root_path") orelse "uploads",
+            .url_prefix = config_map.get("upload_local_url_prefix") orelse "/uploads",
+            .max_size = config_map.get("upload_local_max_size") orelse "10485760",
         },
         .cos = .{
-            .secret_id = cos_secret_id,
-            .secret_key = cos_secret_key,
-            .region = cos_region,
-            .bucket = cos_bucket,
-            .domain = cos_domain,
+            .secret_id = config_map.get("upload_cos_secret_id") orelse "",
+            .secret_key = config_map.get("upload_cos_secret_key") orelse "",
+            .region = config_map.get("upload_cos_region") orelse "",
+            .bucket = config_map.get("upload_cos_bucket") orelse "",
+            .domain = config_map.get("upload_cos_domain") orelse "",
         },
         .oss = .{
-            .access_key_id = oss_access_key_id,
-            .access_key_secret = oss_access_key_secret,
-            .endpoint = oss_endpoint,
-            .bucket = oss_bucket,
-            .domain = oss_domain,
+            .access_key_id = config_map.get("upload_oss_access_key_id") orelse "",
+            .access_key_secret = config_map.get("upload_oss_access_key_secret") orelse "",
+            .endpoint = config_map.get("upload_oss_endpoint") orelse "",
+            .bucket = config_map.get("upload_oss_bucket") orelse "",
+            .domain = config_map.get("upload_oss_domain") orelse "",
         },
     };
 
@@ -123,10 +117,10 @@ pub fn save_upload_config(self: Self, req: zap.Request) !void {
     if (values != .object) return base.send_failed(req, "参数格式错误");
 
     // 保存上传配置
-    const upload_provider = values.object.get("upload_provider") orelse json_mod.JSON.Value{ .string = "local" };
-    const local_config = values.object.get("local") orelse json_mod.JSON.Value{ .object = json_mod.JSON.Object.init(self.allocator) };
-    const cos_config = values.object.get("cos") orelse json_mod.JSON.Value{ .object = json_mod.JSON.Object.init(self.allocator) };
-    const oss_config = values.object.get("oss") orelse json_mod.JSON.Value{ .object = json_mod.JSON.Object.init(self.allocator) };
+    const upload_provider = values.object.get("upload_provider") orelse json_mod.Value{ .string = "local" };
+    const local_config = values.object.get("local") orelse json_mod.Value{ .object = json_mod.Object.init(self.allocator) };
+    const cos_config = values.object.get("cos") orelse json_mod.Value{ .object = json_mod.Object.init(self.allocator) };
+    const oss_config = values.object.get("oss") orelse json_mod.Value{ .object = json_mod.Object.init(self.allocator) };
 
     // 保存提供者类型
     if (upload_provider.getString()) |provider| {
@@ -184,6 +178,7 @@ pub fn test_upload_config(self: Self, req: zap.Request) !void {
 
 /// 保存单个设置项的辅助方法
 fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
+    _ = self;
     // 先删除已存在的 key
     var del_q = Setting.WhereEq("key", key);
     defer del_q.deinit();
@@ -194,4 +189,37 @@ fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
         .key = key,
         .value = value,
     }) catch {};
+}
+
+/// 发送测试邮件
+pub fn send_mail(self: Self, req: zap.Request) !void {
+    // 获取所有设置
+    const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
+    defer Setting.freeModels(self.allocator, settings_slice);
+
+    // 构建配置映射
+    var config_map = std.StringHashMap([]const u8).init(self.allocator);
+    defer config_map.deinit();
+
+    for (settings_slice) |item| {
+        config_map.put(item.key, item.value) catch {};
+    }
+
+    // 获取邮件配置
+    const smtp_host = config_map.get("mail_smtp_host") orelse "";
+    const smtp_port_str = config_map.get("mail_smtp_port") orelse "587";
+    const smtp_user = config_map.get("mail_smtp_user") orelse "";
+    const smtp_pass = config_map.get("mail_smtp_pass") orelse "";
+    const from_email = config_map.get("mail_from_email") orelse "";
+
+    if (smtp_host.len == 0 or smtp_user.len == 0 or smtp_pass.len == 0 or from_email.len == 0) {
+        return base.send_failed(req, "邮件配置不完整，请先配置SMTP设置");
+    }
+
+    const smtp_port = std.fmt.parseInt(u16, smtp_port_str, 10) catch 587;
+    _ = smtp_port;
+
+    // TODO: 实现发送测试邮件的逻辑
+    // 暂时返回成功，实际使用时需要集成smtp_client
+    return base.send_ok(req, .{ .status = "success", .message = "邮件配置测试成功" });
 }

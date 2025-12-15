@@ -115,6 +115,7 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 获取单条记录实现
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -186,6 +187,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 删除实现
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = self;
     const id_str = r.pathParameters().get("id") orelse {
         try base.send_error(response, "缺少ID参数");
         return;
@@ -236,31 +238,33 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 树形结构实现
 fn treeImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = r;
     // 获取所有分类
     var query = OrmMaterialCategory.query(global.get_db());
     defer query.deinit();
 
     _ = query.where("status", "=", 1).orderBy("sort", .asc);
 
-    var list = try query.collect();
-    defer list.deinit();
+    var categories = try query.collect();
+    defer categories.deinit();
 
     // 构建树形结构
-    const tree = try self.buildCategoryTree(list.items());
-    defer self.freeCategoryTree(self.allocator, tree);
+    const result_tree = try self.buildCategoryTree(categories.items());
+    defer self.freeCategoryTree(self.allocator, result_tree);
 
-    try base.send_ok(response, tree);
+    try base.send_ok(response, result_tree);
 }
 
 /// 分类选项实现
 fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    _ = r;
     var query = OrmMaterialCategory.query(global.get_db());
     defer query.deinit();
 
     _ = query.where("status", "=", 1).orderBy("sort", .asc);
 
-    var list = try query.collect();
-    defer list.deinit();
+    var categories = try query.collect();
+    defer categories.deinit();
 
     // 转换为选项格式
     var options = std.ArrayList(struct {
@@ -274,7 +278,7 @@ fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         options.deinit();
     }
 
-    for (list.items()) |category| {
+    for (categories.items()) |category| {
         const label = try std.fmt.allocPrint(self.allocator, "{s}", .{category.name});
         try options.append(.{
             .value = category.id.?,
@@ -291,18 +295,18 @@ fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
 /// 构建分类树形结构
 fn buildCategoryTree(self: Self, categories: []const models.MaterialCategory) ![]MaterialCategoryTreeNode {
-    var tree = std.ArrayList(MaterialCategoryTreeNode).init(self.allocator);
-    defer tree.deinit();
+    var result = std.ArrayList(MaterialCategoryTreeNode).init(self.allocator);
+    defer result.deinit();
 
     // 找到顶级分类
     for (categories) |category| {
         if (category.parent_id == 0) {
             const node = try self.buildTreeNode(categories, category);
-            try tree.append(node);
+            try result.append(node);
         }
     }
 
-    return tree.toOwnedSlice();
+    return result.toOwnedSlice();
 }
 
 /// 构建树节点
@@ -333,8 +337,8 @@ fn buildTreeNode(self: Self, categories: []const models.MaterialCategory, catego
 }
 
 /// 释放树形结构内存
-fn freeCategoryTree(self: Self, allocator: Allocator, tree: []MaterialCategoryTreeNode) void {
-    for (tree) |*node| {
+fn freeCategoryTree(self: Self, allocator: Allocator, tree_nodes: []MaterialCategoryTreeNode) void {
+    for (tree_nodes) |*node| {
         allocator.free(node.name);
         allocator.free(node.code);
         if (node.children.len > 0) {
@@ -342,7 +346,7 @@ fn freeCategoryTree(self: Self, allocator: Allocator, tree: []MaterialCategoryTr
         }
         allocator.free(node.children);
     }
-    allocator.free(tree);
+    allocator.free(tree_nodes);
 }
 
 /// 素材分类树节点

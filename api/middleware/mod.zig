@@ -54,6 +54,7 @@ const zap = @import("zap");
 pub const chain = @import("chain.zig");
 pub const wrapper = @import("wrapper.zig");
 pub const security = @import("security.middleware.zig");
+pub const request_id = @import("request_id.middleware.zig");
 
 // 类型导出
 pub const Context = chain.Context;
