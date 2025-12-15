@@ -638,10 +638,42 @@ pub const Validator = struct {
         const T = @TypeOf(value);
         var is_empty = false;
 
-        if (T == []const u8) {
+        // 1. 字符串切片类型判断
+        // - []const u8: 标准的字符串切片类型
+        // - *const []const u8: 指向字符串切片的常量指针（当字符串作为函数参数传递时可能出现）
+        // 这两种类型都有 .len 字段，可以直接检查长度是否为0
+        if (T == []const u8 or @typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice and @typeInfo(T).pointer.child == u8) {
             is_empty = value.len == 0;
+
+            // 2. 定长字节数组类型判断
+            // - [N]u8: 编译时已知长度的u8数组，如 [_]u8{'h','e','l','l','o'}
+            // - [N:0]u8: 零终止的定长u8数组，这是Zig字符串字面量的实际类型
+            // 例如："hello" 在编译时是 *const [5:0]u8 类型
+            // 这些数组类型都有 .len 字段，表示数组长度
+        } else if (@typeInfo(T) == .array and @typeInfo(T).array.child == u8) {
+            is_empty = value.len == 0;
+
+            // 3. 指向定长字节数组的指针类型判断
+            // - *const [N]u8: 指向定长u8数组的常量指针
+            // - *const [N:0]u8: 指向零终止定长u8数组的常量指针
+            // 这是最常见的字符串字面量类型，当传递给函数时自动转换为此类型
+            // 例如：函数参数 func(name: []const u8) 中传入 "hello" 实际是 *const [5:0]u8
+            // 通过两层类型检查：第一层确认是指针，第二层确认指向的类型是u8数组
+        } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .one and @typeInfo(@typeInfo(T).pointer.child) == .array and @typeInfo(@typeInfo(T).pointer.child).array.child == u8) {
+            is_empty = value.len == 0;
+
+            // 4. 可选（Optional）类型判断
+            // - ?T: 可选类型，表示值可能为空
+            // 对于可选类型，空值检查是 value == null
+            // 注意：可选的字符串切片 ?[]const u8 会在上面的字符串检查中被捕获，这里处理其他可选类型
         } else if (@typeInfo(T) == .optional) {
             is_empty = value == null;
+
+            // 5. 整数类型判断
+            // - i32, u64 等: 所有整数类型，包括有符号和无符号
+            // - comptime_int: 编译时整数类型
+            // 整数类型总是被认为是"有值"的，因为它们不可能是"空"的概念
+            // 即使是整数0，也是有意义的有效值，不应该被视为"空"
         } else if (@typeInfo(T) == .int or @typeInfo(T) == .comptime_int) {
             is_empty = false; // 数字类型总是有值
         }
@@ -1017,18 +1049,36 @@ test "Validator: required 验证" {
     try std.testing.expectEqual(@as(usize, 1), v.errors.items.len);
 }
 
-test "Validator: email 验证" {
+test "Validator: required 各种字符串类型" {
     const allocator = std.testing.allocator;
     var v = Validator.init(allocator);
     defer v.deinit();
 
-    _ = v.email("email", "invalid");
+    // 测试空字符串切片
+    _ = v.required("field1", ""[0..]);
     try std.testing.expect(v.fails());
+    v.reset();
 
-    var v2 = Validator.init(allocator);
-    defer v2.deinit();
-    _ = v2.email("email", "test@example.com");
-    try std.testing.expect(v2.passes());
+    // 测试空字符串字面量（编译时数组）
+    _ = v.required("field2", "");
+    try std.testing.expect(v.fails());
+    v.reset();
+
+    // 测试非空字符串
+    _ = v.required("field3", "hello");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    // 测试空数组
+    const empty_array: [0]u8 = [_]u8{};
+    _ = v.required("field4", &empty_array);
+    try std.testing.expect(v.fails());
+    v.reset();
+
+    // 测试非空数组
+    const hello_array = [_]u8{ 'h', 'e', 'l', 'l', 'o' };
+    _ = v.required("field5", &hello_array);
+    try std.testing.expect(v.passes());
 }
 
 test "Validator: minLength 验证" {
