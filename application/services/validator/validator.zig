@@ -314,11 +314,11 @@ pub const Validator = struct {
     custom_messages: std.StringHashMap([]const u8),
 
     pub fn init(allocator: Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .errors = std.ArrayList(ValidationError).init(allocator),
-            .custom_messages = std.StringHashMap([]const u8).init(allocator),
-        };
+        var self: Self = undefined;
+        self.allocator = allocator;
+        self.errors = std.ArrayList(ValidationError).initCapacity(allocator, 8) catch unreachable;
+        self.custom_messages = std.StringHashMap([]const u8).init(allocator);
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
@@ -327,7 +327,7 @@ pub const Validator = struct {
                 self.allocator.free(err.message);
             }
         }
-        self.errors.deinit();
+        self.errors.deinit(self.allocator);
         self.custom_messages.deinit();
     }
 
@@ -868,7 +868,7 @@ pub const Validator = struct {
 
     fn addError(self: *Self, field_name: []const u8, rule: []const u8, comptime template: []const u8) void {
         const msg = std.fmt.allocPrint(self.allocator, template, .{field_name}) catch return;
-        self.errors.append(.{
+        self.errors.append(self.allocator, .{
             .field = field_name,
             .rule = rule,
             .message = msg,
@@ -879,7 +879,7 @@ pub const Validator = struct {
     }
 
     fn addErrorStatic(self: *Self, field_name: []const u8, rule: []const u8, message: []const u8) void {
-        self.errors.append(.{
+        self.errors.append(self.allocator, .{
             .field = field_name,
             .rule = rule,
             .message = message,
@@ -889,7 +889,7 @@ pub const Validator = struct {
 
     fn addErrorFmt(self: *Self, field_name: []const u8, rule: []const u8, comptime template: []const u8, args: anytype) void {
         const msg = std.fmt.allocPrint(self.allocator, template, args) catch return;
-        self.errors.append(.{
+        self.errors.append(self.allocator, .{
             .field = field_name,
             .rule = rule,
             .message = msg,
