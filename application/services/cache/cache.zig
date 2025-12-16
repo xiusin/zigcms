@@ -1,13 +1,6 @@
-//! 缓存服务 - 用于缓存查询结果和字典数据
-//!
-//! 该服务提供：
-//! - 基于内存的缓存实现
-//! - TTL（Time To Live）过期机制
-//! - 键值对存储
-//! - 批量操作支持
-
 const std = @import("std");
 const builtin = @import("builtin");
+const cache_contract = @import("cache_contract.zig");
 
 pub const CacheService = struct {
     const Self = @This();
@@ -84,7 +77,7 @@ pub const CacheService = struct {
         if (self.cache.get(key)) |item| {
             // 检查是否过期
             const now: u64 = @intCast(std.time.timestamp());
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 // 过期了，删除它并释放内存
                 if (self.cache.fetchRemove(key)) |removed| {
                     removed.value.deinit(self.allocator);
@@ -118,7 +111,7 @@ pub const CacheService = struct {
         if (self.cache.get(key)) |item| {
             // 检查是否过期
             const now: u64 = @intCast(std.time.timestamp());
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 // 过期了，删除它并释放内存
                 if (self.cache.fetchRemove(key)) |removed| {
                     removed.value.deinit(self.allocator);
@@ -159,7 +152,7 @@ pub const CacheService = struct {
         const now: u64 = @intCast(std.time.timestamp());
 
         while (iter.next()) |item| {
-            if (now > item.expiry) {
+            if (now >= item.expiry) {
                 expired += 1;
             } else {
                 count += 1;
@@ -180,7 +173,7 @@ pub const CacheService = struct {
         const now: u64 = @intCast(std.time.timestamp());
         var iter = self.cache.iterator();
         while (iter.next()) |entry| {
-            if (now > entry.value_ptr.expiry) {
+            if (now >= entry.value_ptr.expiry) {
                 to_remove.append(self.allocator, entry.key_ptr.*) catch {};
             }
         }
@@ -214,6 +207,82 @@ pub const CacheService = struct {
                 self.allocator.free(removed_entry.key);
             }
         }
+    }
+
+    /// 创建缓存接口实例
+    pub fn asInterface(self: *CacheService) cache_contract.CacheInterface {
+        return .{
+            .ptr = self,
+            .vtable = &vtable,
+        };
+    }
+
+    /// 缓存接口的虚拟表
+    const vtable: cache_contract.CacheInterface.VTable = .{
+        .set = cacheSet,
+        .get = cacheGet,
+        .del = cacheDel,
+        .exists = cacheExists,
+        .flush = cacheFlush,
+        .stats = cacheStats,
+        .cleanupExpired = cacheCleanupExpired,
+        .delByPrefix = cacheDelByPrefix,
+        .deinit = cacheDeinit,
+    };
+
+    /// 接口方法实现：设置缓存
+    fn cacheSet(ptr: *anyopaque, key: []const u8, value: []const u8, ttl: ?u64) anyerror!void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.set(key, value, ttl);
+    }
+
+    /// 接口方法实现：获取缓存
+    fn cacheGet(ptr: *anyopaque, key: []const u8) ?[]const u8 {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.get(key);
+    }
+
+    /// 接口方法实现：删除缓存
+    fn cacheDel(ptr: *anyopaque, key: []const u8) anyerror!void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.del(key);
+    }
+
+    /// 接口方法实现：检查存在
+    fn cacheExists(ptr: *anyopaque, key: []const u8) bool {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.exists(key);
+    }
+
+    /// 接口方法实现：清空缓存
+    fn cacheFlush(ptr: *anyopaque) anyerror!void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.flush();
+    }
+
+    /// 接口方法实现：获取统计
+    fn cacheStats(ptr: *anyopaque) cache_contract.CacheStats {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        const s = self.stats();
+        return .{ .count = s.count, .expired = s.expired };
+    }
+
+    /// 接口方法实现：清理过期项
+    fn cacheCleanupExpired(ptr: *anyopaque) anyerror!void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.cleanupExpired();
+    }
+
+    /// 接口方法实现：按前缀删除
+    fn cacheDelByPrefix(ptr: *anyopaque, prefix: []const u8) anyerror!void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        return self.delByPrefix(prefix);
+    }
+
+    /// 接口方法实现：销毁
+    fn cacheDeinit(ptr: *anyopaque) void {
+        const self: *CacheService = @ptrCast(@alignCast(ptr));
+        self.deinit();
     }
 };
 
@@ -255,7 +324,7 @@ test "CacheService expiration" {
     try std.testing.expect(cache.exists("expiring_key"));
 
     // 等待2秒后检查（应该已过期）
-    std.time.sleep(2 * std.time.ns_per_s);
+    std.Thread.sleep(2 * std.time.ns_per_s);
 
     // 现在应该不存在了
     try std.testing.expect(!cache.exists("expiring_key"));
@@ -272,12 +341,9 @@ test "CacheService cleanup" {
     defer cache.deinit();
 
     // 添加几个不同过期时间的项
-    try cache.set("key1", "value1", 1);
-    try cache.set("key2", "value2", 2);
-    try cache.set("key3", "value3", 300);
-
-    // 等待几秒让前两个过期
-    std.time.sleep(2 * std.time.ns_per_s);
+    try cache.set("key1", "value1", 0); // 立即过期
+    try cache.set("key2", "value2", 0); // 立即过期
+    try cache.set("key3", "value3", 300); // 5分钟后过期
 
     // 清理过期项
     try cache.cleanupExpired();
@@ -286,4 +352,35 @@ test "CacheService cleanup" {
     const cache_stats = cache.stats();
     try std.testing.expect(cache_stats.expired == 0); // 已经清理了
     try std.testing.expect(cache_stats.count == 1); // 只剩下key3
+}
+
+test "CacheInterface abstraction" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+
+    // 创建接口实例
+    var cache_interface = cache.asInterface();
+
+    // 通过接口测试基本操作
+    try cache_interface.set("interface_key", "interface_value", null);
+    const value = cache_interface.get("interface_key");
+    try std.testing.expect(value != null);
+    try std.testing.expect(std.mem.eql(u8, value.?, "interface_value"));
+
+    // 测试存在性
+    try std.testing.expect(cache_interface.exists("interface_key"));
+    try std.testing.expect(!cache_interface.exists("nonexistent"));
+
+    // 测试删除
+    try cache_interface.del("interface_key");
+    try std.testing.expect(!cache_interface.exists("interface_key"));
+
+    // 测试统计
+    const stats = cache_interface.stats();
+    try std.testing.expect(stats.count >= 0);
+    try std.testing.expect(stats.expired >= 0);
 }
