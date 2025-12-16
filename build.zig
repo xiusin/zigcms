@@ -277,6 +277,30 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // ========================================================================
+    // Configuration Generator
+    // ========================================================================
+    const config_gen_module = b.createModule(.{
+        .root_source_file = b.path("tools/config_gen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const config_gen_exe = b.addExecutable(.{ .name = "config-gen", .root_module = config_gen_module });
+
+    b.installArtifact(config_gen_exe);
+
+    const run_config_gen_cmd = b.addRunArtifact(config_gen_exe);
+    run_config_gen_cmd.step.dependOn(b.getInstallStep());
+
+    const config_gen_step = b.step("config-gen", "Generate configuration structure from .env file");
+    config_gen_step.dependOn(&run_config_gen_cmd.step);
+
+    if (b.args) |args| {
+        for (args) |arg| {
+            run_config_gen_cmd.addArg(arg);
+        }
+    }
+
     // // ========================================================================
     // // MySQL 集成测试
     // // ========================================================================
