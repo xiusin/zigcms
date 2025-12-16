@@ -265,6 +265,99 @@ pub const FieldValidator = struct {
         return self;
     }
 
+    /// IP地址验证
+    pub fn ip(self: *Self) *Self {
+        if (self.stopped) return self;
+
+        const str = switch (self.value) {
+            .string => |s| s,
+            .optional_string => |s| s orelse return self,
+            else => return self,
+        };
+
+        if (str.len == 0) return self;
+
+        if (!isValidIp(str)) {
+            self.validator.addErrorStatic(self.field_name, "ip", "{s} 必须是有效的 IP 地址");
+        }
+        return self;
+    }
+
+    /// IPv4地址验证
+    pub fn ipv4(self: *Self) *Self {
+        if (self.stopped) return self;
+
+        const str = switch (self.value) {
+            .string => |s| s,
+            .optional_string => |s| s orelse return self,
+            else => return self,
+        };
+
+        if (str.len == 0) return self;
+
+        if (!isValidIpv4(str)) {
+            self.validator.addErrorStatic(self.field_name, "ipv4", "{s} 必须是有效的 IPv4 地址");
+        }
+        return self;
+    }
+
+    /// IPv6地址验证
+    pub fn ipv6(self: *Self) *Self {
+        if (self.stopped) return self;
+
+        const str = switch (self.value) {
+            .string => |s| s,
+            .optional_string => |s| s orelse return self,
+            else => return self,
+        };
+
+        if (str.len == 0) return self;
+
+        if (!isValidIpv6(str)) {
+            self.validator.addErrorStatic(self.field_name, "ipv6", "{s} 必须是有效的 IPv6 地址");
+        }
+        return self;
+    }
+
+    /// 布尔值验证
+    pub fn boolean(self: *Self) *Self {
+        if (self.stopped) return self;
+
+        // 如果值本身就是bool类型，则通过
+        if (self.value == .boolean) return self;
+
+        const str = switch (self.value) {
+            .string => |s| s,
+            .optional_string => |s| s orelse return self,
+            else => return self,
+        };
+
+        if (str.len == 0) return self;
+
+        if (!isValidBoolean(str)) {
+            self.validator.addErrorStatic(self.field_name, "boolean", "{s} 必须是布尔值");
+        }
+        return self;
+    }
+
+    /// UUID验证
+    pub fn uuid(self: *Self) *Self {
+        if (self.stopped) return self;
+
+        const str = switch (self.value) {
+            .string => |s| s,
+            .optional_string => |s| s orelse return self,
+            else => return self,
+        };
+
+        if (str.len == 0) return self;
+
+        if (!isValidUuid(str)) {
+            self.validator.addErrorStatic(self.field_name, "uuid", "{s} 必须是有效的 UUID");
+        }
+        return self;
+    }
+
     /// 在列表中验证
     pub fn inValues(self: *Self, values: []const []const u8) *Self {
         if (self.stopped) return self;
@@ -309,15 +402,20 @@ pub const FieldValidator = struct {
 pub const Validator = struct {
     const Self = @This();
 
+    /// 自定义规则处理函数
+    pub const RuleHandler = *const fn (v: *Validator, field: []const u8, value: FieldValidator.Value, params: []const u8) void;
+
     allocator: Allocator,
     errors: std.ArrayList(ValidationError),
     custom_messages: std.StringHashMap([]const u8),
+    custom_rules: std.StringHashMap(RuleHandler),
 
     pub fn init(allocator: Allocator) Self {
         var self: Self = undefined;
         self.allocator = allocator;
         self.errors = std.ArrayList(ValidationError).initCapacity(allocator, 8) catch unreachable;
         self.custom_messages = std.StringHashMap([]const u8).init(allocator);
+        self.custom_rules = std.StringHashMap(RuleHandler).init(allocator);
         return self;
     }
 
@@ -329,6 +427,33 @@ pub const Validator = struct {
         }
         self.errors.deinit(self.allocator);
         self.custom_messages.deinit();
+        self.custom_rules.deinit();
+    }
+
+    /// 注册自定义验证规则
+    pub fn registerRule(self: *Self, name: []const u8, handler: RuleHandler) !void {
+        try self.custom_rules.put(name, handler);
+    }
+
+    /// 将任意值转换为 FieldValidator.Value
+    pub fn toValue(value: anytype) FieldValidator.Value {
+        const T = @TypeOf(value);
+        if (T == []const u8) {
+            return .{ .string = value };
+        } else if (T == ?[]const u8) {
+            return .{ .optional_string = value };
+        } else if (@typeInfo(T) == .int) {
+            return .{ .int = @as(i64, @intCast(value)) };
+        } else if (@typeInfo(T) == .optional and @typeInfo(@typeInfo(T).optional.child) == .int) {
+            return .{ .optional_int = if (value) |v| @as(i64, @intCast(v)) else null };
+        } else if (T == bool) {
+            return .{ .boolean = value };
+        } else if (@typeInfo(T) == .float) {
+            return .{ .float = @as(f64, @floatCast(value)) };
+        } else {
+            // 默认尝试转换为字符串
+            return .{ .string = "" };
+        }
     }
 
     /// 重置验证器（复用）
@@ -406,10 +531,10 @@ pub const Validator = struct {
         const T = @TypeOf(value);
         var rule_iter = std.mem.splitSequence(u8, rules, "|");
 
-        while (rule_iter.next()) |rule| {
-            if (rule.len == 0) continue;
+        while (rule_iter.next()) |rule_segment| {
+            if (rule_segment.len == 0) continue;
 
-            var parts = std.mem.splitSequence(u8, rule, ":");
+            var parts = std.mem.splitSequence(u8, rule_segment, ":");
             const rule_name = parts.next() orelse continue;
             const rule_param = parts.next();
 
@@ -586,10 +711,10 @@ pub const Validator = struct {
         const T = @TypeOf(value);
         var rule_iter = std.mem.splitSequence(u8, rules, "|");
 
-        while (rule_iter.next()) |rule| {
-            if (rule.len == 0) continue;
+        while (rule_iter.next()) |rule_segment| {
+            if (rule_segment.len == 0) continue;
 
-            var parts = std.mem.splitSequence(u8, rule, ":");
+            var parts = std.mem.splitSequence(u8, rule_segment, ":");
             const rule_name = parts.next() orelse continue;
             const rule_param = parts.next();
 
@@ -624,6 +749,32 @@ pub const Validator = struct {
             } else if (std.mem.eql(u8, rule_name, "url")) {
                 if (T == []const u8) {
                     _ = self.url(field_name, value);
+                }
+            } else if (std.mem.eql(u8, rule_name, "ip")) {
+                if (T == []const u8) {
+                    _ = self.ip(field_name, value);
+                }
+            } else if (std.mem.eql(u8, rule_name, "ipv4")) {
+                if (T == []const u8) {
+                    _ = self.ipv4(field_name, value);
+                }
+            } else if (std.mem.eql(u8, rule_name, "ipv6")) {
+                if (T == []const u8) {
+                    _ = self.ipv6(field_name, value);
+                }
+            } else if (std.mem.eql(u8, rule_name, "boolean")) {
+                if (T == []const u8) {
+                    _ = self.boolean(field_name, value);
+                }
+            } else if (std.mem.eql(u8, rule_name, "uuid")) {
+                if (T == []const u8) {
+                    _ = self.uuid(field_name, value);
+                }
+            } else {
+                // 尝试查找自定义规则
+                if (self.custom_rules.get(rule_name)) |handler| {
+                    const val = Self.toValue(value);
+                    handler(self, field_name, val, rule_param orelse "");
                 }
             }
         }
@@ -894,15 +1045,77 @@ pub const Validator = struct {
         return self;
     }
 
+    /// IP地址验证 (IPv4 或 IPv6)
+    pub fn ip(self: *Self, field_name: []const u8, value: []const u8) *Self {
+        if (value.len == 0) return self;
+        if (!isValidIp(value)) {
+            self.addError(field_name, "ip", "{s} 必须是有效的 IP 地址");
+        }
+        return self;
+    }
+
+    /// IPv4地址验证
+    pub fn ipv4(self: *Self, field_name: []const u8, value: []const u8) *Self {
+        if (value.len == 0) return self;
+        if (!isValidIpv4(value)) {
+            self.addError(field_name, "ipv4", "{s} 必须是有效的 IPv4 地址");
+        }
+        return self;
+    }
+
+    /// IPv6地址验证
+    pub fn ipv6(self: *Self, field_name: []const u8, value: []const u8) *Self {
+        if (value.len == 0) return self;
+        if (!isValidIpv6(value)) {
+            self.addError(field_name, "ipv6", "{s} 必须是有效的 IPv6 地址");
+        }
+        return self;
+    }
+
+    /// 布尔值验证
+    pub fn boolean(self: *Self, field_name: []const u8, value: []const u8) *Self {
+        if (value.len == 0) return self;
+        if (!isValidBoolean(value)) {
+            self.addError(field_name, "boolean", "{s} 必须是布尔值 (true, false, 1, 0)");
+        }
+        return self;
+    }
+
+    /// UUID验证
+    pub fn uuid(self: *Self, field_name: []const u8, value: []const u8) *Self {
+        if (value.len == 0) return self;
+        if (!isValidUuid(value)) {
+            self.addError(field_name, "uuid", "{s} 必须是有效的 UUID");
+        }
+        return self;
+    }
+
     // ========================================================================
-    // 内部方法
+    // 自定义验证支持
     // ========================================================================
 
-    fn addError(self: *Self, field_name: []const u8, rule: []const u8, comptime template: []const u8) void {
+    /// 使用自定义函数进行验证
+    pub fn custom(self: *Self, field_name: []const u8, value: anytype, rule_fn: anytype) *Self {
+        rule_fn(self, field_name, value);
+        return self;
+    }
+
+    /// 使用规则对象进行验证
+    pub fn rule(self: *Self, field_name: []const u8, value: anytype, rule_obj: anytype) *Self {
+        if (@hasDecl(@TypeOf(rule_obj), "validate")) {
+            rule_obj.validate(self, field_name, value);
+        } else {
+            @compileError("Custom rule object must have a 'validate' method");
+        }
+        return self;
+    }
+
+    /// 添加错误（开放API）
+    pub fn addError(self: *Self, field_name: []const u8, rule_name: []const u8, comptime template: []const u8) void {
         const msg = std.fmt.allocPrint(self.allocator, template, .{field_name}) catch return;
         self.errors.append(self.allocator, .{
             .field = field_name,
-            .rule = rule,
+            .rule = rule_name,
             .message = msg,
             .allocated = true,
         }) catch {
@@ -910,25 +1123,22 @@ pub const Validator = struct {
         };
     }
 
-    fn addErrorStatic(self: *Self, field_name: []const u8, rule: []const u8, message: []const u8) void {
-        self.errors.append(self.allocator, .{
-            .field = field_name,
-            .rule = rule,
-            .message = message,
-            .allocated = false,
-        }) catch {};
-    }
-
-    fn addErrorFmt(self: *Self, field_name: []const u8, rule: []const u8, comptime template: []const u8, args: anytype) void {
+    /// 添加带格式化参数的错误
+    pub fn addErrorFmt(self: *Self, field_name: []const u8, rule_name: []const u8, comptime template: []const u8, args: anytype) void {
         const msg = std.fmt.allocPrint(self.allocator, template, args) catch return;
         self.errors.append(self.allocator, .{
             .field = field_name,
-            .rule = rule,
+            .rule = rule_name,
             .message = msg,
             .allocated = true,
         }) catch {
             self.allocator.free(msg);
         };
+    }
+
+    /// 添加静态错误（兼容性方法）
+    pub fn addErrorStatic(self: *Self, field_name: []const u8, rule_name: []const u8, comptime template: []const u8) void {
+        self.addError(field_name, rule_name, template);
     }
 };
 
@@ -1009,6 +1219,44 @@ fn isValidMobile(value: []const u8) bool {
     return true;
 }
 
+/// 验证 IPv4 地址
+fn isValidIpv4(value: []const u8) bool {
+    _ = std.net.Ip4Address.parse(value, 0) catch return false;
+    return true;
+}
+
+/// 验证 IPv6 地址
+fn isValidIpv6(value: []const u8) bool {
+    _ = std.net.Ip6Address.parse(value, 0) catch return false;
+    return true;
+}
+
+/// 验证 IP 地址 (v4 或 v6)
+fn isValidIp(value: []const u8) bool {
+    return isValidIpv4(value) or isValidIpv6(value);
+}
+
+/// 验证 UUID 格式 (36字符，包含连字符)
+fn isValidUuid(value: []const u8) bool {
+    if (value.len != 36) return false;
+    for (value, 0..) |c, i| {
+        if (i == 8 or i == 13 or i == 18 or i == 23) {
+            if (c != '-') return false;
+        } else {
+            if (!std.ascii.isHex(c)) return false;
+        }
+    }
+    return true;
+}
+
+/// 验证布尔值格式
+fn isValidBoolean(value: []const u8) bool {
+    return std.mem.eql(u8, value, "true") or
+        std.mem.eql(u8, value, "false") or
+        std.mem.eql(u8, value, "1") or
+        std.mem.eql(u8, value, "0");
+}
+
 // ============================================================================
 // 便捷函数
 // ============================================================================
@@ -1030,7 +1278,7 @@ pub fn validateWithErrors(allocator: Allocator, comptime T: type, data: T) !?[]u
     defer v.deinit();
 
     if (!v.validate(T, data)) {
-        return try v.errorsJson();
+        return try v.toJson();
     }
     return null;
 }
@@ -1038,6 +1286,49 @@ pub fn validateWithErrors(allocator: Allocator, comptime T: type, data: T) !?[]u
 // ============================================================================
 // 测试
 // ============================================================================
+
+test "Validator: custom rule" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    const customFn = struct {
+        fn check(val: *Validator, field: []const u8, value: anytype) void {
+            if (value != 100) {
+                val.addError(field, "custom", "{s} value must be 100");
+            }
+        }
+    }.check;
+
+    _ = v.custom("score", 90, customFn);
+    try std.testing.expect(v.fails());
+
+    v.reset();
+    _ = v.custom("score", 100, customFn);
+    try std.testing.expect(v.passes());
+}
+
+test "Validator: rule object" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    const MyRule = struct {
+        pub fn validate(self: @This(), val: *Validator, field: []const u8, value: anytype) void {
+            _ = self;
+            if (value < 10) {
+                val.addError(field, "my_rule", "{s} too small");
+            }
+        }
+    };
+
+    _ = v.rule("age", 5, MyRule{});
+    try std.testing.expect(v.fails());
+
+    v.reset();
+    _ = v.rule("age", 15, MyRule{});
+    try std.testing.expect(v.passes());
+}
 
 test "Validator: required 验证" {
     const allocator = std.testing.allocator;
@@ -1116,5 +1407,124 @@ test "Validator: 声明式验证" {
     };
 
     _ = v.validate(TestDto, dto);
+    try std.testing.expect(v.fails());
+}
+
+test "Validator: registered custom rule" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    const handlers = struct {
+        fn checkUpper(val: *Validator, field: []const u8, value: FieldValidator.Value, params: []const u8) void {
+            _ = params;
+            switch (value) {
+                .string => |s| {
+                    for (s) |c| {
+                        if (std.ascii.isLower(c)) {
+                            val.addError(field, "upper", "{s} must be uppercase");
+                            return;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+    };
+
+    try v.registerRule("upper", handlers.checkUpper);
+
+    const TestDto = struct {
+        pub const rules = .{
+            .code = "required|upper",
+        };
+        code: []const u8,
+    };
+
+    const dto = TestDto{ .code = "abc" };
+    _ = v.validate(TestDto, dto);
+    try std.testing.expect(v.fails());
+
+    v.reset();
+    const dto2 = TestDto{ .code = "ABC" };
+    _ = v.validate(TestDto, dto2);
+    try std.testing.expect(v.passes());
+}
+
+test "Validator: ip/ipv4/ipv6 验证" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    // IPv4
+    _ = v.ipv4("ip", "192.168.1.1");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.ipv4("ip", "256.1.1.1");
+    try std.testing.expect(v.fails());
+    v.reset();
+
+    // IPv6
+    _ = v.ipv6("ip", "2001:db8::1");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.ipv6("ip", "192.168.1.1");
+    try std.testing.expect(v.fails());
+    v.reset();
+
+    // IP (Any)
+    _ = v.ip("ip", "192.168.1.1");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.ip("ip", "2001:db8::1");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.ip("ip", "not-an-ip");
+    try std.testing.expect(v.fails());
+}
+
+test "Validator: boolean 验证" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    _ = v.boolean("flag", "true");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.boolean("flag", "false");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.boolean("flag", "1");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.boolean("flag", "0");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.boolean("flag", "yes");
+    try std.testing.expect(v.fails());
+}
+
+test "Validator: uuid 验证" {
+    const allocator = std.testing.allocator;
+    var v = Validator.init(allocator);
+    defer v.deinit();
+
+    _ = v.uuid("id", "550e8400-e29b-41d4-a716-446655440000");
+    try std.testing.expect(v.passes());
+    v.reset();
+
+    _ = v.uuid("id", "550e8400e29b41d4a716446655440000"); // missing hyphens
+    try std.testing.expect(v.fails());
+    v.reset();
+
+    _ = v.uuid("id", "invalid-uuid-string");
     try std.testing.expect(v.fails());
 }

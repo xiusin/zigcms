@@ -48,6 +48,25 @@ pub const Security = struct {
         return .{ .allocator = allocator };
     }
 
+    /// 不区分大小写的字符串查找
+    fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
+        if (needle.len == 0) return true;
+        if (haystack.len < needle.len) return false;
+
+        var i: usize = 0;
+        while (i <= haystack.len - needle.len) : (i += 1) {
+            var match = true;
+            for (needle, 0..) |c, j| {
+                if (std.ascii.toLower(haystack[i + j]) != std.ascii.toLower(c)) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+        return false;
+    }
+
     /// 检测 SQL 注入
     pub fn detectSqlInjection(self: *Self, input: []const u8) SecurityCheck {
         _ = self;
@@ -93,10 +112,8 @@ pub const Security = struct {
             "pg_sleep",
         };
 
-        const lower_input = toLower(input);
-
         for (sql_patterns) |pattern| {
-            if (std.mem.indexOf(u8, lower_input, pattern) != null) {
+            if (containsIgnoreCase(input, pattern)) {
                 return .{
                     .is_safe = false,
                     .threat_type = .sql_injection,
@@ -154,10 +171,8 @@ pub const Security = struct {
             "base64,",
         };
 
-        const lower_input = toLower(input);
-
         for (xss_patterns) |pattern| {
-            if (std.mem.indexOf(u8, lower_input, pattern) != null) {
+            if (containsIgnoreCase(input, pattern)) {
                 return .{
                     .is_safe = false,
                     .threat_type = .xss_attack,
@@ -201,10 +216,8 @@ pub const Security = struct {
             "netcat ",
         };
 
-        const lower_input = toLower(input);
-
         for (cmd_patterns) |pattern| {
-            if (std.mem.indexOf(u8, lower_input, pattern) != null) {
+            if (containsIgnoreCase(input, pattern)) {
                 return .{
                     .is_safe = false,
                     .threat_type = .command_injection,
@@ -238,10 +251,8 @@ pub const Security = struct {
             "%00",
         };
 
-        const lower_input = toLower(input);
-
         for (path_patterns) |pattern| {
-            if (std.mem.indexOf(u8, lower_input, pattern) != null) {
+            if (containsIgnoreCase(input, pattern)) {
                 return .{
                     .is_safe = false,
                     .threat_type = .path_traversal,
@@ -261,9 +272,9 @@ pub const Security = struct {
         if (std.mem.indexOf(u8, input, "\r\n") != null or
             std.mem.indexOf(u8, input, "\r") != null or
             std.mem.indexOf(u8, input, "\n") != null or
-            std.mem.indexOf(u8, input, "%0d%0a") != null or
-            std.mem.indexOf(u8, input, "%0d") != null or
-            std.mem.indexOf(u8, input, "%0a") != null)
+            containsIgnoreCase(input, "%0d%0a") or
+            containsIgnoreCase(input, "%0d") or
+            containsIgnoreCase(input, "%0a"))
         {
             return .{
                 .is_safe = false,
@@ -307,50 +318,50 @@ pub const Security = struct {
 
 /// 清理 HTML 特殊字符（防止 XSS）
 pub fn escapeHtml(allocator: Allocator, input: []const u8) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result = try std.ArrayList(u8).initCapacity(allocator, input.len);
+    errdefer result.deinit(allocator);
 
     for (input) |c| {
         switch (c) {
-            '<' => try result.appendSlice("&lt;"),
-            '>' => try result.appendSlice("&gt;"),
-            '&' => try result.appendSlice("&amp;"),
-            '"' => try result.appendSlice("&quot;"),
-            '\'' => try result.appendSlice("&#x27;"),
-            '/' => try result.appendSlice("&#x2F;"),
-            '`' => try result.appendSlice("&#x60;"),
-            '=' => try result.appendSlice("&#x3D;"),
-            else => try result.append(c),
+            '<' => try result.appendSlice(allocator, "&lt;"),
+            '>' => try result.appendSlice(allocator, "&gt;"),
+            '&' => try result.appendSlice(allocator, "&amp;"),
+            '"' => try result.appendSlice(allocator, "&quot;"),
+            '\'' => try result.appendSlice(allocator, "&#x27;"),
+            '/' => try result.appendSlice(allocator, "&#x2F;"),
+            '`' => try result.appendSlice(allocator, "&#x60;"),
+            '=' => try result.appendSlice(allocator, "&#x3D;"),
+            else => try result.append(allocator, c),
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// 清理 SQL 特殊字符
 pub fn escapeSql(allocator: Allocator, input: []const u8) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result = try std.ArrayList(u8).initCapacity(allocator, input.len);
+    errdefer result.deinit(allocator);
 
     for (input) |c| {
         switch (c) {
-            '\'' => try result.appendSlice("''"),
-            '\\' => try result.appendSlice("\\\\"),
-            0 => try result.appendSlice("\\0"),
-            '\n' => try result.appendSlice("\\n"),
-            '\r' => try result.appendSlice("\\r"),
-            '"' => try result.appendSlice("\\\""),
-            else => try result.append(c),
+            '\'' => try result.appendSlice(allocator, "''"),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            0 => try result.appendSlice(allocator, "\\0"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '"' => try result.appendSlice(allocator, "\\\""),
+            else => try result.append(allocator, c),
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// 移除所有 HTML 标签
 pub fn stripTags(allocator: Allocator, input: []const u8) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result = try std.ArrayList(u8).initCapacity(allocator, input.len);
+    errdefer result.deinit(allocator);
 
     var in_tag = false;
     for (input) |c| {
@@ -359,31 +370,31 @@ pub fn stripTags(allocator: Allocator, input: []const u8) ![]u8 {
         } else if (c == '>') {
             in_tag = false;
         } else if (!in_tag) {
-            try result.append(c);
+            try result.append(allocator, c);
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// 清理文件名（移除危险字符）
 pub fn sanitizeFilename(allocator: Allocator, input: []const u8) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result = try std.ArrayList(u8).initCapacity(allocator, input.len);
+    errdefer result.deinit(allocator);
 
     for (input) |c| {
         // 只允许字母、数字、下划线、点和横线
         if (std.ascii.isAlphanumeric(c) or c == '_' or c == '.' or c == '-') {
-            try result.append(c);
+            try result.append(allocator, c);
         }
     }
 
     // 防止空文件名
     if (result.items.len == 0) {
-        try result.appendSlice("unnamed");
+        try result.appendSlice(allocator, "unnamed");
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// 综合清理用户输入
@@ -418,20 +429,6 @@ pub fn getThreatName(threat: ThreatType) []const u8 {
 // ============================================================================
 // 辅助函数
 // ============================================================================
-
-/// 将字符串转换为小写（用于模式匹配）
-fn toLower(input: []const u8) []const u8 {
-    // 注意：这是一个简化实现，只用于内部检测
-    // 实际使用时应该分配新内存
-    var buffer: [4096]u8 = undefined;
-    const len = @min(input.len, buffer.len);
-
-    for (input[0..len], 0..) |c, i| {
-        buffer[i] = std.ascii.toLower(c);
-    }
-
-    return buffer[0..len];
-}
 
 // ============================================================================
 // 测试
