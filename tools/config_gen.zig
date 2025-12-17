@@ -21,7 +21,10 @@ pub const ConfigGenerator = struct {
         const config_code = try self.generateConfigStruct(parsed_config);
 
         // Write to output file
-        try std.fs.cwd().writeFile(output_file_path, config_code);
+        try std.fs.cwd().writeFile(.{
+            .sub_path = output_file_path,
+            .data = config_code,
+        });
 
         std.debug.print("Configuration structure generated successfully to: {s}\\n", .{output_file_path});
     }
@@ -239,7 +242,7 @@ pub const ConfigGenerator = struct {
             \\\\
         );
 
-        return try writer.toOwnedSlice();
+        return try writer.toOwnedSlice(self.allocator);
     }
 };
 
@@ -266,7 +269,7 @@ fn toPascalCase(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
         }
     }
 
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 // Helper function to convert a string to SCREAMING_SNAKE_CASE
@@ -286,7 +289,7 @@ fn toSnakeCaseUpper(allocator: std.mem.Allocator, input: []const u8) ![]const u8
         }
     }
 
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 // Helper function to escape special characters in strings
@@ -305,7 +308,7 @@ fn escapeString(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
         }
     }
 
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 const ConfigVariable = struct {

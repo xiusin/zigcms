@@ -1,0 +1,61 @@
+# EditorConfig - 统一代码风格配置
+# https://editorconfig.org
+
+root = true
+
+# 所有文件的默认配置
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Zig 源文件
+[*.zig]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# JSON 文件
+[*.json]
+indent_size = 2
+
+# YAML 文件
+[*.{yml,yaml}]
+indent_size = 2
+
+# Markdown 文件
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# Makefile
+[Makefile]
+indent_style = tab
+
+# Shell 脚本
+[*.sh]
+indent_size = 2
+
+# SQL 文件
+[*.sql]
+indent_size = 2
+
+# 配置文件
+[*.{toml,ini}]
+indent_size = 2
+
+# HTML/CSS/JS
+[*.{html,css,js}]
+indent_size = 2
+
+# 忽略生成的文件
+[zig-out/**]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[.zig-cache/**]
+insert_final_newline = false
+trim_trailing_whitespace = false
