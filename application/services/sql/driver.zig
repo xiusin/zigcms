@@ -37,6 +37,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const mysql_core = @import("query.zig");
+const sql_errors = @import("sql_errors.zig");
 
 // ============================================================================
 // C API 绑定
@@ -425,6 +426,11 @@ pub const Connection = struct {
         // 执行查询
         if (c.mysql_real_query(self.mysql, sql.ptr, @intCast(sql.len)) != 0) {
             self.updateError();
+            // 设置详细错误信息
+            if (self.last_error) |err_info| {
+                var builder = sql_errors.queryFailed(sql, @intCast(err_info.code), err_info.message);
+                _ = builder.build();
+            }
             return MySQLError.QueryFailed;
         }
 
@@ -473,6 +479,11 @@ pub const Connection = struct {
     pub fn exec(self: *Connection, sql: []const u8) !u64 {
         if (c.mysql_real_query(self.mysql, sql.ptr, @intCast(sql.len)) != 0) {
             self.updateError();
+            // 设置详细错误信息
+            if (self.last_error) |err_info| {
+                var builder = sql_errors.execFailed(sql, @intCast(err_info.code), err_info.message);
+                _ = builder.build();
+            }
             return MySQLError.QueryFailed;
         }
 

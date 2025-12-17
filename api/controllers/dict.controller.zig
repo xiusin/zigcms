@@ -144,7 +144,7 @@ pub fn getDict(self: *Self, req: zap.Request) !void {
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "ID格式错误"));
 
     // 直接从ORM获取，因为有ID
-    const item_opt = OrmDict.Find(id) catch |e| return base.send_error(req, e);
+    const item_opt = try OrmDict.Find(id);
     if (item_opt == null) {
         return base.send_failed(req, "字典项不存在");
     }
@@ -230,7 +230,9 @@ pub fn getDictLabel(_: *Self, req: zap.Request) !void {
     const service_manager = global.getServiceManager();
     const dict_svc = service_manager.getDictService();
 
-    if (try dict_svc.getDictLabel(dict_type, dict_value)) |label| {
+    const result = try dict_svc.getDictLabel(dict_type, dict_value);
+
+    if (result) |label| {
         base.send_ok(req, .{ .label = label });
     } else {
         base.send_failed(req, "未找到对应的字典项");

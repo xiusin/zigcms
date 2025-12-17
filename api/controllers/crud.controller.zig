@@ -46,6 +46,16 @@ fn lowerStr(comptime s: []const u8) []const u8 {
     }
 }
 
+fn shortTypeName(comptime full: []const u8) []const u8 {
+    comptime {
+        var start: usize = 0;
+        for (full, 0..) |c, i| {
+            if (c == '.') start = i + 1;
+        }
+        return full[start..];
+    }
+}
+
 /// 泛型 CRUD 控制器（使用 SQL ORM）
 ///
 /// 使用示例：
@@ -60,16 +70,18 @@ fn lowerStr(comptime s: []const u8) []const u8 {
 /// router.post("/api/article/delete", ctrl.delete);
 /// ```
 pub fn Crud(comptime T: type, comptime schema: []const u8) type {
+    const short_name = comptime shortTypeName(@typeName(T));
+
     // 使用 SQL ORM 定义模型
     const OrmModel = sql.defineWithConfig(T, .{
-        .table_name = schema ++ "." ++ lowerStr(@typeName(T)),
+        .table_name = schema ++ "." ++ lowerStr(short_name),
         .primary_key = "id",
     });
 
     return struct {
         const Self = @This();
         const MW = mw.Controller(Self);
-        const TABLE_NAME = schema ++ "." ++ lowerStr(@typeName(T));
+        const TABLE_NAME = schema ++ "." ++ lowerStr(short_name);
 
         allocator: Allocator,
 

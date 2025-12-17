@@ -3,6 +3,7 @@ const std = @import("std");
 const global = @import("../../shared/primitives/global.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const json_mod = @import("../../application/services/json/json.zig");
+const sql_errors = @import("../../application/services/sql/sql_errors.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -15,6 +16,53 @@ pub const Response = struct {
 
 /// 响应异常信息
 pub fn send_error(req: zap.Request, e: anyerror) void {
+    // 检查是否有详细的 SQL 错误信息
+    const sql_err = sql_errors.getLastError();
+    if (sql_err) |detail| {
+        // 构建详细错误响应
+        const error_msg = std.fmt.allocPrint(global.get_allocator(), "数据库操作失败: {s}", .{detail.message()}) catch {
+            // 如果内存分配失败，回退到简单错误
+            var buf: [40960]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "{}", .{e}) catch return req.sendError(e, null, 500);
+            return send_failed(req, msg[6..]);
+        };
+        defer global.get_allocator().free(error_msg);
+
+        // 构建结构化的错误响应
+        const response = .{
+            .success = false,
+            .code = detail.getCode() orelse 500,
+            .message = error_msg,
+            .data = .{
+                .sql_error = detail.message(),
+                .native_error = detail.getNativeMessage() orelse null,
+                .sql_statement = detail.getSql() orelse null,
+                .table_name = detail.table_name orelse null,
+                .duration_ms = detail.duration_ms orelse null,
+                .retryable = detail.retryable,
+                .error_type = "sql_error",
+            },
+        };
+
+        // 发送 JSON 响应
+        const json = json_mod.JSON.encode(global.get_allocator(), response) catch {
+            // 如果 JSON 编码失败，回退到简单错误
+            var buf: [40960]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "{}", .{e}) catch return req.sendError(e, null, 500);
+            return send_failed(req, msg[6..]);
+        };
+        defer global.get_allocator().free(json);
+
+        req.setStatus(.internal_server_error);
+        req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
+        req.sendBody(json) catch {};
+
+        // 同时打印到日志
+        std.log.err("SQL错误详情: {s}", .{detail.format(global.get_allocator()) catch "格式化错误失败"});
+        return;
+    }
+
+    // 普通错误处理
     var buf: [40960]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf, "{}", .{e}) catch return req.sendError(e, null, 500);
     send_failed(req, msg[6..]);
@@ -54,63 +102,6 @@ pub fn send_failed(req: zap.Request, message: []const u8) void {
     req.sendJson(ser) catch return;
 }
 
-/// 通过结构体构建insert语句
-pub fn build_insert_sql(comptime T: type, allocator: Allocator) ![]const u8 {
-    var fields = std.ArrayList([]const u8).init(allocator);
-    defer fields.deinit();
-    var values = std.ArrayList([]const u8).init(allocator);
-    defer values.deinit();
-
-    var index: usize = 0;
-    inline for (std.meta.fields(T)) |field| {
-        if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
-            try fields.append(field.name);
-            var buf: [1024]u8 = undefined;
-            try values.append(try std.fmt.bufPrint(buf[0..], "${d}", .{index + 1}));
-            index += 1;
-        }
-    }
-
-    const fields_arg = try std.mem.join(allocator, ", ", fields.items);
-    const values_arg = try std.mem.join(allocator, ", ", values.items);
-    defer allocator.free(fields_arg);
-    defer allocator.free(values_arg);
-
-    const query = "INSERT INTO {s} ({s}) VALUES ({s})";
-
-    return try std.fmt.allocPrint(allocator, query, .{
-        get_table_name(T),
-        fields_arg,
-        values_arg,
-    });
-}
-
-/// 构建更新sql语句, 仅支持简单语句生成
-pub fn build_update_sql(comptime T: type, allocator: Allocator) ![]const u8 {
-    var fields = std.ArrayList([]const u8).init(allocator);
-    defer fields.deinit();
-
-    var index: usize = 0;
-    inline for (std.meta.fields(T)) |field| {
-        if (!std.mem.eql(u8, field.name, "id")) { // 忽略id字段
-            var buf: [1024]u8 = undefined;
-            try fields.append(try std.fmt.bufPrint(buf[0..], "{s} = ${d}", .{ field.name, index + 1 }));
-            index += 1;
-        }
-    }
-
-    const fields_arg = try std.mem.join(allocator, ", ", fields.items);
-    defer allocator.free(fields_arg);
-
-    const query = "UPDATE {s} SET {s} WHERE id = ${d}";
-
-    return try std.fmt.allocPrint(allocator, query, .{
-        get_table_name(T),
-        fields_arg,
-        index + 1,
-    });
-}
-
 /// 获取请求中的排序字段
 pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     if (str) |field| {
@@ -120,18 +111,3 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     }
     return str;
 }
-
-/// 获取表名
-pub fn get_table_name(comptime T: type) []const u8 {
-    var iter = std.mem.split(u8, @typeName(T), ".");
-    var tablename: []const u8 = undefined;
-    while (iter.next()) |v| {
-        tablename = v;
-    }
-    var buffer: [512]u8 = undefined;
-    const tbl = std.ascii.lowerString(buffer[0..], tablename);
-    return strings.sprinf("zigcms.{s}", .{tbl}) catch unreachable;
-}
-
-/// 上传文件
-pub fn upload() void {}

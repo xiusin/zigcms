@@ -9,18 +9,51 @@
 const std = @import("std");
 const logger = @import("../application/services/logger/logger.zig");
 
+// ============================================================================
+// 导出领域层模块
+// ============================================================================
+
+/// 业务实体模型
+pub const entities = @import("entities/models.zig");
+
+/// 领域服务（业务规则和逻辑）
+pub const services = @import("services/mod.zig");
+
+/// 仓库接口（数据访问契约）
+pub const repositories = @import("repositories/mod.zig");
+
+// ============================================================================
+// 领域层配置
+// ============================================================================
+
 /// 领域层配置
 pub const DomainConfig = struct {
-    // 领域层特定配置
+    /// 是否验证模型
     validate_models: bool = true,
+    /// 是否强制执行业务规则
     enforce_business_rules: bool = true,
 };
+
+// ============================================================================
+// 初始化和清理
+// ============================================================================
 
 /// 领域层初始化函数
 pub fn init(allocator: std.mem.Allocator, config: DomainConfig) !void {
     _ = allocator;
-    logger.info("领域层初始化完成，配置: validate_models={}, enforce_business_rules={}", .{ config.validate_models, config.enforce_business_rules });
+    std.debug.print("✅ 领域层初始化完成\n", .{});
 
     // 初始化实体模型
-    _ = @import("entities/models.zig");
+    _ = entities;
+
+    // 初始化领域服务
+    _ = services;
+
+    // 初始化仓库接口
+    _ = repositories;
+}
+
+/// 领域层清理函数
+pub fn deinit() void {
+    std.debug.print("👋 领域层已清理\n", .{});
 }

@@ -48,6 +48,7 @@ const Allocator = std.mem.Allocator;
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
 const logger_mod = @import("../logger/logger.zig");
+const sql_errors = @import("sql_errors.zig");
 
 pub const OrderDir = query_mod.OrderDir;
 
@@ -347,14 +348,20 @@ pub const Database = struct {
 
                 const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
+                // 获取详细错误信息
+                const detail_msg = if (sql_errors.getLastError()) |sql_err|
+                    sql_err.getNativeMessage() orelse @errorName(err)
+                else
+                    @errorName(err);
+
                 if (self.logger) |log| {
                     if (self.enable_logging) {
-                        log.err("Query failed: {s}", .{@errorName(err)});
+                        log.err("Query failed: {s}", .{detail_msg});
                         log.err("SQL: {s}", .{formatted_sql});
                         log.err("Duration: {d:.2}ms", .{elapsed_ms});
                     }
                 } else if (self.enable_logging) {
-                    std.debug.print("[ERROR] Query failed: {s}\n", .{@errorName(err)});
+                    std.debug.print("[ERROR] Query failed: {s}\n", .{detail_msg});
                     std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
                     std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
                 }
@@ -425,14 +432,20 @@ pub const Database = struct {
 
                 const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
+                // 获取详细错误信息
+                const detail_msg = if (sql_errors.getLastError()) |sql_err|
+                    sql_err.getNativeMessage() orelse @errorName(err)
+                else
+                    @errorName(err);
+
                 if (self.logger) |log| {
                     if (self.enable_logging) {
-                        log.err("Exec failed: {s}", .{@errorName(err)});
+                        log.err("Exec failed: {s}", .{detail_msg});
                         log.err("SQL: {s}", .{formatted_sql});
                         log.err("Duration: {d:.2}ms", .{elapsed_ms});
                     }
                 } else if (self.enable_logging) {
-                    std.debug.print("[ERROR] Exec failed: {s}\n", .{@errorName(err)});
+                    std.debug.print("[ERROR] Exec failed: {s}\n", .{detail_msg});
                     std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
                     std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
                 }
@@ -565,14 +578,25 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 获取表名
         pub fn tableName() []const u8 {
             const tbl = if (config.table_name) |n| n else if (@hasDecl(T, "table_name")) T.table_name else @typeName(T);
-            comptime var pure_table_name: []const u8 = tbl;
-            inline for (tbl, 0..) |c, i| {
+
+            var last_dot: ?usize = null;
+            var dot_count: usize = 0;
+            for (tbl, 0..) |c, i| {
                 if (c == '.') {
-                    pure_table_name = tbl[i + 1 ..];
-                    break;
+                    dot_count += 1;
+                    last_dot = i;
                 }
             }
-            return pure_table_name;
+
+            const base = if (last_dot) |idx| tbl[idx + 1 ..] else tbl;
+
+            if (dot_count == 1) {
+                if (default_db) |db| {
+                    if (db.driver_type == .postgresql or db.driver_type == .mysql) return tbl;
+                }
+            }
+
+            return base;
         }
 
         /// 获取主键名
@@ -665,21 +689,28 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         fn createTableSqlForDialect(db: *Database, comptime dialect: Dialect) ![]const u8 {
             const fields = std.meta.fields(T);
             const pk = primaryKey();
-            const tbl = tableName();
+            const tbl = if (config.table_name) |n| n else if (@hasDecl(T, "table_name")) T.table_name else @typeName(T);
 
-            var pure_table_name: []const u8 = tbl;
+            var last_dot: ?usize = null;
+            var dot_count: usize = 0;
             for (tbl, 0..) |c, i| {
                 if (c == '.') {
-                    pure_table_name = tbl[i + 1 ..];
-                    break;
+                    dot_count += 1;
+                    last_dot = i;
                 }
             }
+
+            const base = if (last_dot) |idx| tbl[idx + 1 ..] else tbl;
+            const resolved_table_name = switch (dialect) {
+                .sqlite => base,
+                .mysql, .postgresql => if (dot_count == 1) tbl else base,
+            };
 
             var sql_builder = std.ArrayListUnmanaged(u8){};
             errdefer sql_builder.deinit(db.allocator);
 
             try sql_builder.appendSlice(db.allocator, "CREATE TABLE IF NOT EXISTS ");
-            try sql_builder.appendSlice(db.allocator, pure_table_name);
+            try sql_builder.appendSlice(db.allocator, resolved_table_name);
             try sql_builder.appendSlice(db.allocator, " (\n");
 
             var first_field = true;
@@ -3492,6 +3523,98 @@ pub const ConnectionPool = struct {
         // 为了性能，这里不再遍历
 
         return stats;
+    }
+
+    /// 检查连接池健康状态
+    pub fn isHealthy(self: *ConnectionPool) bool {
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        if (self.closed) return false;
+        if (self.all_connections.items.len == 0) return false;
+
+        // 至少有一个可用连接
+        self.idle_mutex.lock();
+        defer self.idle_mutex.unlock();
+        return self.idle_connections.items.len > 0 or
+            self.all_connections.items.len < self.config.max_size;
+    }
+
+    /// 手动触发连接池维护（清理过期连接，补充最小连接数）
+    pub fn maintain(self: *ConnectionPool) !void {
+        self.state_mutex.lock();
+        if (self.closed) {
+            self.state_mutex.unlock();
+            return;
+        }
+        self.state_mutex.unlock();
+
+        // 清理过期的空闲连接
+        var to_remove = std.ArrayListUnmanaged(*PooledConnection){};
+        defer to_remove.deinit(self.allocator);
+
+        {
+            self.idle_mutex.lock();
+            defer self.idle_mutex.unlock();
+
+            var i: usize = 0;
+            while (i < self.idle_connections.items.len) {
+                const pooled = self.idle_connections.items[i];
+                if (!pooled.isHealthy(self.config) and !pooled.is_pinging.load(.seq_cst)) {
+                    _ = self.idle_connections.swapRemove(i);
+                    to_remove.append(self.allocator, pooled) catch {};
+                } else {
+                    i += 1;
+                }
+            }
+        }
+
+        // 销毁过期连接
+        for (to_remove.items) |pooled| {
+            pooled.conn.deinit();
+
+            self.state_mutex.lock();
+            for (self.all_connections.items, 0..) |p, k| {
+                if (p == pooled) {
+                    _ = self.all_connections.swapRemove(k);
+                    break;
+                }
+            }
+            self.state_mutex.unlock();
+
+            self.allocator.destroy(pooled);
+        }
+
+        // 补充到最小连接数
+        self.state_mutex.lock();
+        const current_count = self.all_connections.items.len;
+        self.state_mutex.unlock();
+
+        if (current_count < self.config.min_size) {
+            const need = self.config.min_size - current_count;
+            for (0..need) |_| {
+                const conn = interface.Driver.mysql(self.allocator, self.db_config) catch continue;
+                const pooled = self.allocator.create(PooledConnection) catch {
+                    conn.deinit();
+                    continue;
+                };
+
+                self.state_mutex.lock();
+                pooled.* = PooledConnection.init(conn, self.next_id);
+                self.next_id += 1;
+                self.all_connections.append(self.allocator, pooled) catch {
+                    self.state_mutex.unlock();
+                    conn.deinit();
+                    self.allocator.destroy(pooled);
+                    continue;
+                };
+                self.state_mutex.unlock();
+
+                self.idle_mutex.lock();
+                self.idle_connections.append(self.allocator, pooled) catch {};
+                self.idle_mutex.unlock();
+            }
+        }
     }
 };
 pub const Transaction = struct {

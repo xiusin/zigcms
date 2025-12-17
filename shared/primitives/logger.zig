@@ -75,10 +75,10 @@ pub const LogBuilder = struct {
 
     /// 初始化日志构建器
     pub fn init(allocator: std.mem.Allocator) LogBuilder {
-        var arena = std.heap.ArenaAllocator.init(allocator);
+        const arena = std.heap.ArenaAllocator.init(allocator);
         return .{
             .allocator = allocator,
-            .attrs = std.ArrayList(Attr).init(arena.allocator()),
+            .attrs = std.ArrayList(Attr).init(allocator),
             .arena = arena,
         };
     }
@@ -196,8 +196,9 @@ pub const LogBuilder = struct {
             }
         }
 
-        // 输出到标准错误
-        const writer = std.io.getStdErr().writer();
+        // 输出到标准错误流
+        const stderr = std.io.getStdErr();
+        const writer = stderr.writer();
         writer.print("{s}\n", .{buf[0..pos]}) catch {};
     }
 };

@@ -29,6 +29,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
+const sql_errors = @import("sql_errors.zig");
 
 // PostgreSQL 模块 stub（当 pg 不可用时使用）
 const PgStub = struct {
@@ -615,6 +616,11 @@ const SQLiteDriver = struct {
 
         const rc = sqlite3.sqlite3_prepare_v2(self.db, &sql_buf, @intCast(sql.len), &stmt, null);
         if (rc != sqlite3.SQLITE_OK or stmt == null) {
+            // 获取原生错误信息
+            const errmsg = sqlite3.sqlite3_errmsg(self.db);
+            const native_msg = if (@intFromPtr(errmsg) != 0) std.mem.span(errmsg) else "Unknown error";
+            var builder = sql_errors.queryFailed(sql, rc, native_msg);
+            _ = builder.build();
             return error.QueryFailed;
         }
         defer _ = sqlite3.sqlite3_finalize(stmt.?);
@@ -667,6 +673,11 @@ const SQLiteDriver = struct {
 
         const rc = sqlite3.sqlite3_exec(self.db, &sql_buf, null, null, null);
         if (rc != sqlite3.SQLITE_OK) {
+            // 获取原生错误信息
+            const errmsg = sqlite3.sqlite3_errmsg(self.db);
+            const native_msg = if (@intFromPtr(errmsg) != 0) std.mem.span(errmsg) else "Unknown error";
+            var builder = sql_errors.execFailed(sql, rc, native_msg);
+            _ = builder.build();
             return error.QueryFailed;
         }
 

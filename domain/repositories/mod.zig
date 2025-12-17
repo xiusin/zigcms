@@ -49,7 +49,4 @@ pub const Repository = struct {
     }
 };
 
-// 导出仓库接口
-pub const Repositories = struct {
-    pub const Repository = Repository;
-};
+// Repository 接口已在模块顶层导出，无需重复

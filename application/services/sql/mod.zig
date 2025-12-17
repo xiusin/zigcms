@@ -43,6 +43,7 @@ pub const advanced = @import("advanced.zig");
 pub const driver = @import("driver.zig");
 pub const orm = @import("orm.zig");
 pub const interface = @import("interface.zig");
+pub const sql_errors = @import("sql_errors.zig");
 
 // 重导出常用类型
 pub const Config = core.Config;
@@ -75,13 +76,27 @@ pub const MySQLError = driver.MySQLError;
 
 // 高阶ORM
 pub const Database = orm.Database;
-pub const MySQLConfig = orm.MySQLConfig;  // MySQL配置（包含连接池选项）
+pub const MySQLConfig = orm.MySQLConfig; // MySQL配置（包含连接池选项）
 pub const define = orm.define;
 pub const ModelQuery = orm.ModelQuery;
 pub const HasMany = orm.HasMany;
 pub const BelongsTo = orm.BelongsTo;
-pub const Migrator = orm.Migrator;  // 数据库迁移器
-pub const Dialect = orm.Dialect;     // 数据库方言
+pub const Migrator = orm.Migrator; // 数据库迁移器
+pub const Dialect = orm.Dialect; // 数据库方言
+
+// SQL 错误处理
+pub const SqlError = sql_errors.SqlError;
+pub const SqlErrorCode = sql_errors.SqlErrorCode;
+pub const SqlErrorBuilder = sql_errors.SqlErrorBuilder;
+pub const getLastSqlError = sql_errors.getLastError;
+pub const clearLastSqlError = sql_errors.clearLastError;
+pub const isRetryableError = sql_errors.isRetryable;
+pub const RetryConfig = sql_errors.RetryConfig;
+pub const withRetry = sql_errors.withRetry;
+pub const raiseSqlError = sql_errors.raiseSqlError;
+pub const raiseQueryFailed = sql_errors.raiseQueryFailed;
+pub const raiseExecFailed = sql_errors.raiseExecFailed;
+pub const raiseConnectionFailed = sql_errors.raiseConnectionFailed;
 
 // 内部实现（不导出，用户不需要）
 // ConnectionPool、Transaction 等由 Database 内部自动管理

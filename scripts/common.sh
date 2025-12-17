@@ -518,6 +518,18 @@ zig_test() {
     fi
 }
 
+# 获取脚本目录
+get_script_dir() {
+    echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+}
+
+# 获取项目根目录
+get_project_root() {
+    local script_dir
+    script_dir="$(get_script_dir)"
+    echo "$(dirname "$script_dir")"
+}
+
 # 项目相关检查
 check_env_file() {
     local project_root
