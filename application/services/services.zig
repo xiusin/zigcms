@@ -8,11 +8,15 @@ const sql = @import("../services/sql/orm.zig");
 const CacheService = @import("../services/cache/cache.zig").CacheService;
 const DictService = @import("../services/cache/dict_service.zig").DictService;
 const PluginSystemService = @import("../services/plugins/mod.zig").PluginSystemService;
+const root = @import("../../root.zig");
 
 pub const ServiceManager = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+
+    // 系统配置
+    config: root.SystemConfig,
 
     // 数据库连接
     db: *sql.Database,
@@ -28,7 +32,7 @@ pub const ServiceManager = struct {
 
     // 其他服务...
 
-    pub fn init(allocator: std.mem.Allocator, db: *sql.Database) !ServiceManager {
+    pub fn init(allocator: std.mem.Allocator, db: *sql.Database, config: root.SystemConfig) !ServiceManager {
         var cache = CacheService.init(allocator);
 
         const dict_service = DictService.init(allocator, db, &cache);
@@ -37,6 +41,7 @@ pub const ServiceManager = struct {
 
         return .{
             .allocator = allocator,
+            .config = config,
             .db = db,
             .cache = cache,
             .dict_service = dict_service,
@@ -50,6 +55,11 @@ pub const ServiceManager = struct {
 
         self.cache.deinit();
         // 不需要显式释放 db，因为它由调用者管理
+    }
+
+    /// 获取系统配置
+    pub fn getConfig(self: *const ServiceManager) *const root.SystemConfig {
+        return &self.config;
     }
 
     /// 获取字典服务

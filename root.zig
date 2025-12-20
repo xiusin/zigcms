@@ -40,20 +40,18 @@ pub fn getServiceManager() *ServiceManager {
 
 /// 初始化整个系统
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
-    _ = config; // 忽略未使用的参数
-
     // 初始化各层，遵照依赖关系
     try shared.init(allocator);
     try domain.init(allocator);
-    try infrastructure.init(allocator);
-    try application.init(allocator);
-    try api.init(allocator);
+    const db = try infrastructure.init(allocator, config.infra);
+    try application.init(allocator, config.app);
+    try api.init(allocator, config.api);
 
     logger.info("系统初始化完成", .{});
 
     // 初始化服务管理器
-    // 这里需要获取数据库实例并传入服务管理器
-    // 由于数据库初始化可能在基础设施层，所以需要适当调整
+    service_manager = try ServiceManager.init(allocator, db, config);
+    logger.info("服务管理器初始化完成", .{});
 }
 
 /// 清理整个系统

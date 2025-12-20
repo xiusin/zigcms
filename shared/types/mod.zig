@@ -40,11 +40,11 @@ pub const Pagination = struct {
     page: i32 = 1,
     page_size: i32 = 10,
     total: i32 = 0,
-    
+
     pub fn offset(self: Pagination) i32 {
         return (self.page - 1) * self.page_size;
     }
-    
+
     pub fn totalPages(self: Pagination) i32 {
         if (self.page_size == 0) return 0;
         return @divTrunc(self.total + self.page_size - 1, self.page_size);
@@ -56,11 +56,11 @@ pub fn Result(comptime T: type, comptime E: type) type {
     return union(enum) {
         ok: T,
         err: E,
-        
+
         pub fn isOk(self: @This()) bool {
             return self == .ok;
         }
-        
+
         pub fn isErr(self: @This()) bool {
             return self == .err;
         }
@@ -71,12 +71,3 @@ pub fn Result(comptime T: type, comptime E: type) type {
 pub fn Option(comptime T: type) type {
     return ?T;
 }
-
-// 导出类型
-pub const Types = struct {
-    pub const HttpMethod = HttpMethod;
-    pub const StatusCode = StatusCode;
-    pub const Pagination = Pagination;
-    pub const Result = Result;
-    pub const Option = Option;
-};

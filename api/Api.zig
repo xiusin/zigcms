@@ -22,8 +22,8 @@ pub const ServerConfig = struct {
 };
 
 /// API 层初始化函数
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, config: ServerConfig) !void {
     _ = allocator;
     // 初始化 API 层组件
-    logger.info("API 层初始化完成", .{});
+    logger.info("API 层初始化完成，配置: host={s}, port={}, max_clients={}", .{ config.host, config.port, config.max_clients });
 }

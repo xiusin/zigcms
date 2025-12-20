@@ -8,8 +8,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const logger = @import("../application/services/logger/logger.zig");
-
-// 导入各层组件
+const root = @import("../root.zig");
 const controllers = @import("controllers/mod.zig");
 
 /// 应用框架
@@ -127,17 +126,20 @@ pub const App = struct {
     }
 
     /// 启动 HTTP 服务器
-    pub fn listen(self: *Self, port: u16) !void {
+    pub fn listen(self: *Self) !void {
+        const config = root.getServiceManager().getConfig();
+        const api_config = config.api;
+
         var listener = zap.HttpListener.init(.{
-            .port = port,
+            .port = api_config.port,
             .on_request = self.router.on_request_handler(),
             .log = true,
-            .public_folder = "resources",
-            .max_clients = 10000,
-            .timeout = 3,
+            .public_folder = api_config.public_folder,
+            .max_clients = api_config.max_clients,
+            .timeout = api_config.timeout,
         });
         try listener.listen();
-        logger.info("🚀 服务器启动于 http://127.0.0.1:{d}", .{port});
+        logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });
         zap.start(.{ .threads = 4, .workers = 4 });
     }
 

@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const logger = @import("../application/services/logger/logger.zig");
+const sql = @import("../application/services/sql/orm.zig");
 
 /// 基础设施层配置
 pub const InfraConfig = struct {
@@ -27,8 +28,24 @@ pub const InfraConfig = struct {
 };
 
 /// 基础设施层初始化函数
-pub fn init(allocator: std.mem.Allocator) !void {
-    _ = allocator;
+pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
+    // 创建数据库配置
+    const db_config = sql.MySQLConfig{
+        .host = config.db_host,
+        .port = config.db_port,
+        .user = config.db_user,
+        .password = config.db_password,
+        .database = config.db_name,
+    };
+
+    // 初始化数据库
+    const db = try allocator.create(sql.Database);
+    errdefer allocator.destroy(db);
+
+    db.* = try sql.Database.mysql(allocator, db_config);
+
     // 初始化基础设施组件
-    logger.info("基础设施层初始化完成", .{});
+    logger.info("基础设施层初始化完成，数据库配置: host={s}, port={}, user={s}", .{ config.db_host, config.db_port, config.db_user });
+
+    return db;
 }

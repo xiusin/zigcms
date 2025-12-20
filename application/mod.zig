@@ -23,7 +23,7 @@ pub const AppConfig = struct {
 };
 
 /// 应用层初始化函数
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, config: AppConfig) !void {
     _ = allocator;
-    logger.info("应用层初始化完成", .{});
+    logger.info("应用层初始化完成，配置: enable_cache={}, cache_ttl_seconds={}, enable_plugins={}", .{ config.enable_cache, config.cache_ttl_seconds, config.enable_plugins });
 }
