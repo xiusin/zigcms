@@ -17,9 +17,9 @@ pub const DomainConfig = struct {
 };
 
 /// 领域层初始化函数
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, config: DomainConfig) !void {
     _ = allocator;
-    logger.info("领域层初始化完成", .{});
+    logger.info("领域层初始化完成，配置: validate_models={}, enforce_business_rules={}", .{ config.validate_models, config.enforce_business_rules });
 
     // 初始化实体模型
     _ = @import("entities/models.zig");

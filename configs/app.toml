@@ -1,0 +1,5 @@
+enable_cache = true
+cache_ttl_seconds = 3600
+max_concurrent_tasks = 100
+enable_plugins = true
+plugin_directory = "plugins"

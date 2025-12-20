@@ -20,7 +20,8 @@ pub const SharedConfig = struct {
 };
 
 /// 共享层初始化函数
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, config: SharedConfig) !void {
+    _ = config;
     // 初始化全局模块（包括数据库连接和日志器）
     primitives.init(allocator);
     primitives.logger.info("共享层初始化完成", .{});

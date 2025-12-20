@@ -31,6 +31,8 @@ pub const SystemConfig = struct {
     api: api.ServerConfig = .{},
     app: application.AppConfig = .{},
     infra: infrastructure.InfraConfig = .{},
+    domain: domain.DomainConfig = .{},
+    shared: shared.SharedConfig = .{},
 };
 
 /// 全局服务管理器获取函数
@@ -41,12 +43,11 @@ pub fn getServiceManager() *ServiceManager {
 /// 初始化整个系统
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 初始化各层，遵照依赖关系
-    try shared.init(allocator);
-    try domain.init(allocator);
-    const db = try infrastructure.init(allocator, config.infra);
+    try shared.init(allocator, config.shared);
+    try domain.init(allocator, config.domain);
     try application.init(allocator, config.app);
     try api.init(allocator, config.api);
-
+    const db = try infrastructure.init(allocator, config.infra);
     logger.info("系统初始化完成", .{});
 
     // 初始化服务管理器
