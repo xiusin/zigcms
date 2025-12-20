@@ -57,9 +57,9 @@ pub fn Protocol(comptime StreamType: type) type {
         /// 底层流
         stream: StreamType,
         /// 内存分配器
-        /// 
+        ///
         /// ## 为什么需要分配器参数？
-        /// 
+        ///
         /// Go 中内存分配是隐式的：`make([]byte, n)`
         /// Zig 要求显式传递分配器，好处：
         /// 1. 可以使用不同的分配策略（arena、固定缓冲区等）

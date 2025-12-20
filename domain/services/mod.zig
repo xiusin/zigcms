@@ -14,7 +14,7 @@ const std = @import("std");
 pub fn DomainService(comptime name: []const u8) type {
     return struct {
         pub const service_name = name;
-        
+
         /// 验证业务规则
         pub fn validate(self: *@This()) !void {
             _ = self;
@@ -26,7 +26,7 @@ pub fn DomainService(comptime name: []const u8) type {
 // 用户领域服务
 pub const UserDomainService = struct {
     const Self = @This();
-    
+
     /// 验证用户名是否符合规则
     pub fn validateUsername(username: []const u8) !void {
         if (username.len < 3) {
@@ -35,7 +35,7 @@ pub const UserDomainService = struct {
         if (username.len > 20) {
             return error.UsernameTooLong;
         }
-        
+
         // 只允许字母、数字和下划线
         for (username) |c| {
             if (!std.ascii.isAlphanumeric(c) and c != '_') {
@@ -43,7 +43,7 @@ pub const UserDomainService = struct {
             }
         }
     }
-    
+
     /// 验证密码强度
     pub fn validatePassword(password: []const u8) !void {
         if (password.len < 6) {
@@ -52,36 +52,36 @@ pub const UserDomainService = struct {
         if (password.len > 50) {
             return error.PasswordTooLong;
         }
-        
+
         // 至少包含一个数字和一个字母
         var has_digit = false;
         var has_alpha = false;
-        
+
         for (password) |c| {
             if (std.ascii.isDigit(c)) has_digit = true;
             if (std.ascii.isAlphabetic(c)) has_alpha = true;
         }
-        
+
         if (!has_digit or !has_alpha) {
             return error.PasswordMustContainAlphaAndDigit;
         }
     }
-    
+
     /// 验证邮箱格式
     pub fn validateEmail(email: []const u8) !void {
         if (email.len == 0) {
             return error.EmailRequired;
         }
-        
+
         // 简单的邮箱格式验证
         const at_pos = std.mem.indexOf(u8, email, "@") orelse {
             return error.InvalidEmailFormat;
         };
-        
+
         const dot_pos = std.mem.lastIndexOf(u8, email, ".") orelse {
             return error.InvalidEmailFormat;
         };
-        
+
         if (at_pos == 0 or dot_pos <= at_pos + 1 or dot_pos == email.len - 1) {
             return error.InvalidEmailFormat;
         }
@@ -91,7 +91,7 @@ pub const UserDomainService = struct {
 // 内容领域服务
 pub const ContentDomainService = struct {
     const Self = @This();
-    
+
     /// 验证文章标题
     pub fn validateArticleTitle(title: []const u8) !void {
         if (title.len == 0) {
@@ -101,7 +101,7 @@ pub const ContentDomainService = struct {
             return error.TitleTooLong;
         }
     }
-    
+
     /// 验证文章内容
     pub fn validateArticleContent(content: []const u8) !void {
         if (content.len == 0) {
@@ -111,7 +111,7 @@ pub const ContentDomainService = struct {
             return error.ContentTooLong;
         }
     }
-    
+
     /// 计算文章阅读时长（分钟）
     pub fn calculateReadingTime(content: []const u8) u32 {
         // 假设平均阅读速度为 200 字/分钟
@@ -124,7 +124,7 @@ pub const ContentDomainService = struct {
 // 权限领域服务
 pub const PermissionDomainService = struct {
     const Self = @This();
-    
+
     /// 检查用户是否有权限执行操作
     pub fn checkPermission(
         user_roles: []const []const u8,
@@ -135,7 +135,7 @@ pub const PermissionDomainService = struct {
         _ = required_permission;
         return true;
     }
-    
+
     /// 检查用户是否有任一权限
     pub fn hasAnyPermission(
         user_roles: []const []const u8,

@@ -15,7 +15,7 @@
 const std = @import("std");
 
 /// Redis 错误类型枚举
-/// 
+///
 /// 在 Go 中你可能这样定义:
 /// ```go
 /// var (
@@ -23,7 +23,7 @@ const std = @import("std");
 ///     ErrPoolExhausted    = errors.New("pool exhausted")
 /// )
 /// ```
-/// 
+///
 /// Zig 的 error 枚举是编译时类型安全的，且零运行时开销
 pub const RedisError = error{
     /// 连接已关闭
@@ -65,7 +65,7 @@ pub const RedisError = error{
 };
 
 /// RESP 协议响应类型
-/// 
+///
 /// Redis 使用 RESP (Redis Serialization Protocol) 协议
 /// 每种响应以不同的前缀字符开头：
 /// - '+' 简单字符串
@@ -81,7 +81,7 @@ pub const RespType = enum(u8) {
     array = '*',
 
     /// 从字节解析响应类型
-    /// 
+    ///
     /// 这是 Zig 中给枚举添加方法的方式
     /// Go 中需要定义一个独立的函数: `func ParseRespType(b byte) RespType`
     pub fn fromByte(byte: u8) ?RespType {
@@ -97,15 +97,15 @@ pub const RespType = enum(u8) {
 };
 
 /// Redis 值的联合类型
-/// 
+///
 /// ## Zig Tagged Union vs Go interface{}
-/// 
+///
 /// Go 中处理多种类型通常用 interface{}:
 /// ```go
 /// func (r *Reply) Value() interface{} { ... }
 /// ```
 /// 问题：需要运行时类型断言，可能 panic
-/// 
+///
 /// Zig 使用 tagged union，编译时类型安全：
 /// ```zig
 /// switch (value) {
@@ -126,7 +126,7 @@ pub const RedisValue = union(enum) {
     err: []const u8,
 
     /// 尝试获取字符串值
-    /// 
+    ///
     /// 返回 optional 类型 `?[]const u8`
     /// Go 中你需要: `if s, ok := v.(string); ok { ... }`
     /// Zig 中: `if (v.asString()) |s| { ... }`
@@ -169,9 +169,9 @@ pub const RedisValue = union(enum) {
 };
 
 /// 连接配置选项
-/// 
+///
 /// ## Zig struct 默认值 vs Go struct
-/// 
+///
 /// Go 中需要构造函数或零值：
 /// ```go
 /// type ConnOpts struct {
@@ -182,7 +182,7 @@ pub const RedisValue = union(enum) {
 ///     return &ConnOpts{Host: "127.0.0.1", Port: 6379}
 /// }
 /// ```
-/// 
+///
 /// Zig 可以直接在 struct 定义中指定默认值：
 pub const ConnectOptions = struct {
     /// 主机地址
@@ -223,7 +223,7 @@ pub const PoolOptions = struct {
 };
 
 /// SET 命令选项
-/// 
+///
 /// 对应 Redis SET 命令的可选参数：
 /// SET key value [EX seconds] [PX milliseconds] [NX|XX] [KEEPTTL]
 pub const SetOptions = struct {
@@ -261,15 +261,15 @@ pub const ScanResult = struct {
     allocator: std.mem.Allocator,
 
     /// 释放结果占用的内存
-    /// 
+    ///
     /// ## 重要：Zig 内存管理
-    /// 
+    ///
     /// Go 有 GC，你不需要关心内存释放
     /// Zig 需要手动管理内存，但这带来了：
     /// 1. 零 GC 停顿
     /// 2. 可预测的内存使用
     /// 3. 更小的二进制文件
-    /// 
+    ///
     /// 使用 `defer result.deinit()` 确保内存被释放
     pub fn deinit(self: *ScanResult) void {
         for (self.keys) |key| {

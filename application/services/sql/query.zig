@@ -462,7 +462,7 @@ pub fn QueryBuilder(comptime T: type) type {
         /// 调试输出（带自定义消息）
         pub fn debugWith(self: *Self, message: []const u8) *Self {
             const sql = self.toSql() catch |err| {
-                std.debug.print("[QueryBuilder Debug] {s} - 构建 SQL 失败: {any}\n", .{message, err});
+                std.debug.print("[QueryBuilder Debug] {s} - 构建 SQL 失败: {any}\n", .{ message, err });
                 return self;
             };
             defer self.allocator.free(sql);

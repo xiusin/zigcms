@@ -55,7 +55,7 @@ pub const HashCommands = struct {
     /// 返回 true 表示设置成功，false 表示字段已存在
     ///
     /// ## 原子操作
-    /// 
+    ///
     /// 适合实现分布式锁等场景
     pub fn hsetNx(self: HashCommands, key: []const u8, field: []const u8, value: []const u8) !bool {
         var reply = try self.conn.sendCommand(&.{ "HSETNX", key, field, value });

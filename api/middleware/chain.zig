@@ -66,17 +66,17 @@ pub const Result = enum {
 pub const Context = struct {
     req: zap.Request,
     allocator: Allocator,
-    
+
     // 上下文数据存储
     data: std.StringHashMap(Value),
-    
+
     // 认证信息
     user_id: ?u32 = null,
     is_authenticated: bool = false,
-    
+
     // 中间件状态
     aborted: bool = false,
-    
+
     pub const Value = union(enum) {
         int: i64,
         str: []const u8,
@@ -219,7 +219,7 @@ pub fn Chain(comptime max_middlewares: usize) type {
             // 执行中间件
             for (self.middlewares[0..self.count]) |middleware| {
                 if (ctx.aborted) return;
-                
+
                 const result = middleware(&ctx);
                 if (result == .abort) return;
             }

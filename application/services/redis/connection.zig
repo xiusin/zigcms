@@ -140,9 +140,9 @@ pub const Connection = struct {
         _ = options.write_timeout_ns;
 
         // 分配连接结构体
-        // 
+        //
         // ## 为什么用指针？
-        // 
+        //
         // 返回指针而非值的原因：
         // 1. Connection 包含 Mutex，不应该被复制
         // 2. 便于在连接池中管理
@@ -381,7 +381,7 @@ pub const Connection = struct {
 
     // ========================================
     // 便捷 Redis 命令方法
-    // 
+    //
     // 设计参考 go-redis：
     // - 每个命令返回类型化的结果（StringResult, IntResult 等）
     // - 调用者需要调用 result.deinit() 释放内存

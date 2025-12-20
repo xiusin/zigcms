@@ -206,9 +206,13 @@ info: ## 显示项目信息
 	@echo "$(GREEN)缓存目录:$(NC) $(CACHE_DIR)"
 	@echo ""
 
-version: ## 显示版本信息
-	@echo "$(GREEN)Zig 版本:$(NC)"
-	@zig version
+version: ## 显示项目版本信息
+	@echo "$(BLUE)╔═══════════════════════════════════════╗$(NC)"
+	@echo "$(BLUE)║     ZigCMS 版本信息                    ║$(NC)"
+	@echo "$(BLUE)╚═══════════════════════════════════════╝$(NC)"
+	@echo ""
+	@echo "$(GREEN)🏷️  项目版本:$(NC)"
+	@awk -F'"' '/\.version =/ {print "  " $$2}' build.zig.zon || echo "$(RED)  未找到版本信息$(NC)"
 	@echo ""
 	@echo "$(GREEN)项目版本:$(NC)"
 	@grep 'version' build.zig.zon | head -1 || echo "未找到版本信息"

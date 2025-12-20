@@ -332,7 +332,7 @@ pub fn pubsub(conn: *Connection) PubSubCommands {
 /// try subscriber.subscribe(&.{"channel1"});
 ///
 /// while (try subscriber.next()) |msg| {
-///     std.debug.print("Channel: {s}, Message: {s}\n", 
+///     std.debug.print("Channel: {s}, Message: {s}\n",
 ///         .{msg.channel, msg.payload.?});
 /// }
 /// ```

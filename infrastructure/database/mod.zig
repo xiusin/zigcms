@@ -13,26 +13,26 @@ const std = @import("std");
 pub const DatabaseConnection = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         query: *const fn (*anyopaque, []const u8, anytype) anyerror![]u8,
         execute: *const fn (*anyopaque, []const u8, anytype) anyerror!void,
         begin: *const fn (*anyopaque) anyerror!*Transaction,
         close: *const fn (*anyopaque) void,
     };
-    
+
     pub fn query(self: @This(), sql: []const u8, params: anytype) ![]u8 {
         return self.vtable.query(self.ptr, sql, params);
     }
-    
+
     pub fn execute(self: @This(), sql: []const u8, params: anytype) !void {
         return self.vtable.execute(self.ptr, sql, params);
     }
-    
+
     pub fn begin(self: @This()) !*Transaction {
         return self.vtable.begin(self.ptr);
     }
-    
+
     pub fn close(self: @This()) void {
         self.vtable.close(self.ptr);
     }
@@ -42,26 +42,26 @@ pub const DatabaseConnection = struct {
 pub const Transaction = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         commit: *const fn (*anyopaque) anyerror!void,
         rollback: *const fn (*anyopaque) anyerror!void,
         query: *const fn (*anyopaque, []const u8, anytype) anyerror![]u8,
         execute: *const fn (*anyopaque, []const u8, anytype) anyerror!void,
     };
-    
+
     pub fn commit(self: *@This()) !void {
         return self.vtable.commit(self.ptr);
     }
-    
+
     pub fn rollback(self: *@This()) !void {
         return self.vtable.rollback(self.ptr);
     }
-    
+
     pub fn query(self: *@This(), sql: []const u8, params: anytype) ![]u8 {
         return self.vtable.query(self.ptr, sql, params);
     }
-    
+
     pub fn execute(self: *@This(), sql: []const u8, params: anytype) !void {
         return self.vtable.execute(self.ptr, sql, params);
     }

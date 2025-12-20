@@ -61,14 +61,14 @@ pub fn Lazy(comptime T: type) type {
 
             // 调用初始化函数
             const result = @call(.auto, initFn, args);
-            
+
             // 处理可能返回 error 的初始化函数
             if (@typeInfo(@TypeOf(result)) == .error_union) {
                 self.value = try result;
             } else {
                 self.value = result;
             }
-            
+
             self.initialized = true;
             return &self.value.?;
         }
@@ -155,7 +155,7 @@ pub fn Registry(comptime Services: type) type {
                 }
                 break :blk buf[0 .. 5 + name.len - 1];
             };
-            
+
             if (@hasDecl(Services, initFnName)) {
                 return lazy.getOrInit(@field(Services, initFnName), .{self.allocator});
             } else {

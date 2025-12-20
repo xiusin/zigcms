@@ -9,7 +9,7 @@ pub fn start() !void {
 
     var result = try re.captures("1231456");
     if (result != null) {
-       defer result.?.deinit();
-       logger.info("regex success: {s}",.{ result.?.sliceAt(0).? });
+        defer result.?.deinit();
+        logger.info("regex success: {s}", .{result.?.sliceAt(0).?});
     }
 }

@@ -83,7 +83,7 @@ pub const CmdArg = union(enum) {
 /// 这确保了即使原始字符串被释放，命令仍然有效
 pub const CommandBuilder = struct {
     /// 参数列表
-    /// 
+    ///
     /// std.ArrayList 类似 Go 的 slice，但提供更多控制：
     /// - 可以指定自定义分配器
     /// - 可以预分配容量

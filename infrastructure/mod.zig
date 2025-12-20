@@ -80,7 +80,6 @@ pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
     return db;
 }
 
-
 /// 基础设施层清理函数
 pub fn deinit() void {
     std.debug.print("👋 基础设施层已清理\n", .{});

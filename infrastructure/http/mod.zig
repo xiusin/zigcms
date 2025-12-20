@@ -40,21 +40,21 @@ pub const HttpResponse = struct {
 pub const HttpClient = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         request: *const fn (*anyopaque, HttpRequest) anyerror!HttpResponse,
         get: *const fn (*anyopaque, []const u8) anyerror!HttpResponse,
         post: *const fn (*anyopaque, []const u8, []const u8) anyerror!HttpResponse,
     };
-    
+
     pub fn request(self: @This(), req: HttpRequest) !HttpResponse {
         return self.vtable.request(self.ptr, req);
     }
-    
+
     pub fn get(self: @This(), url: []const u8) !HttpResponse {
         return self.vtable.get(self.ptr, url);
     }
-    
+
     pub fn post(self: @This(), url: []const u8, body: []const u8) !HttpResponse {
         return self.vtable.post(self.ptr, url, body);
     }

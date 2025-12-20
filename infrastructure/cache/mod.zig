@@ -13,7 +13,7 @@ const std = @import("std");
 pub const Cache = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         get: *const fn (*anyopaque, []const u8) anyerror!?[]const u8,
         set: *const fn (*anyopaque, []const u8, []const u8, ?u64) anyerror!void,
@@ -21,27 +21,27 @@ pub const Cache = struct {
         exists: *const fn (*anyopaque, []const u8) anyerror!bool,
         clear: *const fn (*anyopaque) anyerror!void,
     };
-    
+
     /// 获取缓存值
     pub fn get(self: @This(), key: []const u8) !?[]const u8 {
         return self.vtable.get(self.ptr, key);
     }
-    
+
     /// 设置缓存值
     pub fn set(self: @This(), key: []const u8, value: []const u8, ttl: ?u64) !void {
         return self.vtable.set(self.ptr, key, value, ttl);
     }
-    
+
     /// 删除缓存
     pub fn delete(self: @This(), key: []const u8) !void {
         return self.vtable.delete(self.ptr, key);
     }
-    
+
     /// 检查缓存是否存在
     pub fn exists(self: @This(), key: []const u8) !bool {
         return self.vtable.exists(self.ptr, key);
     }
-    
+
     /// 清空所有缓存
     pub fn clear(self: @This()) !void {
         return self.vtable.clear(self.ptr);

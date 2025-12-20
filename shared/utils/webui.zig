@@ -12,5 +12,3 @@ pub fn start() void {
     _ = nwin.show("https://star.xiusin.cn/");
     webui.wait();
 }
-
-
