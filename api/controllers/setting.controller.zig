@@ -1,3 +1,21 @@
+//! 系统设置控制器 (Setting Controller)
+//!
+//! 管理系统配置项，包括上传配置、邮件配置等。
+//!
+//! ## 功能
+//! - 获取/保存系统设置
+//! - 上传配置管理（本地/COS/OSS）
+//! - 邮件配置和测试
+//!
+//! ## 使用示例
+//! ```zig
+//! const SettingController = @import("api/controllers/setting.controller.zig");
+//! var ctrl = SettingController.init(allocator);
+//!
+//! router.get("/api/settings", &ctrl, ctrl.get);
+//! router.post("/api/settings/save", &ctrl, ctrl.save);
+//! ```
+
 const std = @import("std");
 const zap = @import("zap");
 const base = @import("base.fn.zig");

@@ -1,3 +1,24 @@
+//! 泛型 CRUD 控制器 (Generic Controller)
+//!
+//! 提供基于 ORM 的通用 CRUD 操作，适用于简单的数据模型。
+//! 对于需要自定义表名的场景，推荐使用 `crud.controller.zig`。
+//!
+//! ## 功能
+//! - 分页列表查询
+//! - 单条记录获取
+//! - 新增/更新记录
+//! - 删除记录（支持批量）
+//! - 单字段修改
+//!
+//! ## 使用示例
+//! ```zig
+//! const ArticleController = Generic(models.Article);
+//! var ctrl = ArticleController.init(allocator);
+//!
+//! router.get("/api/articles", &ctrl, ctrl.list);
+//! router.post("/api/article/save", &ctrl, ctrl.save);
+//! ```
+
 const std = @import("std");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;

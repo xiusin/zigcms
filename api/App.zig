@@ -127,7 +127,8 @@ pub const App = struct {
 
     /// 启动 HTTP 服务器
     pub fn listen(self: *Self) !void {
-        const config = root.getServiceManager().getConfig();
+        const service_mgr = root.getServiceManager() orelse @panic("ServiceManager not initialized");
+        const config = service_mgr.getConfig();
         const api_config = config.api;
 
         var listener = zap.HttpListener.init(.{
@@ -136,7 +137,7 @@ pub const App = struct {
             .log = true,
             .public_folder = api_config.public_folder,
             .max_clients = api_config.max_clients,
-            .timeout = api_config.timeout,
+            .timeout = @intCast(api_config.timeout),
         });
         try listener.listen();
         logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });

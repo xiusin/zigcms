@@ -122,6 +122,9 @@ pub const CacheConfig = base.CacheConfig;
 
 pub const PrefixedCache = typed.PrefixedCache;
 pub const LazyCache = typed.LazyCache;
+pub const TypedCache = typed.TypedCache;
+pub const TypedCacheInterface = typed.TypedCacheInterface;
+pub const TypedCacheError = typed.TypedCacheError;
 
 pub const CacheInterface = cache_contract.CacheInterface;
 pub const CacheStats = cache_contract.CacheStats;

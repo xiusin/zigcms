@@ -1,4 +1,23 @@
+//! 用户认证控制器 (Login Controller)
+//!
+//! 处理用户登录、注册等认证相关的 HTTP 请求。
+//!
+//! ## 功能
+//! - 用户注册：创建新用户账号
+//! - 用户登录：验证凭据并生成 JWT token
+//!
+//! ## 使用示例
+//! ```zig
+//! const LoginController = @import("api/controllers/login.controller.zig");
+//! var ctrl = LoginController.init(allocator, logger);
+//!
+//! // 注册路由
+//! router.post("/api/register", &ctrl, ctrl.register);
+//! router.post("/api/login", &ctrl, ctrl.login);
+//! ```
+
 const std = @import("std");
+const log_mod = @import("../../application/services/logger/logger.zig");
 const Allocator = std.mem.Allocator;
 
 const zap = @import("zap");
@@ -18,9 +37,10 @@ const Self = @This();
 const Admin = orm_models.Admin;
 
 allocator: Allocator,
+logger: *log_mod.Logger,
 
-pub fn init(allocator: Allocator) Self {
-    return .{ .allocator = allocator };
+pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
+    return .{ .allocator = allocator, .logger = logger };
 }
 
 /// 用户注册
@@ -72,7 +92,7 @@ pub fn login(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "缺少必要参数");
     }
 
-    std.log.info("用户登录: {s}", .{dto.username});
+    self.logger.info("用户登录: {s}", .{dto.username});
 
     // 使用 ORM 查询用户
     var q = Admin.WhereEq("username", dto.username);

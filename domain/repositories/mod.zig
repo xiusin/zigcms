@@ -1,7 +1,23 @@
-//! Domain Repositories Module
+//! 仓储接口模块 (Repositories Module)
 //!
-//! 仓库接口定义模块
-//! 定义数据访问层的抽象接口
+//! 定义数据访问层的抽象接口，具体实现在基础设施层。
+//! 使用接口隔离领域层与数据存储细节，遵循依赖倒置原则。
+//!
+//! ## 功能
+//! - 定义通用的 CRUD 接口（Repository.Interface）
+//! - 支持多态实现（通过 vtable）
+//!
+//! ## 使用示例
+//! ```zig
+//! const repositories = @import("domain/repositories/mod.zig");
+//!
+//! // 定义用户仓储接口
+//! const UserRepository = repositories.Repository.Interface(User);
+//!
+//! // 使用仓储接口
+//! const user = try repo.findById(1);
+//! const users = try repo.findAll();
+//! ```
 
 const std = @import("std");
 

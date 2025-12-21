@@ -1,12 +1,28 @@
-//! Unified Error Handling Module
+//! 统一错误处理模块 (Errors Module)
 //!
-//! 统一错误处理模块
+//! 定义应用程序的错误类型层次结构，提供错误到 HTTP 状态码的映射，
+//! 以及错误消息的国际化支持。
 //!
-//! 职责：
-//! - 定义统一的错误类型
-//! - 提供错误转换和包装
-//! - 错误日志记录
-//! - HTTP 错误响应
+//! ## 功能
+//! - 定义统一的错误类型（AppError）
+//! - 提供错误详情结构（ErrorDetail）
+//! - HTTP 状态码映射（errorToHttpStatus）
+//! - 错误消息映射（errorToMessage）
+//! - 错误响应构建器（ErrorResponse）
+//!
+//! ## 使用示例
+//! ```zig
+//! const errors = @import("shared/errors/mod.zig");
+//!
+//! // 获取错误的 HTTP 状态码
+//! const status = errors.errorToHttpStatus(error.NotFound); // 404
+//!
+//! // 获取错误消息
+//! const message = errors.errorToMessage(error.NotFound); // "资源不存在"
+//!
+//! // 构建错误响应
+//! const response = errors.ErrorResponse.fromError(error.NotFound);
+//! ```
 
 const std = @import("std");
 

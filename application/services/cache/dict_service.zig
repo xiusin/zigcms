@@ -37,7 +37,6 @@ pub const DictService = struct {
             .cache = cache,
         };
     }
-
     /// 获取字典类型列表
     pub fn getDictTypes(self: *Self) ![]Dict {
         // TODO: 实现去重查询（DISTINCT dict_type）

@@ -1,11 +1,31 @@
-//! Database Infrastructure Module
+//! 数据库基础设施模块 (Database Module)
 //!
-//! 数据库基础设施层
+//! 提供数据库连接管理、事务处理、连接池等功能。
+//! 支持多种数据库驱动（SQLite、PostgreSQL、MySQL）。
 //!
-//! 职责：
-//! - 实现数据库连接和管理
-//! - 提供统一的数据访问接口
-//! - 实现仓库接口
+//! ## 功能
+//! - 数据库连接接口（DatabaseConnection）
+//! - 事务管理接口（Transaction）
+//! - 数据库工厂（DatabaseFactory）
+//! - 多驱动支持（DatabaseDriver）
+//!
+//! ## 使用示例
+//! ```zig
+//! const database = @import("infrastructure/database/mod.zig");
+//!
+//! // 创建数据库连接
+//! const conn = try database.DatabaseFactory.create(allocator, .SQLite, config);
+//! defer conn.close();
+//!
+//! // 执行查询
+//! const result = try conn.query("SELECT * FROM users", .{});
+//!
+//! // 使用事务
+//! const tx = try conn.begin();
+//! errdefer tx.rollback() catch {};
+//! try tx.execute("INSERT INTO users ...", .{});
+//! try tx.commit();
+//! ```
 
 const std = @import("std");
 

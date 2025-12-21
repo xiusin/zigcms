@@ -3,7 +3,6 @@
 //! 提供类似 glog 的日志功能，支持：
 //! - 结构化日志属性（attr）
 //! - 链式追加属性
-//! - 自动关联 request_id
 //! - 多级别日志（debug/info/warn/error）
 //!
 //! ## 使用示例
@@ -20,9 +19,26 @@
 //! // 错误日志
 //! log.attr("host", "localhost").attr("port", 3306).err("数据库连接失败");
 //! ```
+//!
+//! ## 依赖说明
+//! 此模块是共享层的一部分，不依赖任何业务层。
+//! request_id 功能通过可选的 thread-local 变量实现。
 
 const std = @import("std");
-const request_id_mw = @import("../../api/middleware/request_id.middleware.zig");
+
+// Thread-local request ID storage for logging context
+// This allows the logger to be independent of the API layer
+threadlocal var current_request_id: ?[]const u8 = null;
+
+/// 设置当前请求 ID（由中间件调用）
+pub fn setRequestId(id: ?[]const u8) void {
+    current_request_id = id;
+}
+
+/// 获取当前请求 ID
+pub fn getRequestId() ?[]const u8 {
+    return current_request_id;
+}
 
 /// 日志级别
 pub const Level = enum {
@@ -177,7 +193,7 @@ pub const LogBuilder = struct {
         pos += level_str.len;
 
         // request_id（如果有）
-        if (request_id_mw.getRequestId()) |req_id| {
+        if (getRequestId()) |req_id| {
             const req_id_str = std.fmt.bufPrint(buf[pos..], " [req_id={s}]", .{req_id}) catch "";
             pos += req_id_str.len;
         }

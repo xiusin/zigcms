@@ -6,6 +6,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;
+const shared_logger = @import("../../shared/primitives/logger.zig");
 
 /// 请求上下文，包含 request_id 和 timing 信息
 pub const RequestContext = struct {
@@ -173,6 +174,12 @@ pub fn getCurrentContext() ?*RequestContext {
 /// 设置当前请求上下文
 pub fn setCurrentContext(ctx: ?*RequestContext) void {
     current_context = ctx;
+    // 同步更新共享层日志器的 request_id
+    if (ctx) |c| {
+        shared_logger.setRequestId(c.getRequestId());
+    } else {
+        shared_logger.setRequestId(null);
+    }
 }
 
 /// 获取当前 request_id（便捷方法）

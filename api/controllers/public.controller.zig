@@ -1,4 +1,23 @@
+//! 公共控制器 (Public Controller)
+//!
+//! 处理公共资源请求，包括文件上传、文件夹管理和文件列表。
+//!
+//! ## 功能
+//! - 文件上传：支持多种文件类型，自动计算 MD5 去重
+//! - 文件夹管理：创建和管理上传目录
+//! - 文件列表：浏览上传目录中的文件
+//!
+//! ## 使用示例
+//! ```zig
+//! const PublicController = @import("api/controllers/public.controller.zig");
+//! var ctrl = PublicController.init(allocator, logger);
+//!
+//! router.post("/api/upload", &ctrl, ctrl.upload);
+//! router.get("/api/files", &ctrl, ctrl.files);
+//! ```
+
 const std = @import("std");
+const log_mod = @import("../../application/services/logger/logger.zig");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 const base = @import("base.fn.zig");
@@ -10,8 +29,9 @@ const strings = @import("../../shared/utils/strings.zig");
 const Self = @This();
 
 allocator: Allocator,
-pub fn init(allocator: Allocator) Self {
-    return .{ .allocator = allocator };
+logger: *log_mod.Logger,
+pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
+    return .{ .allocator = allocator, .logger = logger };
 }
 
 pub fn upload(self: *Self, req: zap.Request) !void {
@@ -137,7 +157,7 @@ pub fn folder(self: *Self, req: zap.Request) !void {
     }
     const dir = strings.rtrim(strings.sprinf("{s}/{s}/", .{ path, fold.? }) catch return, "/");
     std.fs.cwd().makePath(dir) catch {};
-    std.log.debug("path: {s}", .{path});
+    self.logger.debug("path: {s}", .{path});
     return base.send_ok(req, .{});
 }
 
@@ -169,7 +189,7 @@ pub fn files(self: *Self, req: zap.Request) !void {
     }
 
     const dir = strings.rtrim(strings.sprinf("{s}/{s}", .{ basepath, path }) catch return, "/\\");
-    std.log.debug("dir = {s}", .{dir});
+    self.logger.debug("dir = {s}", .{dir});
     var opened_dir = std.fs.cwd().openDir(dir, .{}) catch |e| return base.send_error(req, e);
     defer opened_dir.close(); // 确保关闭目录句柄
     var iter = opened_dir.iterate();

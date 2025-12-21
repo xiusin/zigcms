@@ -1,11 +1,32 @@
-//! HTTP Client Infrastructure Module
+//! HTTP 客户端基础设施模块 (HTTP Module)
 //!
-//! HTTP 客户端基础设施层
+//! 提供 HTTP 客户端功能，用于与外部 API 交互。
+//! 支持各种 HTTP 方法、超时设置、重试机制。
 //!
-//! 职责：
-//! - 提供统一的 HTTP 客户端接口
-//! - 支持各种 HTTP 方法
-//! - 处理请求和响应
+//! ## 功能
+//! - HTTP 方法枚举（HttpMethod）
+//! - HTTP 请求结构（HttpRequest）
+//! - HTTP 响应结构（HttpResponse）
+//! - HTTP 客户端接口（HttpClient）
+//!
+//! ## 使用示例
+//! ```zig
+//! const http = @import("infrastructure/http/mod.zig");
+//!
+//! // 发送 GET 请求
+//! const response = try client.get("https://api.example.com/users");
+//!
+//! // 发送 POST 请求
+//! const response = try client.post("https://api.example.com/users", body);
+//!
+//! // 发送自定义请求
+//! const response = try client.request(.{
+//!     .method = .PUT,
+//!     .url = "https://api.example.com/users/1",
+//!     .body = body,
+//!     .timeout = 30,
+//! });
+//! ```
 
 const std = @import("std");
 

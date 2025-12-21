@@ -1,33 +1,45 @@
-//! Shared Utils Module
+//! 工具函数模块 (Utils Module)
 //!
-//! 通用工具函数模块入口
-//! 提供字符串处理、时间处理、加密等常用工具
+//! 提供跨层共享的通用工具函数集合。
+//! 所有工具函数都是无状态的，可以安全地在多线程环境中使用。
+//!
+//! ## 包含的工具
+//! - `strings`: 字符串处理工具
+//! - `jwt`: JWT 令牌生成和验证
+//! - `redis`: Redis 客户端工具
+//! - `color`: 终端颜色输出
+//! - `regex`: 正则表达式工具
+//! - `github`: GitHub API 工具
+//! - `tos`: 腾讯云对象存储工具
+//! - `webui`: Web UI 工具
 
-// 字符串工具
+/// 字符串处理工具
 pub const strings = @import("strings.zig");
 
-// JWT 工具
+/// JWT 令牌工具
 pub const jwt = @import("jwt.zig");
 
-// Redis 工具
+/// Redis 客户端工具
 pub const redis = @import("redis.zig");
 
-// 颜色工具
+/// 终端颜色输出工具
 pub const color = @import("color.zig");
 
-// 正则表达式工具
+/// 正则表达式工具
 pub const regex = @import("regex.zig");
 
-// GitHub 工具
+/// GitHub API 工具
 pub const github = @import("github.zig");
 
-// TOS (腾讯云对象存储) 工具
+/// 腾讯云对象存储工具
 pub const tos = @import("tos.zig");
 
-// WebUI 工具
+/// Web UI 工具
 pub const webui = @import("webui.zig");
 
-// 导出所有工具模块
+/// 工具模块统一访问结构
+///
+/// 提供所有工具的统一访问点，便于导入和使用。
 pub const Utils = struct {
     pub const Strings = strings;
     pub const JWT = jwt;

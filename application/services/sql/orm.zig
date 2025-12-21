@@ -108,6 +108,25 @@ pub fn formatWhere(allocator: Allocator, field: []const u8, op: []const u8, valu
 }
 
 /// 将数据库结果映射到模型（顶层泛型函数）
+///
+/// 内存所有权说明：
+/// - 返回的 []T 数组由调用者拥有，必须使用 allocator.free() 释放
+/// - 数组中每个模型的字符串字段由 allocator 分配，必须使用 freeModel() 释放
+/// - 推荐使用 freeModels() 一次性释放数组和所有模型的字符串内存
+///
+/// 使用示例：
+/// ```zig
+/// const models = try mapResults(User, allocator, &result);
+/// defer User.freeModels(allocator, models);
+/// ```
+///
+/// 参数：
+/// - T: 目标模型类型
+/// - allocator: 用于分配结果数组和字符串的分配器
+/// - result: 数据库查询结果集
+///
+/// 返回：映射后的模型数组
+/// 错误：内存分配失败
 pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.ResultSet) ![]T {
     var models = std.ArrayListUnmanaged(T){};
     errdefer models.deinit(allocator);
@@ -202,10 +221,23 @@ pub const MySQLConfig = struct {
 };
 
 /// 数据库管理器 - 使用统一驱动接口
+///
+/// 内存所有权说明：
+/// - Database 拥有 conn 和 pool 的所有权
+/// - 对于 MySQL：pool 拥有所有连接，conn 是从 pool 借用的第一个连接
+/// - 对于 SQLite/Memory/PostgreSQL：conn 直接由 Database 拥有
+/// - deinit() 会正确清理所有资源
+///
+/// 生命周期：
+/// - 创建：sqlite()/mysql()/memory()/postgres()
+/// - 使用：rawQuery()/exec()/query() 等
+/// - 销毁：deinit()
 pub const Database = struct {
     allocator: Allocator,
     conn: interface.Connection,
-    pool: ?*ConnectionPool = null, // 内部连接池（MySQL 使用）
+    /// 内部连接池（仅 MySQL 使用）
+    /// 当 pool 不为 null 时，conn 是从 pool 借用的连接
+    pool: ?*ConnectionPool = null,
     driver_type: interface.DriverType,
     debug: bool = true,
     enable_logging: bool = true,
@@ -290,11 +322,19 @@ pub const Database = struct {
         };
     }
 
+    /// 清理数据库资源
+    ///
+    /// 内存清理策略：
+    /// - MySQL（有连接池）：释放连接池，池会自动清理所有连接
+    /// - SQLite/Memory/PostgreSQL（无连接池）：直接释放连接
+    ///
+    /// 注意：调用 deinit 后，Database 实例不应再被使用
     pub fn deinit(self: *Database) void {
         // 如果有连接池，只释放连接池（池中的连接会被自动释放）
         if (self.pool) |pool| {
             pool.deinit();
             self.allocator.destroy(pool);
+            self.pool = null;
         } else {
             // 只有非池化连接才需要手动释放
             self.conn.deinit();
@@ -785,7 +825,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         }
 
         /// 释放模型中的字符串内存
-        /// 注意：只释放长度大于0且指针有效的字符串
+        ///
+        /// 内存所有权说明：
+        /// - 只释放由 ORM 查询分配的字符串（长度 > 0 且非静态字符串）
+        /// - 静态字符串（如 ""）不会被释放
+        /// - 可选字符串字段如果有值也会被释放
+        ///
+        /// 注意：调用后模型中的字符串指针将变为悬空指针，不应再访问
+        ///
+        /// 参数：
+        /// - allocator: 用于释放内存的分配器（必须与分配时使用的相同）
+        /// - model: 要释放的模型指针
         pub fn freeModel(allocator: Allocator, model: *T) void {
             inline for (std.meta.fields(T)) |field| {
                 if (field.type == []const u8) {
@@ -807,7 +857,22 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             }
         }
 
-        /// 释放模型数组
+        /// 释放模型数组及其所有字符串内存
+        ///
+        /// 内存所有权说明：
+        /// - 释放数组中每个模型的字符串字段
+        /// - 释放数组本身
+        /// - 这是释放 ORM 查询结果的推荐方式
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// const users = try User.all(db);
+        /// defer User.freeModels(db.allocator, users);
+        /// ```
+        ///
+        /// 参数：
+        /// - allocator: 用于释放内存的分配器（必须与分配时使用的相同）
+        /// - models: 要释放的模型数组
         pub fn freeModels(allocator: Allocator, models: []T) void {
             for (models) |*model| {
                 freeModel(allocator, model);
@@ -3145,6 +3210,22 @@ const PooledConnection = struct {
 };
 
 /// MySQL 连接池
+///
+/// 内存所有权说明：
+/// - ConnectionPool 拥有 all_connections 中所有 PooledConnection 的所有权
+/// - 每个 PooledConnection 拥有其 conn (interface.Connection) 的所有权
+/// - idle_connections 只是 all_connections 中空闲连接的引用列表
+///
+/// 生命周期管理：
+/// - init(): 创建池并预创建 min_size 个连接
+/// - acquire(): 从池中获取连接（可能创建新连接）
+/// - release(): 归还连接到池中（损坏的连接会被销毁）
+/// - deinit(): 关闭池，销毁所有连接
+///
+/// 线程安全：
+/// - state_mutex: 保护 all_connections 和 closed 状态
+/// - idle_mutex: 保护 idle_connections
+/// - condition: 用于等待可用连接
 pub const ConnectionPool = struct {
     allocator: Allocator,
     config: PoolConfig,

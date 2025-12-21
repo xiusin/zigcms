@@ -1,3 +1,15 @@
+//! 认证中间件 (Auth Middleware)
+//!
+//! 提供基于 zap 中间件模式的认证功能。
+//! 这是旧版中间件实现，新代码推荐使用 `chain.zig` 和 `wrapper.zig`。
+//!
+//! ## 使用示例
+//! ```zig
+//! const auth_mw = @import("auth.middleware.zig");
+//! var auth = auth_mw.AuthMiddleWare.init(other_handler);
+//! router.handle_func("/api/protected", auth.getHandler());
+//! ```
+
 const std = @import("std");
 const zap = @import("zap");
 const middlewares = @import("mod.zig");

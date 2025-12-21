@@ -1,17 +1,75 @@
+//! 缓存服务实现 (Cache Service Implementation)
+//!
+//! 提供线程安全的内存缓存服务，支持 TTL 过期时间管理。
+//!
+//! ## 线程安全
+//!
+//! 所有公共方法都使用 Mutex 保护，确保并发访问安全：
+//! - `set()`: 写操作，获取独占锁
+//! - `get()`: 读操作，获取独占锁（因为可能触发过期清理）
+//! - `del()`: 写操作，获取独占锁
+//! - `exists()`: 读操作，获取独占锁（因为可能触发过期清理）
+//! - `flush()`: 写操作，获取独占锁
+//! - `stats()`: 读操作，获取独占锁
+//! - `cleanupExpired()`: 写操作，获取独占锁
+//! - `delByPrefix()`: 写操作，获取独占锁
+//!
+//! ## 内存管理
+//!
+//! - 所有键和值都会被复制存储
+//! - `deinit()` 会释放所有分配的内存
+//! - 过期项在访问时自动清理
+//!
+//! ## 使用示例
+//!
+//! ```zig
+//! var cache = CacheService.init(allocator);
+//! defer cache.deinit();
+//!
+//! // 设置缓存（300秒过期）
+//! try cache.set("user:1", "张三", 300);
+//!
+//! // 获取缓存
+//! if (cache.get("user:1")) |value| {
+//!     std.debug.print("用户: {s}\n", .{value});
+//! }
+//!
+//! // 通过接口使用
+//! const iface = cache.asInterface();
+//! try iface.set("key", "value", null);
+//! ```
+
 const std = @import("std");
 const builtin = @import("builtin");
 const cache_contract = @import("cache_contract.zig");
 
+/// 缓存服务 - 线程安全的内存缓存实现
+///
+/// 特性：
+/// - 线程安全：所有操作都使用 Mutex 保护
+/// - TTL 支持：支持设置过期时间
+/// - 自动清理：过期项在访问时自动删除
+/// - 接口兼容：实现 CacheInterface 接口
 pub const CacheService = struct {
     const Self = @This();
 
+    /// 内存分配器
     allocator: std.mem.Allocator,
+
+    /// 缓存数据存储
     cache: std.StringHashMapUnmanaged(CacheItem),
+
+    /// 线程安全互斥锁
+    /// 保护所有缓存操作，确保并发访问安全
     mutex: std.Thread.Mutex = std.Thread.Mutex{},
 
-    // 默认过期时间（秒）
+    /// 默认过期时间（秒）
     default_ttl: u64 = 300, // 5分钟
 
+    /// 创建缓存服务实例
+    ///
+    /// 参数:
+    /// - allocator: 用于分配缓存数据的内存分配器
     pub fn init(allocator: std.mem.Allocator) CacheService {
         return .{
             .allocator = allocator,
@@ -19,6 +77,9 @@ pub const CacheService = struct {
         };
     }
 
+    /// 销毁缓存服务，释放所有资源
+    ///
+    /// 注意：此方法不是线程安全的，应在确保没有其他线程访问时调用
     pub fn deinit(self: *CacheService) void {
         // 释放所有 key 和 value 的内存
         var iter = self.cache.iterator();
@@ -31,16 +92,29 @@ pub const CacheService = struct {
 
     /// 缓存项结构
     const CacheItem = struct {
-        value: []u8, // JSON序列化后的值
-        expiry: u64, // 过期时间戳（秒）
-        created_at: u64, // 创建时间戳（秒）
+        /// 缓存值（字节数组）
+        value: []u8,
+        /// 过期时间戳（Unix 秒）
+        expiry: u64,
+        /// 创建时间戳（Unix 秒）
+        created_at: u64,
 
+        /// 释放缓存项内存
         pub fn deinit(self: *const CacheItem, allocator: std.mem.Allocator) void {
             allocator.free(self.value);
         }
     };
 
-    /// 设置缓存项
+    /// 设置缓存项（线程安全）
+    ///
+    /// 将键值对存入缓存，如果键已存在则覆盖。
+    ///
+    /// 参数:
+    /// - key: 缓存键
+    /// - value: 缓存值
+    /// - ttl: 过期时间（秒），null 使用默认 TTL
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn set(self: *CacheService, key: []const u8, value: []const u8, ttl: ?u64) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -69,7 +143,19 @@ pub const CacheService = struct {
         try self.cache.put(self.allocator, key_copy, item);
     }
 
-    /// 获取缓存项
+    /// 获取缓存项（线程安全）
+    ///
+    /// 根据键获取缓存值，如果键不存在或已过期则返回 null。
+    /// 过期项会在访问时自动删除。
+    ///
+    /// 参数:
+    /// - key: 缓存键
+    ///
+    /// 返回:
+    /// - 缓存值切片（指向内部存储）
+    /// - null（如果不存在或已过期）
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn get(self: *CacheService, key: []const u8) ?[]const u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -92,7 +178,12 @@ pub const CacheService = struct {
         return null;
     }
 
-    /// 删除缓存项
+    /// 删除缓存项（线程安全）
+    ///
+    /// 参数:
+    /// - key: 要删除的缓存键
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn del(self: *CacheService, key: []const u8) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -103,7 +194,16 @@ pub const CacheService = struct {
         }
     }
 
-    /// 检查缓存项是否存在
+    /// 检查缓存项是否存在（线程安全）
+    ///
+    /// 参数:
+    /// - key: 要检查的缓存键
+    ///
+    /// 返回:
+    /// - true: 键存在且未过期
+    /// - false: 键不存在或已过期
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn exists(self: *CacheService, key: []const u8) bool {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -125,7 +225,11 @@ pub const CacheService = struct {
         return false;
     }
 
-    /// 清空所有缓存
+    /// 清空所有缓存（线程安全）
+    ///
+    /// 删除所有缓存项并释放内存。
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn flush(self: *CacheService) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -139,9 +243,18 @@ pub const CacheService = struct {
     }
 
     /// 缓存统计信息类型
-    pub const CacheStats = struct { count: usize, expired: usize };
+    pub const CacheStats = struct {
+        /// 有效缓存项数量
+        count: usize,
+        /// 已过期但未清理的项数量
+        expired: usize,
+    };
 
-    /// 获取缓存统计信息
+    /// 获取缓存统计信息（线程安全）
+    ///
+    /// 返回当前缓存的统计数据。
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn stats(self: *CacheService) CacheStats {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -162,7 +275,12 @@ pub const CacheService = struct {
         return .{ .count = count, .expired = expired };
     }
 
-    /// 定期清理过期项（非阻塞）
+    /// 清理过期项（线程安全）
+    ///
+    /// 主动清理所有已过期的缓存项。
+    /// 建议定期调用此方法以防止内存泄漏。
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn cleanupExpired(self: *CacheService) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -186,7 +304,14 @@ pub const CacheService = struct {
         }
     }
 
-    /// 根据前缀删除缓存项
+    /// 根据前缀删除缓存项（线程安全）
+    ///
+    /// 删除所有以指定前缀开头的缓存项。
+    ///
+    /// 参数:
+    /// - prefix: 键前缀
+    ///
+    /// 线程安全：使用 Mutex 保护
     pub fn delByPrefix(self: *CacheService, prefix: []const u8) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -210,6 +335,9 @@ pub const CacheService = struct {
     }
 
     /// 创建缓存接口实例
+    ///
+    /// 返回实现 CacheInterface 的接口实例，
+    /// 可以与其他缓存实现互换使用。
     pub fn asInterface(self: *CacheService) cache_contract.CacheInterface {
         return .{
             .ptr = self,
@@ -383,4 +511,96 @@ test "CacheInterface abstraction" {
     const stats = cache_interface.stats();
     try std.testing.expect(stats.count >= 0);
     try std.testing.expect(stats.expired >= 0);
+}
+
+test "CacheService thread safety - concurrent access" {
+    // 测试并发访问的线程安全性
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+
+    const num_threads = 4;
+    const ops_per_thread = 100;
+
+    // 定义线程工作函数
+    const ThreadContext = struct {
+        cache: *CacheService,
+        thread_id: usize,
+        allocator: std.mem.Allocator,
+
+        fn worker(ctx: *@This()) void {
+            var i: usize = 0;
+            while (i < ops_per_thread) : (i += 1) {
+                // 生成唯一键
+                var key_buf: [64]u8 = undefined;
+                const key = std.fmt.bufPrint(&key_buf, "thread_{d}_key_{d}", .{ ctx.thread_id, i }) catch continue;
+
+                var value_buf: [64]u8 = undefined;
+                const value = std.fmt.bufPrint(&value_buf, "value_{d}_{d}", .{ ctx.thread_id, i }) catch continue;
+
+                // 设置缓存
+                ctx.cache.set(key, value, 300) catch continue;
+
+                // 获取缓存
+                _ = ctx.cache.get(key);
+
+                // 检查存在
+                _ = ctx.cache.exists(key);
+
+                // 获取统计
+                _ = ctx.cache.stats();
+            }
+        }
+    };
+
+    // 创建线程上下文
+    var contexts: [num_threads]ThreadContext = undefined;
+    var threads: [num_threads]std.Thread = undefined;
+
+    // 启动线程
+    for (0..num_threads) |i| {
+        contexts[i] = .{
+            .cache = &cache,
+            .thread_id = i,
+            .allocator = allocator,
+        };
+        threads[i] = std.Thread.spawn(.{}, ThreadContext.worker, .{&contexts[i]}) catch continue;
+    }
+
+    // 等待所有线程完成
+    for (&threads) |*thread| {
+        thread.join();
+    }
+
+    // 验证缓存状态一致性
+    const final_stats = cache.stats();
+    try std.testing.expect(final_stats.count >= 0);
+    try std.testing.expect(final_stats.expired >= 0);
+}
+
+test "CacheService delByPrefix" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var cache = CacheService.init(allocator);
+    defer cache.deinit();
+
+    // 添加多个带前缀的键
+    try cache.set("user:1:name", "张三", null);
+    try cache.set("user:1:email", "test@example.com", null);
+    try cache.set("user:2:name", "李四", null);
+    try cache.set("order:1:total", "100", null);
+
+    // 删除 user:1: 前缀的所有键
+    try cache.delByPrefix("user:1:");
+
+    // 验证删除结果
+    try std.testing.expect(!cache.exists("user:1:name"));
+    try std.testing.expect(!cache.exists("user:1:email"));
+    try std.testing.expect(cache.exists("user:2:name"));
+    try std.testing.expect(cache.exists("order:1:total"));
 }

@@ -1,4 +1,40 @@
-// DTO 命名空间 - 按功能分组
+//! 数据传输对象模块 (DTO Module)
+//!
+//! 定义 API 请求和响应的数据结构。
+//! DTO 用于在 API 层和应用层之间传递数据，提供数据验证和转换。
+//!
+//! ## DTO 分组
+//! - `user`: 用户相关（登录、注册、个人资料）
+//! - `upload`: 文件上传相关
+//! - `setting`: 设置相关
+//! - `dict`: 字典相关
+//! - `department`: 部门相关
+//! - `employee`: 员工相关
+//! - `position`: 职位相关
+//! - `role`: 角色相关
+//! - `common`: 公共 DTO（分页、结果）
+//! - `menu`: 菜单相关
+//! - `cms_model`: CMS 模型相关
+//! - `cms_field`: CMS 字段相关
+//! - `document`: 文档相关
+//!
+//! ## 使用示例
+//! ```zig
+//! const dto = @import("api/dto/mod.zig");
+//!
+//! // 使用登录 DTO
+//! const login_dto = dto.user.Login{
+//!     .username = "admin",
+//!     .password = "password",
+//! };
+//!
+//! // 使用分页 DTO
+//! const page_dto = dto.common.Page{
+//!     .page = 1,
+//!     .page_size = 10,
+//! };
+//! ```
+
 const std = @import("std");
 
 // 用户相关 DTO

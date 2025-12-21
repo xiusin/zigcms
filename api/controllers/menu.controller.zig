@@ -1,4 +1,23 @@
+//! 菜单管理控制器 (Menu Controller)
+//!
+//! 处理系统菜单的 CRUD 操作，支持树形菜单结构。
+//!
+//! ## 功能
+//! - 获取菜单列表
+//! - 创建/更新菜单项
+//! - 菜单排序和状态管理
+//!
+//! ## 使用示例
+//! ```zig
+//! const MenuController = @import("api/controllers/menu.controller.zig");
+//! var ctrl = MenuController.init(allocator, logger);
+//!
+//! router.get("/api/menus", &ctrl, ctrl.list);
+//! router.post("/api/menu/save", &ctrl, ctrl.save);
+//! ```
+
 const std = @import("std");
+const log_mod = @import("../../application/services/logger/logger.zig");
 const zap = @import("zap");
 const base = @import("base.fn.zig");
 const global = @import("../../shared/primitives/global.zig");
@@ -13,10 +32,12 @@ const Self = @This();
 const Menu = orm_models.Menu;
 
 allocator: Allocator,
+logger: *log_mod.Logger,
 
-pub fn init(allocator: Allocator) Self {
+pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
     return .{
         .allocator = allocator,
+        .logger = logger,
     };
 }
 
@@ -30,7 +51,7 @@ pub fn list(self: *Self, req: zap.Request) !void {
     defer menus.deinit(self.allocator);
 
     for (menus_slice) |menu| {
-        std.log.debug("menu = {any}", .{menu});
+        self.logger.debug("menu = {any}", .{menu});
         menus.append(self.allocator, menu) catch {};
     }
 

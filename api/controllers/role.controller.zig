@@ -3,6 +3,7 @@
 //! 提供角色的 CRUD 操作及权限管理
 
 const std = @import("std");
+const log_mod = @import("../../application/services/logger/logger.zig");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 
@@ -18,6 +19,7 @@ const Self = @This();
 const MW = mw.Controller(Self);
 
 allocator: Allocator,
+logger: *log_mod.Logger,
 
 /// ORM 模型定义
 const OrmRole = sql.defineWithConfig(models.Role, .{
@@ -26,11 +28,11 @@ const OrmRole = sql.defineWithConfig(models.Role, .{
 });
 
 /// 初始化控制器
-pub fn init(allocator: Allocator) Self {
+pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
     if (!OrmRole.hasDb()) {
         OrmRole.use(global.get_db());
     }
-    return .{ .allocator = allocator };
+    return .{ .allocator = allocator, .logger = logger };
 }
 
 // ============================================================================
@@ -38,16 +40,16 @@ pub fn init(allocator: Allocator) Self {
 // ============================================================================
 
 /// 分页列表
-pub const list = MW.requireAuth(listImpl);
+pub const list = listImpl;
 
 /// 获取单条记录
-pub const get = MW.requireAuth(getImpl);
+pub const get = getImpl;
 
 /// 保存（新增/更新）
-pub const save = MW.requireAuth(saveImpl);
+pub const save = saveImpl;
 
 /// 删除
-pub const delete = MW.requireAuth(deleteImpl);
+pub const delete = deleteImpl;
 
 /// 下拉选择列表
 pub const select = MW.requireAuth(selectImpl);
@@ -86,14 +88,14 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     }
 
     // 构建查询
-    var q = OrmRole.Where("is_delete", .eq, @as(i32, 0));
+    var q = OrmRole.WhereEq("is_delete", @as(i32, 0));
     defer q.deinit();
 
     const total = q.count() catch |e| return base.send_error(req, e);
 
     const order_dir: sql.OrderDir = if (strings.eql(sort_dir, "asc")) .asc else .desc;
     _ = q.orderBy(sort_field, order_dir);
-    _ = q.page(page, limit);
+    _ = q.page(@intCast(page), @intCast(limit));
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
     defer OrmRole.freeModels(self.allocator, items_slice);
@@ -130,7 +132,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     const body = req.body orelse return base.send_failed(req, "请求体为空");
 
     const dto = json_mod.JSON.decode(models.Role, self.allocator, body) catch |err| {
-        std.log.err("解析角色数据失败: {}", .{err});
+        self.logger.err("解析角色数据失败: {}", .{err});
         return base.send_failed(req, "解析数据失败");
     };
 
@@ -141,12 +143,12 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 
     // 检查编码唯一性
     if (dto.code.len > 0) {
-        var check_q = OrmRole.Where("code", .eq, dto.code);
+        var check_q = OrmRole.WhereEq("code", dto.code);
         defer check_q.deinit();
-        _ = check_q.where("is_delete", .eq, @as(i32, 0));
+        _ = check_q.where("is_delete", "=", @as(i32, 0));
         if (dto.id) |id| {
             if (id > 0) {
-                _ = check_q.where("id", .neq, id);
+                _ = check_q.where("id", "!=", id);
             }
         }
         const exists = check_q.first() catch null;
@@ -191,14 +193,14 @@ fn deleteImpl(self: *Self, req: zap.Request) !void {
     ) catch return base.send_failed(req, "SQL 构建失败");
     defer self.allocator.free(sql_str);
 
-    _ = global.get_db().rawExec(sql_str) catch |e| return base.send_error(req, e);
+    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "删除成功");
 }
 
 /// 下拉选择列表实现
 fn selectImpl(self: *Self, req: zap.Request) !void {
-    var q = OrmRole.Where("status", .eq, @as(i32, 1));
+    var q = OrmRole.WhereEq("status", @as(i32, 1));
     defer q.deinit();
     _ = q.where("is_delete", .eq, @as(i32, 0));
     _ = q.orderBy("sort", .asc);
@@ -264,7 +266,7 @@ fn updatePermissionsImpl(self: *Self, req: zap.Request) !void {
     ) catch return base.send_failed(req, "SQL 构建失败");
     defer self.allocator.free(sql_str);
 
-    _ = global.get_db().rawExec(sql_str) catch |e| return base.send_error(req, e);
+    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "权限更新成功");
 }

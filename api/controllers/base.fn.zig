@@ -1,5 +1,30 @@
+//! 控制器基础函数模块 (Base Functions)
+//!
+//! 提供控制器通用的响应处理函数，简化 HTTP 响应的构建。
+//!
+//! ## 功能
+//! - `send_ok`: 发送成功响应
+//! - `send_failed`: 发送失败响应
+//! - `send_error`: 发送错误响应（包含详细错误信息）
+//! - `send_layui_table_response`: 发送 LayUI 表格格式响应
+//!
+//! ## 使用示例
+//! ```zig
+//! const base = @import("base.fn.zig");
+//!
+//! // 成功响应
+//! base.send_ok(req, .{ .id = 1, .name = "test" });
+//!
+//! // 失败响应
+//! base.send_failed(req, "参数错误");
+//!
+//! // 错误响应
+//! base.send_error(req, error.DatabaseError);
+//! ```
+
 const zap = @import("zap");
 const std = @import("std");
+const logger = @import("../../application/services/logger/logger.zig");
 const global = @import("../../shared/primitives/global.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const json_mod = @import("../../application/services/json/json.zig");
@@ -58,7 +83,7 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
         req.sendBody(json) catch {};
 
         // 同时打印到日志
-        std.log.err("SQL错误详情: {s}", .{detail.format(global.get_allocator()) catch "格式化错误失败"});
+        logger.err("SQL错误详情: {s}", .{detail.format(global.get_allocator()) catch "格式化错误失败"});
         return;
     }
 

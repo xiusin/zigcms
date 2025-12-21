@@ -1,11 +1,35 @@
-//! Cache Infrastructure Module
+//! 缓存基础设施模块 (Cache Module)
 //!
-//! 缓存基础设施层
+//! 提供统一的缓存接口，支持多种后端（内存、Redis、Memcached）。
+//! 包含 TTL 管理、缓存清理等功能。
 //!
-//! 职责：
-//! - 提供统一的缓存接口
-//! - 支持多种缓存后端（Redis、内存）
-//! - 实现缓存策略
+//! ## 功能
+//! - 缓存接口（Cache）
+//! - 缓存配置（CacheConfig）
+//! - 缓存后端类型（CacheBackend）
+//! - 缓存工厂（CacheFactory）
+//!
+//! ## 使用示例
+//! ```zig
+//! const cache = @import("infrastructure/cache/mod.zig");
+//!
+//! // 创建缓存实例
+//! const c = try cache.CacheFactory.create(allocator, .{
+//!     .backend = .Memory,
+//!     .default_ttl = 3600,
+//! });
+//!
+//! // 设置缓存
+//! try c.set("key", "value", 3600);
+//!
+//! // 获取缓存
+//! if (try c.get("key")) |value| {
+//!     // 使用缓存值
+//! }
+//!
+//! // 删除缓存
+//! try c.delete("key");
+//! ```
 
 const std = @import("std");
 

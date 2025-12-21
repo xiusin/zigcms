@@ -31,6 +31,9 @@
 //! // 手动绑定
 //! app.bind("config", myConfig);
 //! ```
+//!
+//! ## 依赖说明
+//! 此模块是共享层的一部分，不依赖任何业务层。
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -209,7 +212,7 @@ pub const Cache = struct {
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) Cache {
-        std.log.debug("[DI] 创建 Cache 服务", .{});
+        std.debug.print("[DI] 创建 Cache 服务\n", .{});
         return .{
             .data = std.StringHashMap(i64).init(allocator),
             .allocator = allocator,
@@ -245,7 +248,7 @@ pub const Config = struct {
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) Config {
-        std.log.debug("[DI] 创建 Config 服务", .{});
+        std.debug.print("[DI] 创建 Config 服务\n", .{});
         return .{
             .values = std.StringHashMap([]const u8).init(allocator),
             .allocator = allocator,
@@ -280,12 +283,12 @@ pub const Logger = struct {
     pub const Level = enum { debug, info, warn, err };
 
     pub fn init(_: Allocator) Logger {
-        std.log.debug("[DI] 创建 Logger 服务", .{});
+        std.debug.print("[DI] 创建 Logger 服务\n", .{});
         return .{ .prefix = "[App]", .level = .info };
     }
 
     pub fn log(self: *Logger, comptime fmt: []const u8, args: anytype) void {
-        std.log.info("{s} " ++ fmt, .{self.prefix} ++ args);
+        std.debug.print("{s} " ++ fmt ++ "\n", .{self.prefix} ++ args);
     }
 };
 

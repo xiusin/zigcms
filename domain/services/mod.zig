@@ -1,12 +1,26 @@
-//! Domain Services Module
+//! 领域服务模块 (Domain Services Module)
 //!
-//! 领域服务层 - 封装核心业务逻辑
+//! 封装跨实体的业务规则和复杂逻辑。
+//! 领域服务是无状态的，不依赖外部系统，只包含纯业务逻辑。
 //!
-//! 职责：
-//! - 实现跨实体的业务规则
-//! - 封装复杂的领域逻辑
-//! - 不依赖基础设施层
-//! - 纯业务逻辑，无副作用
+//! ## 包含的服务
+//! - `UserDomainService`: 用户相关业务规则（用户名、密码、邮箱验证）
+//! - `ContentDomainService`: 内容相关业务规则（标题、内容验证，阅读时长计算）
+//! - `PermissionDomainService`: 权限相关业务规则（权限检查）
+//!
+//! ## 使用示例
+//! ```zig
+//! const services = @import("domain/services/mod.zig");
+//!
+//! // 验证用户名
+//! try services.DomainServices.User.validateUsername("john_doe");
+//!
+//! // 验证密码强度
+//! try services.DomainServices.User.validatePassword("secure123");
+//!
+//! // 计算阅读时长
+//! const minutes = services.DomainServices.Content.calculateReadingTime(content);
+//! ```
 
 const std = @import("std");
 

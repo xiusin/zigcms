@@ -1,12 +1,23 @@
-//! Application Use Cases Module
+//! 业务用例模块 (Use Cases Module)
 //!
-//! 应用用例层 - 编排业务流程
+//! 定义具体的业务流程，协调领域服务和基础设施服务完成业务目标。
+//! 用例是应用层的核心，代表系统的功能需求。
 //!
-//! 职责：
-//! - 协调领域服务和基础设施服务
-//! - 实现具体的业务用例
-//! - 处理事务边界
-//! - 转换 DTO 和领域对象
+//! ## 功能
+//! - 定义用例基类接口（UseCase）
+//! - 提供用例执行器（UseCaseExecutor）
+//! - 按功能分组的用例模块
+//!
+//! ## 使用示例
+//! ```zig
+//! const usecases = @import("application/usecases/mod.zig");
+//!
+//! // 创建用例执行器
+//! var executor = usecases.UseCaseExecutor.init(allocator);
+//!
+//! // 执行用例
+//! const result = try executor.run(RegisterUserUseCase, &use_case, input);
+//! ```
 
 const std = @import("std");
 

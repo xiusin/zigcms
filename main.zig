@@ -1,109 +1,66 @@
-// 主程序入口 - 整洁架构实现
+//! ZigCMS 主程序入口
+//!
+//! 职责：
+//! - 初始化内存分配器
+//! - 调用 Bootstrap 模块进行系统初始化
+//! - 启动 HTTP 服务器
+//!
+//! 遵循整洁架构原则，main.zig 只负责高层初始化和启动逻辑，
+//! 具体的路由注册和服务配置委托给 Bootstrap 模块处理。
+
 const std = @import("std");
 const zigcms = @import("root.zig");
 const logger = @import("application/services/logger/logger.zig");
+const App = @import("api/App.zig").App;
+const Bootstrap = @import("api/bootstrap.zig").Bootstrap;
 
 // ✅ 启用 MySQL 驱动（编译时标志，供 interface.zig 检测）
 pub const mysql_enabled = true;
-const App = @import("api/App.zig").App;
-const controllers = @import("api/controllers/mod.zig");
-const models = @import("domain/entities/models.zig");
 
 pub fn main() !void {
+    // ========================================================================
+    // 1. 初始化内存分配器
+    // ========================================================================
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer {
         const status = gpa.deinit();
         if (status == .leak) {
-            // 服务器被终止时可能有未释放资源，这是正常的
             std.debug.print("⚠️ 检测到内存泄漏（可能是服务器被强制终止）\n", .{});
         } else {
             std.debug.print("✅ 服务器正常退出，无内存泄漏\n", .{});
         }
         std.debug.print("👋 ZigCMS 服务器已关闭\n", .{});
     }
-
     const allocator = gpa.allocator();
 
-    // 初始化系统各层
+    // ========================================================================
+    // 2. 初始化系统各层
+    // ========================================================================
     const config = zigcms.SystemConfig{};
     try zigcms.initSystem(allocator, config);
     defer zigcms.deinitSystem();
 
-    // 初始化应用框架
+    // 初始化日志系统
+    try logger.initDefault(allocator, .{ .level = .debug, .format = .colored });
+    defer logger.deinitDefault();
+    const global_logger = logger.getDefault() orelse @panic("Logger not initialized");
+
+    // ========================================================================
+    // 3. 初始化应用框架
+    // ========================================================================
     var app = try App.init(allocator);
     defer app.deinit();
 
     // ========================================================================
-    // 领域层 - 注册实体模型
+    // 4. 使用 Bootstrap 注册路由
     // ========================================================================
-    // 模型现在位于 domain/entities 目录
-
-    // ========================================================================
-    // 应用层 - 注册 CRUD 模块（自动生成 list/get/save/delete/modify/select 路由）
-    // ========================================================================
-    try app.crud("category", models.Category);
-    try app.crud("upload", models.Upload);
-    try app.crud("article", models.Article);
-    try app.crud("role", models.Role);
-    try app.crud("dict", models.Dict); // 添加字典模型的CRUD
-
-    // CMS 内容管理模块
-    try app.crud("cms_model", models.CmsModel);
-    try app.crud("cms_field", models.CmsField);
-    try app.crud("document", models.Document);
-    try app.crud("material_category", models.MaterialCategory);
-    try app.crud("material", models.Material);
-
-    // 会员管理模块
-    try app.crud("member_group", models.MemberGroup);
-    try app.crud("member", models.Member);
-
-    // 友链管理模块
-    try app.crud("friend_link", models.FriendLink);
+    var bootstrap = Bootstrap.init(allocator, &app, global_logger);
+    try bootstrap.registerRoutes();
 
     // ========================================================================
-    // API 层 - 注册自定义控制器
+    // 5. 打印启动摘要并启动服务器
     // ========================================================================
-
-    // 登录控制器
-    var login = controllers.auth.Login.init(allocator);
-    try app.route("/login", &login, &controllers.auth.Login.login);
-    try app.route("/register", &login, &controllers.auth.Login.register);
-
-    // 公共接口
-    var public = controllers.common.Public.init(allocator);
-    try app.route("/public/upload", &public, &controllers.common.Public.upload);
-    try app.route("/public/folder", &public, &controllers.common.Public.folder);
-    try app.route("/public/files", &public, &controllers.common.Public.files);
-
-    // 菜单控制器
-    var menu = controllers.admin.Menu.init(allocator);
-    try app.route("/menu/list", &menu, &controllers.admin.Menu.list);
-
-    // 设置控制器
-    var setting = controllers.admin.Setting.init(allocator);
-    try app.route("/setting/get", &setting, &controllers.admin.Setting.get);
-    try app.route("/setting/save", &setting, &controllers.admin.Setting.save);
-    try app.route("/setting/send_email", &setting, &controllers.admin.Setting.send_mail);
-    try app.route("/setting/upload_config/get", &setting, &controllers.admin.Setting.get_upload_config);
-    try app.route("/setting/upload_config/save", &setting, &controllers.admin.Setting.save_upload_config);
-    try app.route("/setting/upload_config/test", &setting, &controllers.admin.Setting.test_upload_config);
-
-    // 字典管理控制器
-    var dict_ctrl = controllers.dict.Dict.init(allocator);
-    try app.route("/dict/types", &dict_ctrl, &controllers.dict.Dict.getDictTypes);
-    try app.route("/dict/by_type", &dict_ctrl, &controllers.dict.Dict.getDictByType);
-    try app.route("/dict/search", &dict_ctrl, &controllers.dict.Dict.searchDict);
-    try app.route("/dict/count", &dict_ctrl, &controllers.dict.Dict.countDict);
-    try app.route("/dict/validate", &dict_ctrl, &controllers.dict.Dict.validateDictValue);
-    try app.route("/dict/label", &dict_ctrl, &controllers.dict.Dict.getDictLabel);
-    try app.route("/dict/refresh_cache", &dict_ctrl, &controllers.dict.Dict.refreshCache);
-    try app.route("/dict/cache_stats", &dict_ctrl, &controllers.dict.Dict.getCacheStats);
-    try app.route("/dict/cleanup_cache", &dict_ctrl, &controllers.dict.Dict.cleanupCache);
-
-    // ========================================================================
-    // 启动服务器
-    // ========================================================================
+    bootstrap.printStartupSummary();
     logger.info("🚀 启动 ZigCMS 服务器", .{});
     try app.listen();
 }
