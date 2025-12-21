@@ -112,7 +112,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
     } else if (std.mem.eql(u8, sub_command, "refresh")) {
         try runRefresh(allocator);
     } else {
-        command.showError(try std.fmt.allocPrint(allocator, "未知命令: {s}", .{sub_command}));
+        const error_msg = try std.fmt.allocPrint(allocator, "未知命令: {s}", .{sub_command});
+        defer allocator.free(error_msg);
+        command.showError(error_msg);
         showSubcommandHelp();
     }
 }
@@ -134,7 +136,6 @@ fn showSubcommandHelp() void {
 
 /// 执行迁移 (up)
 fn runUp(allocator: std.mem.Allocator) !void {
-    _ = allocator;
     Command.showInfo("执行数据库迁移...");
 
     // 确保迁移目录存在
@@ -152,7 +153,9 @@ fn runUp(allocator: std.mem.Allocator) !void {
     while (try iter.next()) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".sql")) {
             // TODO: 检查是否已执行，执行迁移
-            Command.showInfo(try std.fmt.allocPrint(std.heap.page_allocator, "发现迁移文件: {s}", .{entry.name}));
+            const info_msg = try std.fmt.allocPrint(allocator, "发现迁移文件: {s}", .{entry.name});
+            defer allocator.free(info_msg);
+            Command.showInfo(info_msg);
             count += 1;
         }
     }
@@ -160,15 +163,18 @@ fn runUp(allocator: std.mem.Allocator) !void {
     if (count == 0) {
         Command.showInfo("没有待执行的迁移");
     } else {
-        Command.showSuccess(try std.fmt.allocPrint(std.heap.page_allocator, "发现 {d} 个迁移文件", .{count}));
+        const success_msg = try std.fmt.allocPrint(allocator, "发现 {d} 个迁移文件", .{count});
+        defer allocator.free(success_msg);
+        Command.showSuccess(success_msg);
         Command.showWarning("注意: 实际迁移执行需要数据库连接，当前仅扫描文件");
     }
 }
 
 /// 回滚迁移 (down)
 fn runDown(allocator: std.mem.Allocator, step: u32) !void {
-    _ = allocator;
-    Command.showInfo(try std.fmt.allocPrint(std.heap.page_allocator, "回滚最近 {d} 次迁移...", .{step}));
+    const info_msg = try std.fmt.allocPrint(allocator, "回滚最近 {d} 次迁移...", .{step});
+    defer allocator.free(info_msg);
+    Command.showInfo(info_msg);
 
     // TODO: 实现实际的回滚逻辑
     Command.showWarning("注意: 实际回滚执行需要数据库连接");
@@ -257,7 +263,10 @@ fn runCreate(allocator: std.mem.Allocator, name: []const u8) !void {
     defer allocator.free(template);
 
     try base.writeFile(filename, template);
-    Command.showSuccess(try std.fmt.allocPrint(allocator, "创建迁移文件: {s}", .{filename}));
+    
+    const success_msg = try std.fmt.allocPrint(allocator, "创建迁移文件: {s}", .{filename});
+    defer allocator.free(success_msg);
+    Command.showSuccess(success_msg);
 }
 
 /// 刷新迁移 (refresh)

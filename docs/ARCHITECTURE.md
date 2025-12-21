@@ -427,7 +427,7 @@ zigcms/
 │   ├── plugin_interface.zig
 │   └── plugin_manager.zig
 │
-├── tools/                        # 开发工具
+├── commands/                    # 命令行工具
 │   ├── codegen.zig
 │   ├── migrate.zig
 │   └── plugin_gen.zig

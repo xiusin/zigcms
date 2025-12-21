@@ -119,12 +119,24 @@ pub fn run(allocator: std.mem.Allocator) !void {
     };
 
     // 获取表名（默认为模型名的 snake_case）
-    const table_name = args.getOption("table") orelse args.getOption("t") orelse try toSnakeCase(allocator, name);
+    const table_name = args.getOption("table") orelse args.getOption("t") orelse blk: {
+        const snake_name = try toSnakeCase(allocator, name);
+        defer allocator.free(snake_name);
+        break :blk try allocator.dupe(u8, snake_name);
+    };
+    defer if (args.getOption("table") == null and args.getOption("t") == null) allocator.free(table_name);
 
     // 解析字段定义
     const fields_str = args.getOption("fields") orelse args.getOption("f");
     var custom_fields = std.ArrayListUnmanaged(FieldDef){};
-    defer custom_fields.deinit(allocator);
+    defer {
+        for (custom_fields.items) |field| {
+            allocator.free(field.name);
+            allocator.free(field.zig_type);
+            allocator.free(field.sql_type);
+        }
+        custom_fields.deinit(allocator);
+    }
 
     if (fields_str) |fs| {
         try parseFields(allocator, fs, &custom_fields);
@@ -171,7 +183,9 @@ fn generateModel(allocator: std.mem.Allocator, name: []const u8, table_name: []c
 
     // 检查文件是否已存在
     if (base.fileExists(path)) {
-        Command.showWarning(try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path}));
+        const warning_msg = try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path});
+        defer allocator.free(warning_msg);
+        Command.showWarning(warning_msg);
         return;
     }
 
@@ -221,7 +235,10 @@ fn generateModel(allocator: std.mem.Allocator, name: []const u8, table_name: []c
     );
 
     try base.writeFile(path, content.items);
-    Command.showSuccess(try std.fmt.allocPrint(allocator, "生成模型: {s}", .{path}));
+    
+    const success_msg = try std.fmt.allocPrint(allocator, "生成模型: {s}", .{path});
+    defer allocator.free(success_msg);
+    Command.showSuccess(success_msg);
 }
 
 /// 生成 DTO 文件
@@ -233,7 +250,9 @@ fn generateDto(allocator: std.mem.Allocator, name: []const u8, custom_fields: []
     defer allocator.free(path);
 
     if (base.fileExists(path)) {
-        Command.showWarning(try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path}));
+        const warning_msg = try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path});
+        defer allocator.free(warning_msg);
+        Command.showWarning(warning_msg);
         return;
     }
 
@@ -302,7 +321,10 @@ fn generateDto(allocator: std.mem.Allocator, name: []const u8, custom_fields: []
     );
 
     try base.writeFile(path, content.items);
-    Command.showSuccess(try std.fmt.allocPrint(allocator, "生成 DTO: {s}", .{path}));
+    
+    const success_msg = try std.fmt.allocPrint(allocator, "生成 DTO: {s}", .{path});
+    defer allocator.free(success_msg);
+    Command.showSuccess(success_msg);
 }
 
 /// 生成控制器文件
@@ -314,7 +336,9 @@ fn generateController(allocator: std.mem.Allocator, name: []const u8) !void {
     defer allocator.free(path);
 
     if (base.fileExists(path)) {
-        Command.showWarning(try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path}));
+        const warning_msg = try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path});
+        defer allocator.free(warning_msg);
+        Command.showWarning(warning_msg);
         return;
     }
 
@@ -391,7 +415,10 @@ fn generateController(allocator: std.mem.Allocator, name: []const u8) !void {
     , .{ name, name, name, name, name, name, snake_name, name, snake_name, name, snake_name, name, snake_name, name, snake_name });
 
     try base.writeFile(path, content.items);
-    Command.showSuccess(try std.fmt.allocPrint(allocator, "生成控制器: {s}", .{path}));
+    
+    const success_msg = try std.fmt.allocPrint(allocator, "生成控制器: {s}", .{path});
+    defer allocator.free(success_msg);
+    Command.showSuccess(success_msg);
 }
 
 /// 解析字段定义字符串
@@ -409,9 +436,9 @@ fn parseFields(allocator: std.mem.Allocator, fields_str: []const u8, result: *st
         const sql_type = mapSqlType(field_type);
 
         try result.append(allocator, .{
-            .name = field_name,
-            .zig_type = zig_type,
-            .sql_type = sql_type,
+            .name = try allocator.dupe(u8, field_name),
+            .zig_type = try allocator.dupe(u8, zig_type),
+            .sql_type = try allocator.dupe(u8, sql_type),
         });
     }
 }

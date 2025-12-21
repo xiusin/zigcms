@@ -66,7 +66,7 @@ zigcms/
 │   ├── plugin_manager.zig    # 插件管理器
 │   └── templates/            # 插件模板
 │
-├── tools/                 # 开发工具
+├── commands/              # 命令行工具
 │   ├── codegen.zig       # 代码生成器
 │   ├── migrate.zig       # 数据库迁移
 │   ├── plugin_gen.zig    # 插件生成器

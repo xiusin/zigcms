@@ -148,7 +148,9 @@ fn generatePlugin(
 
     // 检查文件是否已存在
     if (base.fileExists(path)) {
-        Command.showWarning(try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path}));
+        const warning_msg = try std.fmt.allocPrint(allocator, "文件已存在: {s}，跳过生成", .{path});
+        defer allocator.free(warning_msg);
+        Command.showWarning(warning_msg);
         return;
     }
 
@@ -385,7 +387,10 @@ fn generatePlugin(
     );
 
     try base.writeFile(path, content.items);
-    Command.showSuccess(try std.fmt.allocPrint(allocator, "生成插件: {s}", .{path}));
+    
+    const success_msg = try std.fmt.allocPrint(allocator, "生成插件: {s}", .{path});
+    defer allocator.free(success_msg);
+    Command.showSuccess(success_msg);
 
     // 显示能力信息
     if (capabilities.len > 0) {
@@ -397,7 +402,9 @@ fn generatePlugin(
             try caps_str_list.appendSlice(allocator, @tagName(cap));
         }
 
-        Command.showInfo(try std.fmt.allocPrint(allocator, "已启用能力: {s}", .{caps_str_list.items}));
+        const info_msg = try std.fmt.allocPrint(allocator, "已启用能力: {s}", .{caps_str_list.items});
+        defer allocator.free(info_msg);
+        Command.showInfo(info_msg);
     }
 }
 

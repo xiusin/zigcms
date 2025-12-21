@@ -90,10 +90,14 @@ pub const ConfigGenerator = struct {
 
     /// 解析 .env 文件并生成配置结构
     pub fn parseEnvAndGenerateConfig(self: *ConfigGenerator, env_file_path: []const u8, output_file_path: []const u8) !void {
-        Command.showInfo(try std.fmt.allocPrint(self.allocator, "解析 .env 文件: {s}", .{env_file_path}));
+        const info_msg = try std.fmt.allocPrint(self.allocator, "解析 .env 文件: {s}", .{env_file_path});
+        defer self.allocator.free(info_msg);
+        Command.showInfo(info_msg);
 
         const env_content = std.fs.cwd().readFileAlloc(self.allocator, env_file_path, 10 * 1024) catch |err| {
-            command.showError(try std.fmt.allocPrint(self.allocator, "无法读取文件 {s}: {}", .{ env_file_path, err }));
+            const error_msg = try std.fmt.allocPrint(self.allocator, "无法读取文件 {s}: {}", .{ env_file_path, err });
+            defer self.allocator.free(error_msg);
+            command.showError(error_msg);
             return;
         };
         defer self.allocator.free(env_content);
@@ -115,7 +119,9 @@ pub const ConfigGenerator = struct {
         // 写入输出文件
         try base.writeFile(output_file_path, config_code);
 
-        Command.showSuccess(try std.fmt.allocPrint(self.allocator, "配置结构已生成: {s}", .{output_file_path}));
+        const success_msg = try std.fmt.allocPrint(self.allocator, "配置结构已生成: {s}", .{output_file_path});
+        defer self.allocator.free(success_msg);
+        Command.showSuccess(success_msg);
     }
 
     /// 解析环境内容
