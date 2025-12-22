@@ -1,6 +1,6 @@
-//! 配置加载器模块 - 从 TOML 文件加载配置
+//! 配置加载器模块 - 从 JSON 文件加载配置
 //!
-//! 本模块提供从 configs/ 目录加载 TOML 配置文件的功能。
+//! 本模块提供从 configs/ 目录加载 JSON 配置文件的功能。
 //! 支持默认值、环境变量覆盖和配置验证。
 //!
 //! ## 使用示例
@@ -13,12 +13,13 @@
 //! ```
 //!
 //! ## 配置文件对应关系
-//! - api.toml → ApiConfig
-//! - app.toml → AppConfig
-//! - domain.toml → DomainConfig
-//! - infra.toml → InfraConfig
+//! - api.json → ApiConfig
+//! - app.json → AppConfig
+//! - domain.json → DomainConfig
+//! - infra.json → InfraConfig
 
 const std = @import("std");
+const json = std.json;
 const SystemConfig = @import("system_config.zig").SystemConfig;
 const ApiConfig = @import("system_config.zig").ApiConfig;
 const AppConfig = @import("system_config.zig").AppConfig;
@@ -88,7 +89,7 @@ pub const ConfigLoader = struct {
         // 加载各个配置文件，缺失则使用默认值
         config.api = self.loadApiConfig() catch |err| blk: {
             if (err == error.FileNotFound) {
-                std.debug.print("⚠️ api.toml 未找到，使用默认配置\n", .{});
+                std.debug.print("⚠️ api.json 未找到，使用默认配置\n", .{});
                 break :blk ApiConfig{};
             }
             return err;
@@ -96,7 +97,7 @@ pub const ConfigLoader = struct {
 
         config.app = self.loadAppConfig() catch |err| blk: {
             if (err == error.FileNotFound) {
-                std.debug.print("⚠️ app.toml 未找到，使用默认配置\n", .{});
+                std.debug.print("⚠️ app.json 未找到，使用默认配置\n", .{});
                 break :blk AppConfig{};
             }
             return err;
@@ -104,7 +105,7 @@ pub const ConfigLoader = struct {
 
         config.domain = self.loadDomainConfig() catch |err| blk: {
             if (err == error.FileNotFound) {
-                std.debug.print("⚠️ domain.toml 未找到，使用默认配置\n", .{});
+                std.debug.print("⚠️ domain.json 未找到，使用默认配置\n", .{});
                 break :blk DomainConfig{};
             }
             return err;
@@ -112,7 +113,7 @@ pub const ConfigLoader = struct {
 
         config.infra = self.loadInfraConfig() catch |err| blk: {
             if (err == error.FileNotFound) {
-                std.debug.print("⚠️ infra.toml 未找到，使用默认配置\n", .{});
+                std.debug.print("⚠️ infra.json 未找到，使用默认配置\n", .{});
                 break :blk InfraConfig{};
             }
             return err;
@@ -126,30 +127,122 @@ pub const ConfigLoader = struct {
 
     /// 加载 API 配置
     fn loadApiConfig(self: *Self) !ApiConfig {
-        const content = try self.readConfigFile("api.toml");
-        defer self.allocator.free(content);
-        return self.parseApiConfig(content);
+        const json_value = try self.readJsonConfigFile("api.toml");
+        defer json_value.deinit();
+        return self.parseConfigFromJson(ApiConfig, json_value);
     }
 
     /// 加载应用配置
     fn loadAppConfig(self: *Self) !AppConfig {
-        const content = try self.readConfigFile("app.toml");
-        defer self.allocator.free(content);
-        return self.parseAppConfig(content);
+        const json_value = try self.readJsonConfigFile("app.toml");
+        defer json_value.deinit();
+        return self.parseConfigFromJson(AppConfig, json_value);
     }
 
     /// 加载领域配置
     fn loadDomainConfig(self: *Self) !DomainConfig {
-        const content = try self.readConfigFile("domain.toml");
-        defer self.allocator.free(content);
-        return self.parseDomainConfig(content);
+        const json_value = try self.readJsonConfigFile("domain.toml");
+        defer json_value.deinit();
+        return self.parseConfigFromJson(DomainConfig, json_value);
     }
 
     /// 加载基础设施配置
     fn loadInfraConfig(self: *Self) !InfraConfig {
-        const content = try self.readConfigFile("infra.toml");
+        const json_value = try self.readJsonConfigFile("infra.toml");
+        defer json_value.deinit();
+        return self.parseConfigFromJson(InfraConfig, json_value);
+    }
+
+    /// 读取并解析JSON配置文件内容
+    fn readJsonConfigFile(self: *Self, filename: []const u8) !json.Value {
+        const json_filename = try std.fmt.allocPrint(self.allocator, "{s}.json", .{std.fs.path.stem(filename)});
+        defer self.allocator.free(json_filename);
+
+        const content = try self.readConfigFile(json_filename);
         defer self.allocator.free(content);
-        return self.parseInfraConfig(content);
+
+        const parsed = json.parseFromSlice(json.Value, self.allocator, content, .{}) catch {
+            return ConfigError.ParseError;
+        };
+        errdefer parsed.deinit();
+
+        if (parsed.value != .object) {
+            parsed.deinit();
+            return ConfigError.ParseError;
+        }
+
+        return parsed.value;
+    }
+
+    /// 通用JSON配置解析函数 - 使用反射扫描结构体字段
+    fn parseConfigFromJson(self: *Self, comptime T: type, json_obj: json.Value) !T {
+        var config = T{};
+        const type_info = @typeInfo(T);
+
+        if (type_info != .@"struct") {
+            return ConfigError.ParseError;
+        }
+
+        inline for (type_info.@"struct".fields) |field| {
+            if (json_obj.object.get(field.name)) |json_value| {
+                @field(config, field.name) = try self.parseJsonField(field.type, json_value);
+            }
+        }
+
+        return config;
+    }
+
+    /// 解析单个JSON字段值
+    fn parseJsonField(self: *Self, comptime FieldType: type, json_value: json.Value) !FieldType {
+        const type_info = @typeInfo(FieldType);
+
+        switch (type_info) {
+            .bool => return json_value.bool,
+            .int => |int_info| {
+                _ = int_info; // 标记为已使用
+
+                if (json_value == .integer) {
+                    return @intCast(json_value.integer);
+                } else if (json_value == .float) {
+                    return @intFromFloat(json_value.float);
+                } else {
+                    return ConfigError.InvalidValue;
+                }
+            },
+            .float => |float_info| {
+                _ = float_info; // 标记为已使用
+
+                if (json_value == .float) {
+                    return @floatCast(json_value.float);
+                } else if (json_value == .integer) {
+                    return @floatFromInt(json_value.integer);
+                } else {
+                    return ConfigError.InvalidValue;
+                }
+            },
+            .pointer => |ptr_info| {
+                if (ptr_info.size == .slice and ptr_info.child == u8) {
+                    // []const u8
+                    if (json_value == .string) {
+                        return try self.allocString(json_value.string);
+                    } else {
+                        return ConfigError.InvalidValue;
+                    }
+                } else {
+                    return ConfigError.InvalidValue;
+                }
+            },
+            .optional => |opt_info| {
+                if (json_value == .null) {
+                    return null;
+                } else {
+                    return try self.parseJsonField(opt_info.child, json_value);
+                }
+            },
+            else => {
+                return ConfigError.InvalidValue;
+            },
+        }
     }
 
     /// 读取配置文件内容
@@ -170,137 +263,6 @@ pub const ConfigLoader = struct {
         };
 
         return content;
-    }
-
-    /// 解析 API 配置
-    fn parseApiConfig(self: *Self, content: []const u8) !ApiConfig {
-        var config = ApiConfig{};
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \t\r");
-            if (trimmed.len == 0 or trimmed[0] == '#') continue;
-
-            if (self.parseKeyValue(trimmed)) |kv| {
-                if (std.mem.eql(u8, kv.key, "host")) {
-                    config.host = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "port")) {
-                    config.port = std.fmt.parseInt(u16, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "max_clients")) {
-                    config.max_clients = std.fmt.parseInt(u32, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "timeout")) {
-                    config.timeout = std.fmt.parseInt(u32, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "public_folder")) {
-                    config.public_folder = try self.allocString(kv.value);
-                }
-            }
-        }
-
-        return config;
-    }
-
-    /// 解析应用配置
-    fn parseAppConfig(self: *Self, content: []const u8) !AppConfig {
-        var config = AppConfig{};
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \t\r");
-            if (trimmed.len == 0 or trimmed[0] == '#') continue;
-
-            if (self.parseKeyValue(trimmed)) |kv| {
-                if (std.mem.eql(u8, kv.key, "enable_cache")) {
-                    config.enable_cache = std.mem.eql(u8, kv.value, "true");
-                } else if (std.mem.eql(u8, kv.key, "cache_ttl_seconds")) {
-                    config.cache_ttl_seconds = std.fmt.parseInt(u64, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "max_concurrent_tasks")) {
-                    config.max_concurrent_tasks = std.fmt.parseInt(u32, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "enable_plugins")) {
-                    config.enable_plugins = std.mem.eql(u8, kv.value, "true");
-                } else if (std.mem.eql(u8, kv.key, "plugin_directory")) {
-                    config.plugin_directory = try self.allocString(kv.value);
-                }
-            }
-        }
-
-        return config;
-    }
-
-    /// 解析领域配置
-    fn parseDomainConfig(self: *Self, content: []const u8) !DomainConfig {
-        _ = self;
-        var config = DomainConfig{};
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \t\r");
-            if (trimmed.len == 0 or trimmed[0] == '#') continue;
-
-            if (parseKeyValueStatic(trimmed)) |kv| {
-                if (std.mem.eql(u8, kv.key, "validate_models")) {
-                    config.validate_models = std.mem.eql(u8, kv.value, "true");
-                } else if (std.mem.eql(u8, kv.key, "enforce_business_rules")) {
-                    config.enforce_business_rules = std.mem.eql(u8, kv.value, "true");
-                }
-            }
-        }
-
-        return config;
-    }
-
-    /// 解析基础设施配置
-    fn parseInfraConfig(self: *Self, content: []const u8) !InfraConfig {
-        var config = InfraConfig{};
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \t\r");
-            if (trimmed.len == 0 or trimmed[0] == '#') continue;
-
-            if (self.parseKeyValue(trimmed)) |kv| {
-                if (std.mem.eql(u8, kv.key, "db_host")) {
-                    config.db_host = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "db_port")) {
-                    config.db_port = std.fmt.parseInt(u16, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "db_name")) {
-                    config.db_name = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "db_user")) {
-                    config.db_user = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "db_password")) {
-                    config.db_password = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "cache_host")) {
-                    config.cache_host = try self.allocString(kv.value);
-                } else if (std.mem.eql(u8, kv.key, "cache_port")) {
-                    config.cache_port = std.fmt.parseInt(u16, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                } else if (std.mem.eql(u8, kv.key, "http_timeout_ms")) {
-                    config.http_timeout_ms = std.fmt.parseInt(u32, kv.value, 10) catch {
-                        return ConfigError.InvalidValue;
-                    };
-                }
-            }
-        }
-
-        return config;
-    }
-
-    /// 解析键值对
-    fn parseKeyValue(self: *Self, line: []const u8) ?struct { key: []const u8, value: []const u8 } {
-        _ = self;
-        return parseKeyValueStatic(line);
     }
 
     /// 静态解析键值对（不需要 self）
