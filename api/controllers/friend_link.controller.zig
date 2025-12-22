@@ -130,12 +130,12 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -149,20 +149,20 @@ fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 保存实现
 fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
     const FriendLinkCreateDto = @import("../dto/friend_link_create.dto.zig").FriendLinkCreateDto;
     const dto = json_mod.parse(FriendLinkCreateDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
 
     // 验证URL格式
     if (dto.url.len == 0 or !strings.startsWith(dto.url, "http")) {
-        try base.send_error(response, "请输入有效的网站URL");
+        base.send_error(response, "请输入有效的网站URL");
         return;
     }
 
@@ -190,12 +190,12 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -210,7 +210,7 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 批量删除实现
 fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
@@ -219,13 +219,13 @@ fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     };
 
     const dto = json_mod.parse(BatchDeleteDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
 
     if (dto.ids.len == 0) {
-        try base.send_error(response, "请选择要删除的友链");
+        base.send_error(response, "请选择要删除的友链");
         return;
     }
 
@@ -242,12 +242,12 @@ fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn approveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -268,12 +268,12 @@ fn approveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn rejectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 

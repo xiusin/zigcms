@@ -686,12 +686,16 @@ pub fn TypedStringify(comptime T: type) type {
                 },
                 .int, .comptime_int => {
                     var buf: [32]u8 = undefined;
-                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch |err| {
+                        return err;
+                    };
                     try self.buffer.appendSlice(self.allocator, str);
                 },
                 .float, .comptime_float => {
                     var buf: [64]u8 = undefined;
-                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch |err| {
+                        return err;
+                    };
                     try self.buffer.appendSlice(self.allocator, str);
                 },
                 .optional => {
@@ -1314,11 +1318,15 @@ pub const Stringify = struct {
                 else => {
                     if (c < 0x20) {
                         var buf: [6]u8 = undefined;
-                        const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch unreachable;
+                        const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch |err| {
+                            return err;
+                        };
                         try self.buffer.appendSlice(self.allocator, hex);
                     } else if (c >= 0x80 and self.options.escape_non_ascii) {
                         var buf: [6]u8 = undefined;
-                        const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch unreachable;
+                        const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch |err| {
+                            return err;
+                        };
                         try self.buffer.appendSlice(self.allocator, hex);
                     } else {
                         try self.buffer.append(self.allocator, c);

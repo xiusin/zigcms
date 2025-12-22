@@ -69,7 +69,9 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     var sort_dir: []const u8 = "asc";
     var department_id: ?i32 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch unreachable;
+    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
+        return base.send_error(req, err);
+    };
     defer params.deinit();
 
     for (params.items) |value| {

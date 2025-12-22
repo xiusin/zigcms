@@ -114,12 +114,12 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -133,13 +133,13 @@ fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 保存实现
 fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
     const MemberGroupCreateDto = @import("../dto/member_group_create.dto.zig").MemberGroupCreateDto;
     const dto = json_mod.parse(MemberGroupCreateDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
@@ -160,7 +160,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
         const exists = try query.exists();
         if (exists) {
-            try base.send_error(response, "分组编码已存在");
+            base.send_error(response, "分组编码已存在");
             return;
         }
     }
@@ -192,12 +192,12 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -217,7 +217,7 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
     const has_members = try member_query.where("group_id", "=", id).exists();
     if (has_members) {
-        try base.send_error(response, "该分组下还有会员，无法删除");
+        base.send_error(response, "该分组下还有会员，无法删除");
         return;
     }
 

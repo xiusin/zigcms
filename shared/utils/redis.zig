@@ -22,9 +22,9 @@ const Reply = struct {
     allocator: Allocator,
     alloc_map: ?std.StringArrayHashMap([]const u8) = null,
 
-    pub fn init(allocator: Allocator, buf: []u8) Reply {
+    pub fn init(allocator: Allocator, buf: []u8) !Reply {
         return .{
-            .buf = allocator.dupe(u8, buf) catch unreachable,
+            .buf = try allocator.dupe(u8, buf),
             .allocator = allocator,
             .type = switch (buf[0]) {
                 ':' => .Integer,

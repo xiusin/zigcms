@@ -143,12 +143,12 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -162,13 +162,13 @@ fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 保存实现
 fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
     const MaterialCreateDto = @import("../dto/material_create.dto.zig").MaterialCreateDto;
     const dto = json_mod.parse(MaterialCreateDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
@@ -205,12 +205,12 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -231,7 +231,7 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 批量删除实现
 fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
@@ -240,13 +240,13 @@ fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     };
 
     const dto = json_mod.parse(BatchDeleteDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
 
     if (dto.ids.len == 0) {
-        try base.send_error(response, "请选择要删除的素材");
+        base.send_error(response, "请选择要删除的素材");
         return;
     }
 
@@ -266,19 +266,19 @@ fn uploadImpl(_: Self, _: zap.Request, response: zap.Response) !void {
     // 这里需要处理multipart/form-data上传
     // 保存文件到磁盘，返回文件信息
 
-    try base.send_error(response, "文件上传功能正在开发中，请稍后使用");
+    base.send_error(response, "文件上传功能正在开发中，请稍后使用");
 }
 
 /// 文件下载实现
 fn downloadImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -288,7 +288,7 @@ fn downloadImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         }
 
         // TODO: 返回文件流
-        try base.send_error(response, "文件下载功能暂未实现");
+        base.send_error(response, "文件下载功能暂未实现");
     } else {
         try base.send_failed(response, "素材不存在");
     }

@@ -117,12 +117,12 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -136,13 +136,13 @@ fn getImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 /// 保存实现
 fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     const body = r.body orelse {
-        try base.send_error(response, "请求体为空");
+        base.send_error(response, "请求体为空");
         return;
     };
 
     const MaterialCategoryCreateDto = @import("../dto/material_category_create.dto.zig").MaterialCategoryCreateDto;
     const dto = json_mod.parse(MaterialCategoryCreateDto, self.allocator, body) catch {
-        try base.send_error(response, "JSON格式错误");
+        base.send_error(response, "JSON格式错误");
         return;
     };
     defer json_mod.free(self.allocator, dto);
@@ -163,7 +163,7 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
         const exists = try query.exists();
         if (exists) {
-            try base.send_error(response, "分类编码已存在");
+            base.send_error(response, "分类编码已存在");
             return;
         }
     }
@@ -189,12 +189,12 @@ fn saveImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     _ = self;
     const id_str = r.pathParameters().get("id") orelse {
-        try base.send_error(response, "缺少ID参数");
+        base.send_error(response, "缺少ID参数");
         return;
     };
 
     const id = std.fmt.parseInt(i32, id_str, 10) catch {
-        try base.send_error(response, "无效的ID格式");
+        base.send_error(response, "无效的ID格式");
         return;
     };
 
@@ -204,7 +204,7 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
     const has_children = try query.where("parent_id", "=", id).exists();
     if (has_children) {
-        try base.send_error(response, "该分类下还有子分类，无法删除");
+        base.send_error(response, "该分类下还有子分类，无法删除");
         return;
     }
 
@@ -224,7 +224,7 @@ fn deleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
     const has_materials = try material_query.where("category_id", "=", id).exists();
     if (has_materials) {
-        try base.send_error(response, "该分类下还有素材，无法删除");
+        base.send_error(response, "该分类下还有素材，无法删除");
         return;
     }
 

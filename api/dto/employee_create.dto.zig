@@ -34,6 +34,14 @@ pub const EmployeeCreateDto = struct {
     status: i32 = 1,
     /// 排序
     sort: i32 = 0,
-    /// 备注
+/// 备注信息
     remark: []const u8 = "",
+    
+    /// 验证员工创建数据有效性
+    pub fn validate(self: @This()) !void {
+        if (self.employee_no.len == 0) return error.EmployeeNoRequired;
+        if (self.name.len == 0) return error.NameRequired;
+        if (self.gender < 0 or self.gender > 2) return error.InvalidGender;
+        if (self.status < 0 or self.status > 2) return error.InvalidStatus;
+    }
 };

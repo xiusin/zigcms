@@ -22,15 +22,19 @@
 //! base.send_error(req, error.DatabaseError);
 //! ```
 
-const zap = @import("zap");
+// 标准库
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+// 第三方库
+const zap = @import("zap");
+
+// 项目内部模块
 const logger = @import("../../application/services/logger/logger.zig");
 const global = @import("../../shared/primitives/global.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const json_mod = @import("../../application/services/json/json.zig");
 const sql_errors = @import("../../application/services/sql/sql_errors.zig");
-
-const Allocator = std.mem.Allocator;
 
 pub const Response = struct {
     code: u32 = 0,
@@ -104,7 +108,7 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
     req.sendJson(ser) catch return;
 }
 
-/// 响应前端table结构
+/// 响应前端table结构（标准格式）
 pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
     const ser = json_mod.JSON.encode(global.get_allocator(), .{
         .code = 0,
@@ -115,6 +119,13 @@ pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;
+}
+
+/// 响应前端table结构（自定义数据格式）
+pub fn send_layui_table_custom(allocator: Allocator, response: zap.Response, data: std.StringHashMap(json_mod.Value)) !void {
+    const ser = json_mod.JSON.encode(allocator, data) catch |e| return send_error(response, e);
+    defer allocator.free(ser);
+    response.sendJson(ser) catch return;
 }
 
 /// 响应失败消息

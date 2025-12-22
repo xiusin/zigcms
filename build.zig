@@ -117,8 +117,13 @@ pub fn build(b: *std.Build) void {
 
     // macOS: Homebrew 安装路径
     if (target.result.os.tag == .macos) {
-        exe.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        exe.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        // 尝试多个可能的 Homebrew MySQL 安装路径
+        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
+        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
     }
     // Linux: 标准路径
     if (target.result.os.tag == .linux) {
@@ -164,8 +169,8 @@ pub fn build(b: *std.Build) void {
     lib_unit_tests.linkLibC();
 
     if (target.result.os.tag == .macos) {
-        lib_unit_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        lib_unit_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        lib_unit_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        lib_unit_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
     }
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -193,8 +198,8 @@ pub fn build(b: *std.Build) void {
     exe_unit_tests.linkLibC();
 
     if (target.result.os.tag == .macos) {
-        exe_unit_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        exe_unit_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        exe_unit_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        exe_unit_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
     }
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
@@ -228,8 +233,8 @@ pub fn build(b: *std.Build) void {
 
     if (target.result.os.tag == .macos) {
         // Intel Mac (Homebrew)
-        integration_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        integration_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        integration_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        integration_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
         // Apple Silicon Mac (Homebrew)
         integration_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
         integration_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
@@ -279,8 +284,8 @@ pub fn build(b: *std.Build) void {
     property_tests.linkLibC();
 
     if (target.result.os.tag == .macos) {
-        property_tests.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        property_tests.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        property_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+        property_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
         property_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
         property_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
     }
@@ -418,8 +423,8 @@ pub fn build(b: *std.Build) void {
     //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/lib" });
     //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/include" });
     //     // Intel Mac
-    //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-    //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
+    //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
     // }
 
     // b.installArtifact(mysql_test_exe);

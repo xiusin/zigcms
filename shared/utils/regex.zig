@@ -4,7 +4,7 @@ const logger = std.log.scoped(.regex);
 pub fn start() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    var re = regex.Regex.compile(gpa.allocator(), "([0-9]+)") catch unreachable;
+    var re = try regex.Regex.compile(gpa.allocator(), "([0-9]+)");
     defer re.deinit();
 
     var result = try re.captures("1231456");

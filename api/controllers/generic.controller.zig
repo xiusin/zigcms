@@ -86,7 +86,9 @@ pub fn Generic(comptime T: type) type {
             var dto = dtos.Page{};
             req.parseQuery();
 
-            var params = req.parametersToOwnedStrList(self.allocator, true) catch unreachable;
+            var params = req.parametersToOwnedStrList(self.allocator, true) catch |err| {
+        return base.send_error(req, err);
+    };
             defer params.deinit();
 
             for (params.items) |value| {

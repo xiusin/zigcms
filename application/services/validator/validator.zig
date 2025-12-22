@@ -410,10 +410,10 @@ pub const Validator = struct {
     custom_messages: std.StringHashMap([]const u8),
     custom_rules: std.StringHashMap(RuleHandler),
 
-    pub fn init(allocator: Allocator) Self {
+    pub fn init(allocator: Allocator) !Self {
         var self: Self = undefined;
         self.allocator = allocator;
-        self.errors = std.ArrayList(ValidationError).initCapacity(allocator, 8) catch unreachable;
+        self.errors = try std.ArrayList(ValidationError).initCapacity(allocator, 8);
         self.custom_messages = std.StringHashMap([]const u8).init(allocator);
         self.custom_rules = std.StringHashMap(RuleHandler).init(allocator);
         return self;

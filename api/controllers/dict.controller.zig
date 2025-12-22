@@ -180,7 +180,9 @@ pub fn searchDict(self: *Self, req: zap.Request) !void {
     var dict_type: ?[]const u8 = null;
     var keyword: ?[]const u8 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch unreachable;
+    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
+        return base.send_error(req, err);
+    };
     defer params.deinit();
 
     for (params.items) |value| {

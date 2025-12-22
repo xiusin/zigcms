@@ -92,7 +92,7 @@ pub fn defineCached(comptime T: type) type {
             return std.fmt.alloc(std.heap.page_allocator, "model_{s}_{s}", .{
                 @typeName(T),
                 suffix,
-            }) catch unreachable; // In production, you'd want proper error handling
+            });
         }
 
         /// 清理与模型相关的缓存
@@ -143,7 +143,7 @@ pub fn defineCached(comptime T: type) type {
             const cache_key = try std.fmt.alloc(std.heap.page_allocator, "model_{s}_find_{any}", .{
                 @typeName(T),
                 id,
-            }) catch unreachable;
+            });
             defer std.heap.page_allocator.free(cache_key);
 
             // 试图从缓存获取
@@ -222,7 +222,7 @@ pub fn defineCached(comptime T: type) type {
             const cache_key = try std.fmt.alloc(std.heap.page_allocator, "model_{s}_find_{any}", .{
                 @typeName(T),
                 id,
-            }) catch unreachable;
+            });
             defer std.heap.page_allocator.free(cache_key);
 
             const affected = try Self.DestroyWithDB(global_db.?, id);

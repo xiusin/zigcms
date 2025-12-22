@@ -1,5 +1,5 @@
 pub const Admin = struct {
-    pub const ingore_fields = [_][]const u8{"token"};
+    pub const ignore_fields = [_][]const u8{"token"};
     id: ?i32 = null,
     username: []const u8 = "",
     phone: []const u8 = "",

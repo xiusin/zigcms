@@ -2,10 +2,14 @@
 //!
 //! 提供员工的 CRUD 操作及关联查询
 
+// 标准库
 const std = @import("std");
-const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 
+// 第三方库
+const zap = @import("zap");
+
+// 项目内部模块
 const base = @import("base.fn.zig");
 const models = @import("../../domain/entities/models.zig");
 const sql = @import("../../application/services/sql/orm.zig");
@@ -74,7 +78,9 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     var department_id: ?i32 = null;
     var status: ?i32 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch unreachable;
+    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
+        return base.send_error(req, err);
+    };
     defer params.deinit();
 
     for (params.items) |value| {

@@ -210,8 +210,8 @@ pub inline fn join(allocator: Allocator, separator: []const u8, parts: []const [
 }
 
 /// 字符串替换
-pub inline fn str_replace(allocator: Allocator, search: []const u8, replace: []const u8, subject: []const u8) []const u8 {
-    return std.mem.replaceOwned(u8, allocator, subject, search, replace) catch unreachable;
+pub inline fn str_replace(allocator: Allocator, search: []const u8, replace: []const u8, subject: []const u8) ![]const u8 {
+    return std.mem.replaceOwned(u8, allocator, subject, search, replace);
 }
 
 /// 单词首字母大写（原地修改版本）

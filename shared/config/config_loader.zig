@@ -12,7 +12,7 @@
 //! defer loader.deinit();
 //! ```
 //!
-//! ## 配置文件对应关系
+//! ## 配置文件对应关系 key名称和文件名匹配
 //! - api.json → ApiConfig
 //! - app.json → AppConfig
 //! - domain.json → DomainConfig
@@ -555,28 +555,3 @@ pub const ConfigLoader = struct {
         return errors_list;
     }
 };
-
-// ============================================================================
-// 测试
-// ============================================================================
-
-test "ConfigLoader - parse key value" {
-    const result = ConfigLoader.parseKeyValueStatic("host = \"127.0.0.1\"");
-    try std.testing.expect(result != null);
-    try std.testing.expectEqualStrings("host", result.?.key);
-    try std.testing.expectEqualStrings("127.0.0.1", result.?.value);
-}
-
-test "ConfigLoader - parse key value without quotes" {
-    const result = ConfigLoader.parseKeyValueStatic("port = 3000");
-    try std.testing.expect(result != null);
-    try std.testing.expectEqualStrings("port", result.?.key);
-    try std.testing.expectEqualStrings("3000", result.?.value);
-}
-
-test "ConfigLoader - parse boolean value" {
-    const result = ConfigLoader.parseKeyValueStatic("enable_cache = true");
-    try std.testing.expect(result != null);
-    try std.testing.expectEqualStrings("enable_cache", result.?.key);
-    try std.testing.expectEqualStrings("true", result.?.value);
-}

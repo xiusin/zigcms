@@ -123,7 +123,9 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             req.parseQuery();
 
             var dto = dtos.common.Page{};
-            var params = req.parametersToOwnedStrList(self.allocator) catch unreachable;
+            var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
+        return base.send_error(req, err);
+    };
             defer params.deinit();
 
             for (params.items) |value| {

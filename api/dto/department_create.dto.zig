@@ -24,4 +24,12 @@ pub const DepartmentCreateDto = struct {
     status: i32 = 1,
     /// 备注
     remark: []const u8 = "",
+    
+    /// 验证部门创建数据有效性
+    pub fn validate(self: @This()) !void {
+        if (self.name.len == 0) return error.NameRequired;
+        if (self.name.len > 100) return error.NameTooLong;
+        if (self.parent_id < 0) return error.InvalidParentId;
+        if (self.status < 0 or self.status > 1) return error.InvalidStatus;
+    }
 };

@@ -58,9 +58,9 @@ pub const CmdArg = union(enum) {
     pub fn toString(self: CmdArg, buffer: []u8) ![]const u8 {
         return switch (self) {
             .string => |s| s,
-            .int => |i| std.fmt.bufPrint(buffer, "{d}", .{i}) catch unreachable,
-            .uint => |u| std.fmt.bufPrint(buffer, "{d}", .{u}) catch unreachable,
-            .float => |f| std.fmt.bufPrint(buffer, "{d}", .{f}) catch unreachable,
+            .int => |i| std.fmt.bufPrint(buffer, "{d}", .{i}) catch |err| return err,
+            .uint => |u| std.fmt.bufPrint(buffer, "{d}", .{u}) catch |err| return err,
+            .float => |f| std.fmt.bufPrint(buffer, "{d}", .{f}) catch |err| return err,
             .boolean => |b| if (b) "1" else "0",
         };
     }
@@ -160,7 +160,10 @@ pub const CommandBuilder = struct {
     pub fn addInt(self: *CommandBuilder, value: i64) !*CommandBuilder {
         // 分配足够的空间存储整数字符串（i64 最长 20 字符 + 符号）
         var buffer = try self.allocator.alloc(u8, 21);
-        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch unreachable;
+        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch |err| {
+            self.allocator.free(buffer);
+            return err;
+        };
         // 调整到实际长度
         buffer = try self.allocator.realloc(buffer, str.len);
         try self.string_pool.append(self.allocator, buffer);
@@ -171,7 +174,10 @@ pub const CommandBuilder = struct {
     /// 添加无符号整数参数
     pub fn addUint(self: *CommandBuilder, value: u64) !*CommandBuilder {
         var buffer = try self.allocator.alloc(u8, 20);
-        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch unreachable;
+        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch |err| {
+            self.allocator.free(buffer);
+            return err;
+        };
         buffer = try self.allocator.realloc(buffer, str.len);
         try self.string_pool.append(self.allocator, buffer);
         try self.args.append(self.allocator, buffer);
@@ -181,7 +187,10 @@ pub const CommandBuilder = struct {
     /// 添加浮点数参数
     pub fn addFloat(self: *CommandBuilder, value: f64) !*CommandBuilder {
         var buffer = try self.allocator.alloc(u8, 32);
-        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch unreachable;
+        const str = std.fmt.bufPrint(buffer, "{d}", .{value}) catch |err| {
+            self.allocator.free(buffer);
+            return err;
+        };
         buffer = try self.allocator.realloc(buffer, str.len);
         try self.string_pool.append(self.allocator, buffer);
         try self.args.append(self.allocator, buffer);

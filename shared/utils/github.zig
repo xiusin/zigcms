@@ -78,8 +78,8 @@ pub const GitApi = struct {
         self.db.deinit();
     }
 
-    fn api(self: *GitApi, path: []const u8) []const u8 {
-        return std.mem.concat(self.allocator, u8, &[_][]const u8{ self.base_url, path }) catch unreachable;
+    fn api(self: *GitApi, path: []const u8) ![]const u8 {
+        return std.mem.concat(self.allocator, u8, &[_][]const u8{ self.base_url, path });
     }
 
     fn _user(self: *GitApi) !void {
@@ -191,7 +191,7 @@ pub const GitApi = struct {
         var headers = std.http.Headers.init(self.allocator);
         defer headers.deinit();
 
-        const authorization: []const u8 = std.mem.concat(self.allocator, u8, &[_][]const u8{ "Bearer ", self.token }) catch unreachable;
+        const authorization: []const u8 = try std.mem.concat(self.allocator, u8, &[_][]const u8{ "Bearer ", self.token });
         defer self.allocator.free(authorization);
 
         try headers.append("Authorization", authorization);

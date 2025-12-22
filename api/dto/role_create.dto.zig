@@ -22,4 +22,12 @@ pub const RoleCreateDto = struct {
     status: i32 = 1,
     /// 备注
     remark: []const u8 = "",
+    
+    /// 验证角色创建数据有效性
+    pub fn validate(self: @This()) !void {
+        if (self.name.len == 0) return error.NameRequired;
+        if (self.name.len > 50) return error.NameTooLong;
+        if (self.data_scope < 1 or self.data_scope > 5) return error.InvalidDataScope;
+        if (self.status < 0 or self.status > 1) return error.InvalidStatus;
+    }
 };
