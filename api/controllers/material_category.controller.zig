@@ -279,11 +279,13 @@ fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     }
 
     for (categories.items()) |category| {
-        const label = try std.fmt.allocPrint(self.allocator, "{s}", .{category.name});
-        try options.append(.{
-            .value = category.id.?,
-            .label = label,
-        });
+        if (category.id) |id| {
+            const label = try self.allocator.dupe(u8, category.name);
+            try options.append(.{
+                .value = id,
+                .label = label,
+            });
+        }
     }
 
     try base.send_ok(response, options.items);
@@ -311,6 +313,9 @@ fn buildCategoryTree(self: Self, categories: []const models.MaterialCategory) ![
 
 /// 构建树节点
 fn buildTreeNode(self: Self, categories: []const models.MaterialCategory, category: models.MaterialCategory) !MaterialCategoryTreeNode {
+    if (category.id == null) {
+        return error.InvalidMaterialCategory;
+    }
     var node = MaterialCategoryTreeNode{
         .id = category.id.?,
         .name = try self.allocator.dupe(u8, category.name),
@@ -318,7 +323,7 @@ fn buildTreeNode(self: Self, categories: []const models.MaterialCategory, catego
         .parent_id = category.parent_id,
         .sort = category.sort,
         .status = category.status,
-        .children = undefined,
+        .children = &[_]MaterialCategoryTreeNode{},
     };
 
     // 查找子分类

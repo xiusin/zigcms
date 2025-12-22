@@ -253,11 +253,13 @@ fn selectImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     }
 
     for (groups.items()) |group| {
-        const label = try std.fmt.allocPrint(self.allocator, "{s}", .{group.name});
-        try options.append(.{
-            .value = group.id.?,
-            .label = label,
-        });
+        if (group.id) |group_id| {
+            const label = try self.allocator.dupe(u8, group.name);
+            try options.append(.{
+                .value = group_id,
+                .label = label,
+            });
+        }
     }
 
     try base.send_ok(response, options.items);

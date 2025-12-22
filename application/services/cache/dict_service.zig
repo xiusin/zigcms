@@ -85,6 +85,23 @@ pub const DictService = struct {
         return null;
     }
 
+    /// 检查字典重复（优化版本 - 单次查询）
+    pub fn checkDictDuplicate(self: *Self, dict_type: []const u8, dict_value: []const u8, dict_label: []const u8, exclude_id: i32) !bool {
+        var query = DictOrm.query(self.db);
+        defer query.deinit();
+
+        // 使用 OR 条件检查值或标签重复
+        const results = try query
+            .whereEq("dict_type", dict_type)
+            .where("status", "=", 1)
+            .where("(dict_value = ? OR dict_label = ?)", .{ dict_value, dict_label })
+            .where("id", "!=", exclude_id)
+            .limit(1)
+            .get();
+
+        return results.len > 0;
+    }
+
     /// 根据类型和标签获取字典项
     pub fn getDictByTypeAndLabel(self: *Self, dict_type: []const u8, dict_label: []const u8) !?Dict {
         var query = DictOrm.query(self.db);

@@ -186,7 +186,11 @@ pub fn login(self: *Self, req: zap.Request) !void {
     var user = user_opt.?;
     defer Admin.freeModel(self.allocator, &user);
 
-    if (user.id == null or user.id.? == 0) {
+    if (user.id) |user_id| {
+        if (user_id == 0) {
+            return base.send_failed(req, "用户不存在");
+        }
+    } else {
         return base.send_failed(req, "用户不存在");
     }
 

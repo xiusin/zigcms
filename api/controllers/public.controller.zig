@@ -201,12 +201,15 @@ pub fn files(self: *Self, req: zap.Request) !void {
             item.type = strings.ltrim(std.fs.path.extension(it.name), ".");
         }
         if (path.len == 0) {
-            item.path = std.fmt.allocPrint(self.allocator, "{s}", .{it.name}) catch |e| return base.send_error(req, e);
-        } else {
-            item.path = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, it.name }) catch |e| return base.send_error(req, e);
-        }
-        item.thumb = std.fmt.allocPrint(self.allocator, "ico/{s}.png", .{item.type}) catch |e| return base.send_error(req, e);
-
+            item.path = self.allocator.dupe(u8, it.name) catch |e| return base.send_error(req, e);
+                                } else {
+                                    const full_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ path, it.name });
+                                    defer self.allocator.free(full_path);
+                                    item.path = self.allocator.dupe(u8, full_path) catch |e| return base.send_error(req, e);
+                                }
+                                const thumb_path = try std.fmt.allocPrint(self.allocator, "ico/{s}.png", .{item.type});
+                                defer self.allocator.free(thumb_path);
+                                item.thumb = self.allocator.dupe(u8, thumb_path) catch |e| return base.send_error(req, e);
         items.append(self.allocator, item) catch {};
     }
 

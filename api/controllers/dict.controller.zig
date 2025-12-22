@@ -97,15 +97,15 @@ pub fn saveDict(self: *Self, req: zap.Request) !void {
     const service_manager = global.getServiceManager();
     const dict_service = service_manager.getDictService();
 
-    // 检查是否重复
-    const existing_by_value = try dict_service.getDictByTypeAndValue(dict_data.dict_type, dict_data.dict_value);
-    if (existing_by_value != null) {
-        return base.send_failed(req, "相同字典类型下已存在相同的字典值");
-    }
-
-    const existing_by_label = try dict_service.getDictByTypeAndLabel(dict_data.dict_type, dict_data.dict_label);
-    if (existing_by_label != null) {
-        return base.send_failed(req, "相同字典类型下已存在相同的字典标签");
+    // 检查是否重复 - 使用单一查询优化
+    const is_duplicate = try dict_service.checkDictDuplicate(
+        dict_data.dict_type, 
+        dict_data.dict_value, 
+        dict_data.dict_label, 
+        dict_data.id orelse 0
+    );
+    if (is_duplicate) {
+        return base.send_failed(req, "字典值或标签已存在");
     }
 
     var result: models.Dict = undefined;

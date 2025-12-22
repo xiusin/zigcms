@@ -466,6 +466,28 @@ pub fn sprinf_alloc(allocator: Allocator, format: []const u8, args: anytype) ![]
     return try std.fmt.allocPrint(allocator, format, args);
 }
 
+/// sprinf_stack 使用栈缓冲区格式化字符串（适用于小字符串，避免堆分配）
+pub fn sprinf_stack(comptime size: usize, format: []const u8, args: anytype) ![size]u8 {
+    var buf: [size]u8 = undefined;
+    const result = try std.fmt.bufPrint(&buf, format, args);
+    return result[0..result.len].*;
+}
+
+/// sprinf_auto 自动选择栈或堆分配的字符串格式化
+pub fn sprinf_auto(allocator: Allocator, format: []const u8, args: anytype) ![]const u8 {
+    // 对于小于 256 字符的格式化，先尝试使用栈缓冲区
+    if (format.len < 128) {
+        var stack_buf: [256]u8 = undefined;
+        if (std.fmt.bufPrint(&stack_buf, format, args)) |result| {
+            return allocator.dupe(u8, result);
+        } else {
+            // 如果栈缓冲区不够，回退到堆分配
+            return try std.fmt.allocPrint(allocator, format, args);
+        }
+    }
+    return try std.fmt.allocPrint(allocator, format, args);
+}
+
 /// 剪切子字符串
 pub fn substr(allocator: Allocator, str: []const u8, start: usize, end: usize) ![]const u8 {
     const view = try std.unicode.Utf8View.init(str);

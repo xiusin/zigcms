@@ -971,6 +971,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         // 用法: Product.where(db, "name", "=", "test").get()
         // ====================================================================
 
+        /// 通用的静态方法生成器
+        fn createStaticMethod(comptime method_name: []const u8, comptime args: anytype) type {
+            return struct {
+                pub fn call(db: *Database, method_args: args) ModelQuery(T) {
+                    const q = query(db);
+                    @field(q, method_name)(method_args) catch unreachable;
+                    return q;
+                }
+            };
+        }
+
         /// 静态 where - 创建查询并添加条件
         /// 用法: Product.where(db, "category", "=", "电子").get()
         pub fn where(db: *Database, field: []const u8, op: []const u8, value: anytype) ModelQuery(T) {
