@@ -218,6 +218,7 @@ pub const Pool = struct {
                 allocator.destroy(pooled);
                 break;
             };
+            self.active_count += 1;
         }
 
         return self;

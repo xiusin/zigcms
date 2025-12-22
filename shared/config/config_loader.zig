@@ -60,7 +60,7 @@ pub const ConfigLoader = struct {
         return .{
             .allocator = allocator,
             .config_dir = config_dir,
-            .allocated_strings = std.ArrayList([]const u8).init(allocator),
+            .allocated_strings = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
         };
     }
 
@@ -127,187 +127,77 @@ pub const ConfigLoader = struct {
 
     /// 加载 API 配置
     fn loadApiConfig(self: *Self) !ApiConfig {
-        const json_value = try self.readJsonConfigFile("api.toml");
-        defer json_value.deinit();
-        return self.parseConfigFromJson(ApiConfig, json_value);
+        const content = try self.readConfigFile("api.json");
+        defer self.allocator.free(content);
+        
+        const parsed = json.parseFromSlice(ApiConfig, self.allocator, content, .{}) catch {
+            return ConfigError.ParseError;
+        };
+        defer parsed.deinit();
+        
+        var config = parsed.value;
+        
+        // 复制字符串字段以避免依赖已释放的内存
+        config.host = try self.allocString(config.host);
+        config.public_folder = try self.allocString(config.public_folder);
+        
+        return config;
     }
 
     /// 加载应用配置
     fn loadAppConfig(self: *Self) !AppConfig {
-        const json_value = try self.readJsonConfigFile("app.toml");
-        defer json_value.deinit();
-        return self.parseConfigFromJson(AppConfig, json_value);
+        const content = try self.readConfigFile("app.json");
+        defer self.allocator.free(content);
+        
+        const parsed = json.parseFromSlice(AppConfig, self.allocator, content, .{}) catch {
+            return ConfigError.ParseError;
+        };
+        defer parsed.deinit();
+        
+        var config = parsed.value;
+        
+        // 复制字符串字段以避免依赖已释放的内存
+        config.plugin_directory = try self.allocString(config.plugin_directory);
+        
+        return config;
     }
 
     /// 加载领域配置
     fn loadDomainConfig(self: *Self) !DomainConfig {
-        const json_value = try self.readJsonConfigFile("domain.toml");
-        defer json_value.deinit();
-        return self.parseConfigFromJson(DomainConfig, json_value);
+        const content = try self.readConfigFile("domain.json");
+        defer self.allocator.free(content);
+        
+        const parsed = json.parseFromSlice(DomainConfig, self.allocator, content, .{}) catch {
+            return ConfigError.ParseError;
+        };
+        defer parsed.deinit();
+        
+        return parsed.value; // DomainConfig 没有字符串字段
     }
 
     /// 加载基础设施配置
     fn loadInfraConfig(self: *Self) !InfraConfig {
-        const json_value = try self.readJsonConfigFile("infra.toml");
-        defer json_value.deinit();
-        return self.parseConfigFromJson(InfraConfig, json_value);
-    }
-
-    /// 读取并解析JSON配置文件内容
-    fn readJsonConfigFile(self: *Self, filename: []const u8) !json.Value {
-        const json_filename = try std.fmt.allocPrint(self.allocator, "{s}.json", .{std.fs.path.stem(filename)});
-        defer self.allocator.free(json_filename);
-
-        const content = try self.readConfigFile(json_filename);
+        const content = try self.readConfigFile("infra.json");
         defer self.allocator.free(content);
-
-        const parsed = json.parseFromSlice(json.Value, self.allocator, content, .{}) catch {
+        
+        const parsed = json.parseFromSlice(InfraConfig, self.allocator, content, .{}) catch {
             return ConfigError.ParseError;
         };
-        errdefer parsed.deinit();
-
-        if (parsed.value != .object) {
-            parsed.deinit();
-            return ConfigError.ParseError;
-        }
-
-        return parsed.value;
-    }
-
-    /// 通用JSON配置解析函数 - 使用反射扫描结构体字段
-    fn parseConfigFromJson(self: *Self, comptime T: type, json_obj: json.Value) !T {
-        var config = T{};
-        const type_info = @typeInfo(T);
-
-        if (type_info != .@"struct") {
-            return ConfigError.ParseError;
-        }
-
-        inline for (type_info.@"struct".fields) |field| {
-            // 先尝试直接匹配字段名
-            if (json_obj.object.get(field.name)) |json_value| {
-                @field(config, field.name) = try self.parseJsonField(field.type, json_value);
-            } else {
-                // 尝试蛇形转驼峰转换
-                const camel_name = try self.snakeToCamel(field.name);
-                defer self.allocator.free(camel_name);
-                if (json_obj.object.get(camel_name)) |json_value| {
-                    @field(config, field.name) = try self.parseJsonField(field.type, json_value);
-                } else {
-                    // 尝试驼峰转蛇形转换
-                    const snake_name = try self.camelToSnake(field.name);
-                    defer self.allocator.free(snake_name);
-                    if (json_obj.object.get(snake_name)) |json_value| {
-                        @field(config, field.name) = try self.parseJsonField(field.type, json_value);
-                    }
-                    // 如果都找不到，使用默认值（结构体已初始化为默认值）
-                }
-            }
-        }
-
+        defer parsed.deinit();
+        
+        var config = parsed.value;
+        
+        // 复制字符串字段以避免依赖已释放的内存
+        config.db_host = try self.allocString(config.db_host);
+        config.db_name = try self.allocString(config.db_name);
+        config.db_user = try self.allocString(config.db_user);
+        config.db_password = try self.allocString(config.db_password);
+        config.cache_host = try self.allocString(config.cache_host);
+        
         return config;
     }
 
-    /// 将蛇形命名转换为驼峰命名
-    /// db_port -> dbPort
-    fn snakeToCamel(self: *Self, name: []const u8) ![]const u8 {
-        var result = std.ArrayList(u8).init(self.allocator);
-        defer result.deinit();
-
-        var i: usize = 0;
-        while (i < name.len) {
-            const char = name[i];
-            if (char == '_') {
-                if (i + 1 < name.len) {
-                    i += 1;
-                    const next_char = name[i];
-                    if (next_char >= 'a' and next_char <= 'z') {
-                        try result.append(next_char - 32); // 转换为大写
-                    } else {
-                        try result.append(next_char);
-                    }
-                }
-            } else {
-                try result.append(char);
-            }
-            i += 1;
-        }
-
-        return result.toOwnedSlice();
-    }
-
-    /// 将驼峰命名转换为蛇形命名
-    /// dbPort -> db_port
-    fn camelToSnake(self: *Self, name: []const u8) ![]const u8 {
-        var result = std.ArrayList(u8).init(self.allocator);
-        defer result.deinit();
-
-        for (name, 0..) |char, i| {
-            if (char >= 'A' and char <= 'Z') {
-                if (i > 0) {
-                    try result.append('_');
-                }
-                try result.append(char + 32); // 转换为小写
-            } else {
-                try result.append(char);
-            }
-        }
-
-        return result.toOwnedSlice();
-    }
-
-    /// 解析单个JSON字段值
-    fn parseJsonField(self: *Self, comptime FieldType: type, json_value: json.Value) !FieldType {
-        const type_info = @typeInfo(FieldType);
-
-        switch (type_info) {
-            .bool => return json_value.bool,
-            .int => |int_info| {
-                _ = int_info; // 标记为已使用
-
-                if (json_value == .integer) {
-                    return @intCast(json_value.integer);
-                } else if (json_value == .float) {
-                    return @intFromFloat(json_value.float);
-                } else {
-                    return ConfigError.InvalidValue;
-                }
-            },
-            .float => |float_info| {
-                _ = float_info; // 标记为已使用
-
-                if (json_value == .float) {
-                    return @floatCast(json_value.float);
-                } else if (json_value == .integer) {
-                    return @floatFromInt(json_value.integer);
-                } else {
-                    return ConfigError.InvalidValue;
-                }
-            },
-            .pointer => |ptr_info| {
-                if (ptr_info.size == .slice and ptr_info.child == u8) {
-                    // []const u8
-                    if (json_value == .string) {
-                        return try self.allocString(json_value.string);
-                    } else {
-                        return ConfigError.InvalidValue;
-                    }
-                } else {
-                    return ConfigError.InvalidValue;
-                }
-            },
-            .optional => |opt_info| {
-                if (json_value == .null) {
-                    return null;
-                } else {
-                    return try self.parseJsonField(opt_info.child, json_value);
-                }
-            },
-            else => {
-                return ConfigError.InvalidValue;
-            },
-        }
-    }
+    
 
     /// 读取配置文件内容
     fn readConfigFile(self: *Self, filename: []const u8) ![]const u8 {
@@ -346,7 +236,7 @@ pub const ConfigLoader = struct {
     /// 分配并存储字符串
     fn allocString(self: *Self, value: []const u8) ![]const u8 {
         const str = try self.allocator.dupe(u8, value);
-        try self.allocated_strings.append(str);
+        try self.allocated_strings.append(self.allocator, str);
         return str;
     }
 
@@ -373,27 +263,21 @@ pub const ConfigLoader = struct {
         // ========================================================================
         if (std.posix.getenv("ZIGCMS_DB_HOST")) |val| {
             sys_config.infra.db_host = try self.allocString(val);
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_HOST = {s}\n", .{val});
         }
         if (std.posix.getenv("ZIGCMS_DB_PORT")) |val| {
             sys_config.infra.db_port = std.fmt.parseInt(u16, val, 10) catch sys_config.infra.db_port;
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_PORT = {s}\n", .{val});
         }
         if (std.posix.getenv("ZIGCMS_DB_NAME")) |val| {
             sys_config.infra.db_name = try self.allocString(val);
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_NAME = {s}\n", .{val});
         }
         if (std.posix.getenv("ZIGCMS_DB_USER")) |val| {
             sys_config.infra.db_user = try self.allocString(val);
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_USER = {s}\n", .{val});
         }
         if (std.posix.getenv("ZIGCMS_DB_PASSWORD")) |val| {
             sys_config.infra.db_password = try self.allocString(val);
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_PASSWORD = ****\n", .{});
         }
         if (std.posix.getenv("ZIGCMS_DB_POOL_SIZE")) |val| {
             sys_config.infra.db_pool_size = std.fmt.parseInt(u32, val, 10) catch sys_config.infra.db_pool_size;
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_DB_POOL_SIZE = {s}\n", .{val});
         }
 
         // ========================================================================
@@ -401,11 +285,9 @@ pub const ConfigLoader = struct {
         // ========================================================================
         if (std.posix.getenv("ZIGCMS_API_HOST")) |val| {
             sys_config.api.host = try self.allocString(val);
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_API_HOST = {s}\n", .{val});
         }
         if (std.posix.getenv("ZIGCMS_API_PORT")) |val| {
             sys_config.api.port = std.fmt.parseInt(u16, val, 10) catch sys_config.api.port;
-            std.debug.print("📝 环境变量覆盖: ZIGCMS_API_PORT = {s}\n", .{val});
         }
 
         // ========================================================================
@@ -517,7 +399,7 @@ pub const ConfigLoader = struct {
             return ConfigError.InvalidValue;
         }
 
-        std.debug.print("✅ 配置验证通过\n", .{});
+        
     }
 
     /// 验证并返回详细错误信息
@@ -525,12 +407,12 @@ pub const ConfigLoader = struct {
     /// 返回所有验证错误的列表，而不是在第一个错误时停止。
     pub fn validateWithDetails(self: *Self, config_ptr: *const SystemConfig, allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
         _ = self;
-        var errors_list = std.ArrayList([]const u8).init(allocator);
+        var errors_list = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         errdefer {
             for (errors_list.items) |err| {
                 allocator.free(err);
             }
-            errors_list.deinit();
+            errors_list.deinit(allocator);
         }
 
         // 验证 API 配置

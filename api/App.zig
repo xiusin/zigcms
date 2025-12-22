@@ -116,7 +116,7 @@ pub const App = struct {
         try self.router.handle_func("/dynamic/delete", ctrl_ptr, DynamicController.delete);
         try self.router.handle_func("/dynamic/schema", ctrl_ptr, DynamicController.schema);
 
-        // 扩展操作
+        // 扩展操作 
         try self.router.handle_func("/dynamic/query", ctrl_ptr, DynamicController.query);
         try self.router.handle_func("/dynamic/count", ctrl_ptr, DynamicController.count);
         try self.router.handle_func("/dynamic/exists", ctrl_ptr, DynamicController.exists);
@@ -130,7 +130,6 @@ pub const App = struct {
         const service_mgr = root.getServiceManager() orelse @panic("ServiceManager not initialized");
         const config = service_mgr.getConfig();
         const api_config = config.api;
-
         var listener = zap.HttpListener.init(.{
             .port = api_config.port,
             .on_request = self.router.on_request_handler(),
@@ -139,8 +138,8 @@ pub const App = struct {
             .max_clients = api_config.max_clients,
             .timeout = @intCast(api_config.timeout),
         });
-        try listener.listen();
         logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });
+        try listener.listen();
         zap.start(.{ .threads = 4, .workers = 4 });
     }
 

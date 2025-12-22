@@ -212,7 +212,7 @@ main() {
     
     # 设置环境变量
     export ZIGCMS_HOST="$host"
-    export ZIGCMS_PORT="$port"
+    export ZIGCMS_API_PORT="$port"
     export ZIGCMS_ENV="development"
     
     debug "服务器配置: $host:$port"

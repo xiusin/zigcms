@@ -285,7 +285,7 @@ KEEP_BUILD_ARTIFACTS="5"           # 保留构建产物数量
 # 开发环境配置
 # =============================================================================
 DEV_HOST="127.0.0.1"               # 开发服务器主机
-DEV_PORT="8080"                    # 开发服务器端口
+DEV_PORT="3000"                    # 开发服务器端口
 WATCH_EXCLUDE_PATTERNS=".zig-cache zig-out logs *.log"  # 文件监听排除模式
 HOT_RELOAD_DELAY="1000"            # 热重载延迟(ms)
 
@@ -411,7 +411,7 @@ jobs:
 ./scripts/setup.sh --force
 
 # 开发环境配置
-./scripts/dev.sh --watch --host 0.0.0.0 --port 8080
+./scripts/dev.sh --watch --host 0.0.0.0 --port 3000
 
 # 代码质量检查
 ./scripts/test.sh all

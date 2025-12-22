@@ -185,3 +185,5 @@ webdriver
 
 /tmp/.gitkeep
 !/tmp/.gitkeep
+php_code
+admin-views

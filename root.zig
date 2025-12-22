@@ -86,6 +86,11 @@ pub const shared = @import("shared/mod.zig");
 /// 提供完整的多数据库 ORM 功能（MySQL/SQLite/PostgreSQL）。
 pub const sql = @import("application/services/sql/mod.zig");
 
+/// Redis 客户端模块 - 缓存和键值存储
+///
+/// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
+pub const redis = @import("application/services/redis/redis.zig");
+
 // ============================================================================
 // 服务管理
 // ============================================================================
@@ -175,7 +180,6 @@ pub fn loadConfigFromFiles(allocator: std.mem.Allocator, config_dir: []const u8)
     // 验证配置
     try loader.validate(&file_config);
 
-    std.debug.print("✅ 配置文件加载并验证成功\n", .{});
     return file_config;
 }
 
@@ -191,7 +195,8 @@ pub fn loadConfigFromFiles(allocator: std.mem.Allocator, config_dir: []const u8)
 pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     const file_config = try loadConfigFromFiles(allocator, "configs");
 
-    return SystemConfig{
+    // 应用环境变量覆盖
+    var system_config = SystemConfig{
         .api = .{
             .host = file_config.api.host,
             .port = file_config.api.port,
@@ -225,6 +230,31 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
         },
         .shared = .{},
     };
+
+    // 应用环境变量覆盖
+    if (std.posix.getenv("ZIGCMS_API_HOST")) |val| {
+        system_config.api.host = val;
+    }
+    if (std.posix.getenv("ZIGCMS_API_PORT")) |val| {
+        system_config.api.port = std.fmt.parseInt(u16, val, 10) catch system_config.api.port;
+    }
+    if (std.posix.getenv("ZIGCMS_DB_HOST")) |val| {
+        system_config.infra.db_host = val;
+    }
+    if (std.posix.getenv("ZIGCMS_DB_PORT")) |val| {
+        system_config.infra.db_port = std.fmt.parseInt(u16, val, 10) catch system_config.infra.db_port;
+    }
+    if (std.posix.getenv("ZIGCMS_DB_NAME")) |val| {
+        system_config.infra.db_name = val;
+    }
+    if (std.posix.getenv("ZIGCMS_DB_USER")) |val| {
+        system_config.infra.db_user = val;
+    }
+    if (std.posix.getenv("ZIGCMS_DB_PASSWORD")) |val| {
+        system_config.infra.db_password = val;
+    }
+
+    return system_config;
 }
 
 /// 初始化整个系统
@@ -246,26 +276,26 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 存储分配器以便后续清理
     global_allocator = allocator;
-    
+
     // 初始化各层，遵照依赖关系
     try shared.init(allocator, config.shared);
     errdefer shared.deinit();
-    
+
     try domain.init(allocator, config.domain);
     // domain 层目前没有 deinit，跳过 errdefer
-    
+
     try application.init(allocator, config.app);
     // application 层目前没有 deinit，跳过 errdefer
-    
+
     try api.init(allocator, config.api);
     // api 层目前没有 deinit，跳过 errdefer
-    
+
     const db = try infrastructure.init(allocator, config.infra);
     errdefer {
         db.deinit();
         allocator.destroy(db);
     }
-    
+
     // 存储基础设施数据库连接以便后续清理
     infrastructure_db = db;
     logger.info("系统初始化完成", .{});
@@ -314,7 +344,7 @@ pub fn deinitSystem() void {
 
     // 其他各层清理
     shared.deinit();
-    
+
     // 清理全局分配器引用
     global_allocator = null;
 

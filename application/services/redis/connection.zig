@@ -206,18 +206,22 @@ pub const Connection = struct {
     /// 即使 QUIT 失败，也要确保后续清理执行
     pub fn close(self: *Self) void {
         self.mutex.lock();
-        defer self.mutex.unlock();
 
         if (!self.is_active) {
+            self.mutex.unlock();
             return;
         }
 
         // 尝试发送 QUIT（忽略错误）
-        _ = self.sendCommandUnlocked(&.{"QUIT"}) catch {};
+        var quit_reply = self.sendCommandUnlocked(&.{"QUIT"}) catch null;
+        if (quit_reply) |*reply| {
+            defer reply.deinit();
+        }
 
         self.is_active = false;
         self.stream.close();
         self.cmd_builder.deinit();
+        self.mutex.unlock();
         self.allocator.destroy(self);
     }
 

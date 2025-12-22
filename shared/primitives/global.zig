@@ -215,10 +215,24 @@ fn initServiceManager(allocator: Allocator) !void {
 
     if (_db == null) return error.DatabaseNotInitialized;
 
+    // 加载配置（包括环境变量覆盖）
+    const config_loader = @import("../config/config_loader.zig").ConfigLoader;
+    const system_config = try config_loader.loadInfraConfig(allocator);
+    
+    // 调试：检查环境变量是否被正确读取
+    if (std.posix.getenv("ZIGCMS_API_PORT")) |port_val| {
+        std.debug.print("🔧 环境变量 ZIGCMS_API_PORT 已设置: {s}\n", .{port_val});
+    } else {
+        std.debug.print("⚠️ 环境变量 ZIGCMS_API_PORT 未设置，使用默认值\n", .{});
+    }
+    
+    // 调试：显示最终配置的端口
+    std.debug.print("🔧 最终配置端口: {d}\n", .{system_config.api.port});
+
     const service_mgr = try allocator.create(services.ServiceManager);
     errdefer allocator.destroy(service_mgr);
 
-    service_mgr.* = try services.ServiceManager.init(allocator, _db.?, root.SystemConfig{});
+    service_mgr.* = try services.ServiceManager.init(allocator, _db.?, system_config);
 
     _service_manager = service_mgr;
 
