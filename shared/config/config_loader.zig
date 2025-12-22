@@ -184,12 +184,76 @@ pub const ConfigLoader = struct {
         }
 
         inline for (type_info.@"struct".fields) |field| {
+            // 先尝试直接匹配字段名
             if (json_obj.object.get(field.name)) |json_value| {
                 @field(config, field.name) = try self.parseJsonField(field.type, json_value);
+            } else {
+                // 尝试蛇形转驼峰转换
+                const camel_name = try self.snakeToCamel(field.name);
+                defer self.allocator.free(camel_name);
+                if (json_obj.object.get(camel_name)) |json_value| {
+                    @field(config, field.name) = try self.parseJsonField(field.type, json_value);
+                } else {
+                    // 尝试驼峰转蛇形转换
+                    const snake_name = try self.camelToSnake(field.name);
+                    defer self.allocator.free(snake_name);
+                    if (json_obj.object.get(snake_name)) |json_value| {
+                        @field(config, field.name) = try self.parseJsonField(field.type, json_value);
+                    }
+                    // 如果都找不到，使用默认值（结构体已初始化为默认值）
+                }
             }
         }
 
         return config;
+    }
+
+    /// 将蛇形命名转换为驼峰命名
+    /// db_port -> dbPort
+    fn snakeToCamel(self: *Self, name: []const u8) ![]const u8 {
+        var result = std.ArrayList(u8).init(self.allocator);
+        defer result.deinit();
+
+        var i: usize = 0;
+        while (i < name.len) {
+            const char = name[i];
+            if (char == '_') {
+                if (i + 1 < name.len) {
+                    i += 1;
+                    const next_char = name[i];
+                    if (next_char >= 'a' and next_char <= 'z') {
+                        try result.append(next_char - 32); // 转换为大写
+                    } else {
+                        try result.append(next_char);
+                    }
+                }
+            } else {
+                try result.append(char);
+            }
+            i += 1;
+        }
+
+        return result.toOwnedSlice();
+    }
+
+    /// 将驼峰命名转换为蛇形命名
+    /// dbPort -> db_port
+    fn camelToSnake(self: *Self, name: []const u8) ![]const u8 {
+        var result = std.ArrayList(u8).init(self.allocator);
+        defer result.deinit();
+
+        for (name, 0..) |char, i| {
+            if (char >= 'A' and char <= 'Z') {
+                if (i > 0) {
+                    try result.append('_');
+                }
+                try result.append(char + 32); // 转换为小写
+            } else {
+                try result.append(char);
+            }
+        }
+
+        return result.toOwnedSlice();
     }
 
     /// 解析单个JSON字段值
