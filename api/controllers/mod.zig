@@ -46,11 +46,6 @@ pub const common = struct {
     pub const Dynamic = @import("dynamic.controller.zig");
 };
 
-// 字典管理控制器
-pub const dict = struct {
-    pub const Dict = @import("dict.controller.zig");
-};
-
 // 组织管理控制器
 pub const org = struct {
     pub const Department = @import("department.controller.zig");
@@ -94,7 +89,6 @@ pub const ControllerType = enum {
     public,
     setting,
     task,
-    dict,
     department,
     employee,
     position,

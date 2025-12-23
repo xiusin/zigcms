@@ -113,12 +113,7 @@
 
 const base = @import("cache.zig");
 const typed = @import("typed_cache.zig");
-const cache_contract = @import("cache_contract.zig");
-const cache_drivers = @import("cache_drivers.zig");
-
-pub const Cache = base.Cache;
-pub const CacheManager = base.CacheManager;
-pub const CacheConfig = base.CacheConfig;
+const contract = @import("contract.zig");
 
 pub const PrefixedCache = typed.PrefixedCache;
 pub const LazyCache = typed.LazyCache;
@@ -126,12 +121,8 @@ pub const TypedCache = typed.TypedCache;
 pub const TypedCacheInterface = typed.TypedCacheInterface;
 pub const TypedCacheError = typed.TypedCacheError;
 
-pub const CacheInterface = cache_contract.CacheInterface;
-pub const CacheStats = cache_contract.CacheStats;
-
-pub const MemoryCacheDriver = cache_drivers.MemoryCacheDriver;
-pub const RedisCacheDriver = cache_drivers.RedisCacheDriver;
-pub const RedisCacheConfig = cache_drivers.RedisCacheConfig;
+pub const CacheInterface = contract.CacheInterface;
+pub const CacheStats = contract.CacheStats;
 
 test {
     _ = base;

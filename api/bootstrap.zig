@@ -76,7 +76,6 @@ pub const Bootstrap = struct {
         self.route_count += self.crud_count * 6;
     }
 
-
     /// 注册自定义控制器路由
     fn registerCustomRoutes(self: *Self) !void {
         // 登录控制器
@@ -87,9 +86,6 @@ pub const Bootstrap = struct {
 
         // 管理后台路由
         try self.registerAdminRoutes();
-
-        // 字典管理路由
-        try self.registerDictRoutes();
     }
 
     /// 注册认证相关路由
@@ -128,21 +124,6 @@ pub const Bootstrap = struct {
 
         // 注意：角色管理路由已在 registerCrudModules 中通过 crud("role", models.Role) 注册
         // 如果需要自定义角色控制器，请使用不同的路径前缀，如 /admin/role/*
-    }
-
-    /// 注册字典管理路由
-    fn registerDictRoutes(self: *Self) !void {
-        var dict_ctrl = controllers.dict.Dict.init(self.allocator);
-        try self.app.route("/dict/types", &dict_ctrl, &controllers.dict.Dict.getDictTypes);
-        try self.app.route("/dict/by_type", &dict_ctrl, &controllers.dict.Dict.getDictByType);
-        try self.app.route("/dict/search", &dict_ctrl, &controllers.dict.Dict.searchDict);
-        try self.app.route("/dict/count", &dict_ctrl, &controllers.dict.Dict.countDict);
-        try self.app.route("/dict/validate", &dict_ctrl, &controllers.dict.Dict.validateDictValue);
-        try self.app.route("/dict/label", &dict_ctrl, &controllers.dict.Dict.getDictLabel);
-        try self.app.route("/dict/refresh_cache", &dict_ctrl, &controllers.dict.Dict.refreshCache);
-        try self.app.route("/dict/cache_stats", &dict_ctrl, &controllers.dict.Dict.getCacheStats);
-        try self.app.route("/dict/cleanup_cache", &dict_ctrl, &controllers.dict.Dict.cleanupCache);
-        self.route_count += 9;
     }
 
     /// 获取路由统计信息

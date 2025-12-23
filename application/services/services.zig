@@ -12,7 +12,6 @@
 const std = @import("std");
 const sql = @import("../services/sql/orm.zig");
 const CacheService = @import("../services/cache/cache.zig").CacheService;
-const DictService = @import("../services/cache/dict_service.zig").DictService;
 const PluginSystemService = @import("../services/plugins/mod.zig").PluginSystemService;
 const root = @import("../../root.zig");
 
@@ -29,9 +28,6 @@ pub const ServiceManager = struct {
 
     // 缓存服务（ServiceManager 拥有所有权）
     cache: CacheService,
-
-    // 字典服务（ServiceManager 拥有所有权，依赖 cache）
-    dict_service: DictService,
 
     // 插件系统服务（ServiceManager 拥有所有权）
     plugin_system: PluginSystemService,
@@ -56,10 +52,6 @@ pub const ServiceManager = struct {
         var cache = CacheService.init(allocator);
         errdefer cache.deinit();
 
-        // 步骤2：初始化字典服务（依赖缓存）
-        var dict_service = DictService.init(allocator, db, &cache);
-        errdefer dict_service.deinit();
-
         // 步骤3：初始化插件系统
         var plugin_system = PluginSystemService.init(allocator);
         errdefer plugin_system.deinit();
@@ -69,7 +61,6 @@ pub const ServiceManager = struct {
             .config = config,
             .db = db,
             .cache = cache,
-            .dict_service = dict_service,
             .plugin_system = plugin_system,
             .initialized = true,
         };
@@ -88,12 +79,6 @@ pub const ServiceManager = struct {
         };
         self.plugin_system.deinit();
 
-        // 步骤2：清理字典服务
-        self.dict_service.deinit();
-
-        // 步骤3：清理缓存服务（最先初始化，最后清理）
-        self.cache.deinit();
-
         self.initialized = false;
         // 注意：db 由调用者管理，不在此处清理
     }
@@ -103,13 +88,6 @@ pub const ServiceManager = struct {
     /// 返回：系统配置的只读引用
     pub fn getConfig(self: *const ServiceManager) *const root.SystemConfig {
         return &self.config;
-    }
-
-    /// 获取字典服务
-    ///
-    /// 返回：字典服务的可变引用
-    pub fn getDictService(self: *ServiceManager) *DictService {
-        return &self.dict_service;
     }
 
     /// 获取缓存服务

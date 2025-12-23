@@ -41,7 +41,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const cache_contract = @import("cache_contract.zig");
+const contract = @import("contract.zig");
 
 /// 缓存服务 - 线程安全的内存缓存实现
 ///
@@ -338,7 +338,7 @@ pub const CacheService = struct {
     ///
     /// 返回实现 CacheInterface 的接口实例，
     /// 可以与其他缓存实现互换使用。
-    pub fn asInterface(self: *CacheService) cache_contract.CacheInterface {
+    pub fn asInterface(self: *CacheService) contract.CacheInterface {
         return .{
             .ptr = self,
             .vtable = &vtable,
@@ -346,7 +346,7 @@ pub const CacheService = struct {
     }
 
     /// 缓存接口的虚拟表
-    const vtable: cache_contract.CacheInterface.VTable = .{
+    const vtable: contract.CacheInterface.VTable = .{
         .set = cacheSet,
         .get = cacheGet,
         .del = cacheDel,
@@ -389,7 +389,7 @@ pub const CacheService = struct {
     }
 
     /// 接口方法实现：获取统计
-    fn cacheStats(ptr: *anyopaque) cache_contract.CacheStats {
+    fn cacheStats(ptr: *anyopaque) contract.CacheStats {
         const self: *CacheService = @ptrCast(@alignCast(ptr));
         const s = self.stats();
         return .{ .count = s.count, .expired = s.expired };

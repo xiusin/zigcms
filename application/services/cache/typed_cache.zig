@@ -46,7 +46,7 @@
 
 const std = @import("std");
 const base_cache = @import("cache.zig");
-const cache_contract = @import("cache_contract.zig");
+const cache_contract = @import("contract.zig");
 
 // ============================================================================
 // TypedCache - 支持 JSON 序列化的泛型缓存
