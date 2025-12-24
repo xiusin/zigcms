@@ -117,18 +117,8 @@ pub const ServiceManager = @import("application/services/mod.zig").ServiceManage
 var service_manager: ?ServiceManager = null;
 // 基础设施数据库连接（需要清理）
 var infrastructure_db: ?*sql_orm.Database = null;
-// 用户服务相关实例（需要清理）
-var user_service_instance: ?*UserService = null;
-var user_repository_instance: ?UserRepository = null;
-var sqlite_repo_instance: ?*SqliteUserRepository = null;
-// 会员服务相关实例（需要清理）
-var member_service_instance: ?*MemberService = null;
-var member_repository_instance: ?MemberRepository = null;
-var sqlite_member_repo_instance: ?*SqliteMemberRepository = null;
-// 分类服务相关实例（需要清理）
-var category_service_instance: ?*CategoryService = null;
-var category_repository_instance: ?CategoryRepository = null;
-var sqlite_category_repo_instance: ?*SqliteCategoryRepository = null;
+// 服务实例将通过DI容器管理，不再使用全局变量
+// 这些变量已被移除，服务生命周期由DI容器统一管理
 // 全局分配器（用于清理资源）
 var global_allocator: ?std.mem.Allocator = null;
 
@@ -326,8 +316,8 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 存储基础设施数据库连接以便后续清理
     infrastructure_db = db;
 
-    // 在这里添加应用服务的依赖注入组装
-    try initApplicationServices(allocator, db);
+    // 使用新的DI系统注册应用服务
+    try registerApplicationServices(allocator, db);
 
     logger.info("系统初始化完成", .{});
 
@@ -341,80 +331,132 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     logger.info("服务管理器初始化完成", .{});
 }
 
-/// 初始化应用服务
+/// 注册应用服务到DI容器
 ///
-/// 按照依赖倒置原则组装用户、会员和分类相关的各层组件：
-/// 1. 创建基础设施层实现（SqliteUserRepository, SqliteMemberRepository, SqliteCategoryRepository）
-/// 2. 创建领域层接口（UserRepository, MemberRepository, CategoryRepository）
-/// 3. 创建应用层服务（UserService, MemberService, CategoryService）
-/// 4. 注册到全局服务管理器
+/// 使用新的DI系统注册用户、会员和分类相关的服务，采用依赖注入模式管理服务生命周期。
 ///
 /// ## 参数
 /// - `allocator`: 内存分配器
 /// - `db`: 数据库连接
 ///
 /// ## 错误
-/// 如果服务初始化失败，返回相应的错误。
-fn initApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
-    // 1. 创建用户服务基础设施层实现
-    const sqlite_repo_impl = try allocator.create(SqliteUserRepository);
-    errdefer allocator.destroy(sqlite_repo_impl);
+/// 如果服务注册失败，返回相应的错误。
+fn registerApplicationServices(_: std.mem.Allocator, db: *sql_orm.Database) !void {
+    const di_module = @import("shared/di/mod.zig");
 
-    sqlite_repo_impl.* = SqliteUserRepository.init(allocator, db);
+    if (di_module.getGlobalContainer()) |container| {
+        // 1. 注册用户服务相关
+        try registerUserServices(container, db);
 
-    // 2. 创建用户领域层接口（注入基础设施实现）
-    const user_repository = domain.repositories.user_repository.create(sqlite_repo_impl, &SqliteUserRepository.vtable());
+        // 2. 注册会员服务相关
+        try registerMemberServices(container, db);
 
-    // 3. 创建用户应用层服务（注入领域层接口）
-    const user_service = try allocator.create(UserService);
-    errdefer allocator.destroy(user_service);
+        // 3. 注册分类服务相关
+        try registerCategoryServices(container, db);
 
-    user_service.* = UserService.init(allocator, user_repository);
+        // 4. 注册基础设施服务
+        try container.registerInstance(sql_orm.Database, db);
 
-    // 4. 创建会员服务基础设施层实现
-    const sqlite_member_repo_impl = try allocator.create(SqliteMemberRepository);
-    errdefer allocator.destroy(sqlite_member_repo_impl);
+        logger.info("应用服务注册到DI容器完成", .{});
+    } else {
+        return error.DIContainerNotInitialized;
+    }
+}
 
-    sqlite_member_repo_impl.* = SqliteMemberRepository.init(allocator, db);
+/// 注册用户服务
+fn registerUserServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+    // 创建仓储实例
+    const sqlite_repo = try createSqliteUserRepository(db);
+    const user_repo = try std.heap.page_allocator.create(UserRepository);
+    user_repo.* = domain.repositories.user_repository.create(sqlite_repo, &SqliteUserRepository.vtable());
 
-    // 5. 创建会员领域层接口（注入基础设施实现）
-    const member_repository = domain.repositories.member_repository.create(sqlite_member_repo_impl, &SqliteMemberRepository.vtable());
+    // 注册到容器
+    try container.registerInstance(SqliteUserRepository, sqlite_repo);
+    try container.registerInstance(UserRepository, user_repo);
 
-    // 6. 创建会员应用层服务（注入领域层接口）
-    const member_service = try allocator.create(MemberService);
-    errdefer allocator.destroy(member_service);
+    try container.registerSingleton(UserService, UserService, struct {
+        fn factory(allocator: std.mem.Allocator) anyerror!*UserService {
+            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
+            const resolved_user_repo = try global_container.resolve(UserRepository);
 
-    member_service.* = MemberService.init(allocator, member_repository);
+            const user_service = try allocator.create(UserService);
+            errdefer allocator.destroy(user_service);
+            user_service.* = UserService.init(allocator, resolved_user_repo.*);
+            return user_service;
+        }
+    }.factory);
+}
 
-    // 7. 创建分类服务基础设施层实现
-    const sqlite_category_repo_impl = try allocator.create(SqliteCategoryRepository);
-    errdefer allocator.destroy(sqlite_category_repo_impl);
+/// 创建用户仓储实现
+fn createSqliteUserRepository(db: *sql_orm.Database) !*SqliteUserRepository {
+    const allocator = std.heap.page_allocator;
+    const repo = try allocator.create(SqliteUserRepository);
+    repo.* = SqliteUserRepository.init(allocator, db);
+    return repo;
+}
 
-    sqlite_category_repo_impl.* = SqliteCategoryRepository.init(allocator, db);
+/// 注册会员服务
+fn registerMemberServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+    // 创建仓储实例
+    const sqlite_repo = try createSqliteMemberRepository(db);
+    const member_repo = try std.heap.page_allocator.create(MemberRepository);
+    member_repo.* = domain.repositories.member_repository.create(sqlite_repo, &SqliteMemberRepository.vtable());
 
-    // 8. 创建分类领域层接口（注入基础设施实现）
-    const category_repository = domain.repositories.category_repository.create(sqlite_category_repo_impl, &SqliteCategoryRepository.vtable());
+    // 注册到容器
+    try container.registerInstance(SqliteMemberRepository, sqlite_repo);
+    try container.registerInstance(MemberRepository, member_repo);
 
-    // 9. 创建分类应用层服务（注入领域层接口）
-    const category_service = try allocator.create(CategoryService);
-    errdefer allocator.destroy(category_service);
+    try container.registerSingleton(MemberService, MemberService, struct {
+        fn factory(allocator: std.mem.Allocator) anyerror!*MemberService {
+            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
+            const resolved_member_repo = try global_container.resolve(MemberRepository);
 
-    category_service.* = CategoryService.init(allocator, category_repository);
+            const member_service = try allocator.create(MemberService);
+            errdefer allocator.destroy(member_service);
+            member_service.* = MemberService.init(allocator, resolved_member_repo.*);
+            return member_service;
+        }
+    }.factory);
+}
 
-    // 10. 存储服务实例以便后续清理
-    user_service_instance = user_service;
-    user_repository_instance = user_repository;
-    sqlite_repo_instance = sqlite_repo_impl;
+/// 注册分类服务
+fn registerCategoryServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+    // 创建仓储实例
+    const sqlite_repo = try createSqliteCategoryRepository(db);
+    const category_repo = try std.heap.page_allocator.create(CategoryRepository);
+    category_repo.* = domain.repositories.category_repository.create(sqlite_repo, &SqliteCategoryRepository.vtable());
 
-    member_service_instance = member_service;
-    member_repository_instance = member_repository;
-    sqlite_member_repo_instance = sqlite_member_repo_impl;
+    // 注册到容器
+    try container.registerInstance(SqliteCategoryRepository, sqlite_repo);
+    try container.registerInstance(CategoryRepository, category_repo);
 
-    category_service_instance = category_service;
-    category_repository_instance = category_repository;
-    sqlite_category_repo_instance = sqlite_category_repo_impl;
+    try container.registerSingleton(CategoryService, CategoryService, struct {
+        fn factory(allocator: std.mem.Allocator) anyerror!*CategoryService {
+            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
+            const resolved_category_repo = try global_container.resolve(CategoryRepository);
 
-    logger.info("应用服务初始化完成", .{});
+            const category_service = try allocator.create(CategoryService);
+            errdefer allocator.destroy(category_service);
+            category_service.* = CategoryService.init(allocator, resolved_category_repo.*);
+            return category_service;
+        }
+    }.factory);
+}
+
+/// 创建会员仓储实现
+fn createSqliteMemberRepository(db: *sql_orm.Database) !*SqliteMemberRepository {
+    const allocator = std.heap.page_allocator;
+    const repo = try allocator.create(SqliteMemberRepository);
+    repo.* = SqliteMemberRepository.init(allocator, db);
+    return repo;
+}
+
+/// 创建分类仓储实现
+fn createSqliteCategoryRepository(db: *sql_orm.Database) !*SqliteCategoryRepository {
+    const allocator = std.heap.page_allocator;
+    const repo = try allocator.create(SqliteCategoryRepository);
+    repo.* = SqliteCategoryRepository.init(allocator, db);
+    return repo;
 }
 
 /// 清理整个系统
@@ -433,56 +475,8 @@ pub fn deinitSystem() void {
     // 清理全局模块（在数据库之前，因为它持有数据库引用）
     shared.global.deinit();
 
-    // 清理分类服务实例
-    if (category_service_instance) |service| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(service);
-        }
-    }
-    category_service_instance = null;
-    category_repository_instance = null;
-
-    // 清理分类仓储实现实例
-    if (sqlite_category_repo_instance) |repo| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(repo);
-        }
-    }
-    sqlite_category_repo_instance = null;
-
-    // 清理会员服务实例
-    if (member_service_instance) |service| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(service);
-        }
-    }
-    member_service_instance = null;
-    member_repository_instance = null;
-
-    // 清理会员仓储实现实例
-    if (sqlite_member_repo_instance) |repo| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(repo);
-        }
-    }
-    sqlite_member_repo_instance = null;
-
-    // 清理用户服务实例
-    if (user_service_instance) |service| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(service);
-        }
-    }
-    user_service_instance = null;
-    user_repository_instance = null;
-
-    // 清理用户仓储实现实例
-    if (sqlite_repo_instance) |repo| {
-        if (global_allocator) |allocator| {
-            allocator.destroy(repo);
-        }
-    }
-    sqlite_repo_instance = null;
+    // 服务实例清理现在由DI容器统一管理，无需手动清理
+    // 在deinitGlobalDISystem()中会自动清理所有注册的服务
 
     // 清理基础设施数据库连接
     if (infrastructure_db) |db| {

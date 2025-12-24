@@ -6,6 +6,7 @@
 //! - `system_config`: 系统配置结构体定义
 //! - `config_loader`: 配置文件加载器
 //! - `generated_config`: 自动生成的配置（从 .env 文件）
+//! - `config_manager`: 配置管理器，支持热重载
 //!
 //! ## 使用示例
 //! ```zig
@@ -35,6 +36,9 @@ pub const config_loader = @import("config_loader.zig");
 /// 自动生成的配置（从 .env 文件）
 pub const generated_config = @import("generated_config.zig");
 
+/// 配置管理器（支持热重载）
+pub const config_manager = @import("config_manager.zig");
+
 // ============================================================================
 // 便捷类型导出
 // ============================================================================
@@ -59,6 +63,9 @@ pub const ConfigLoader = config_loader.ConfigLoader;
 
 /// 配置错误类型
 pub const ConfigError = config_loader.ConfigError;
+
+/// 配置管理器
+pub const ConfigManager = config_manager.ConfigManager;
 
 // ============================================================================
 // 便捷函数
