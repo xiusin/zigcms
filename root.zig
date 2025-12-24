@@ -104,7 +104,7 @@ pub const sql = @import("application/services/sql/mod.zig");
 /// Redis 客户端模块 - 缓存和键值存储
 ///
 /// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
-pub const redis = @import("application/services/redis/redis.zig");
+pub const redis = @import("application/services/redis/mod.zig");
 
 // ============================================================================
 // 服务管理

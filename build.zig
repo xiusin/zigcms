@@ -17,6 +17,53 @@
 
 const std = @import("std");
 
+// 辅助函数：添加通用导入
+fn addCommonImports(module: *std.Build.Module, deps: anytype) void {
+    module.addImport("zap", deps.zap.module("zap"));
+    module.addImport("pg", deps.pg.module("pg"));
+    module.addImport("pretty", deps.pretty.module("pretty"));
+    module.addImport("regex", deps.regex.module("regex"));
+    module.addImport("smtp_client", deps.smtp_client.module("smtp_client"));
+    module.addImport("sqlite", deps.sqlite.module("sqlite"));
+    module.addImport("curl", deps.curl.module("curl"));
+}
+
+// 辅助函数：设置 MySQL 路径
+fn setupMySQLPaths(artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
+    artifact.linkSystemLibrary("mysqlclient");
+    if (target.result.os.tag == .macos) {
+        // 使用 brew --prefix mysql-client 确认的路径
+        artifact.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+        artifact.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+    }
+    if (target.result.os.tag == .linux) {
+        artifact.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+        artifact.addIncludePath(.{ .cwd_relative = "/usr/include/mysql" });
+    }
+}
+
+// 辅助函数：创建命令行工具
+fn createCommandTool(b: *std.Build, name: []const u8, source_file: []const u8, description: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+    const module = b.createModule(.{
+        .root_source_file = b.path(source_file),
+        .target = target,
+        .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{ .name = name, .root_module = module });
+    exe.linkLibC();
+    b.installArtifact(exe);
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    const step = b.step(name, description);
+    step.dependOn(&run_cmd.step);
+    if (b.args) |args| {
+        for (args) |arg| {
+            run_cmd.addArg(arg);
+        }
+    }
+    return step;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -42,13 +89,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // 为库模块添加依赖
-    lib_module.addImport("zap", zap.module("zap"));
-    lib_module.addImport("regex", regex.module("regex"));
-    lib_module.addImport("pg", pg.module("pg"));
-    lib_module.addImport("pretty", pretty.module("pretty"));
-    lib_module.addImport("sqlite", sqlite.module("sqlite"));
-    lib_module.addImport("curl", curl.module("curl"));
-    lib_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    addCommonImports(lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     const static_lib = b.addLibrary(.{
         .name = "zigcms",
@@ -69,13 +110,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // 为动态库模块添加依赖
-    shared_lib_module.addImport("zap", zap.module("zap"));
-    shared_lib_module.addImport("regex", regex.module("regex"));
-    shared_lib_module.addImport("pg", pg.module("pg"));
-    shared_lib_module.addImport("pretty", pretty.module("pretty"));
-    shared_lib_module.addImport("sqlite", sqlite.module("sqlite"));
-    shared_lib_module.addImport("curl", curl.module("curl"));
-    shared_lib_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    addCommonImports(shared_lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     const shared_lib = b.addLibrary(.{
         .name = "zigcms",
@@ -101,35 +136,13 @@ pub fn build(b: *std.Build) void {
     });
     const exe = b.addExecutable(.{ .name = "zigcms", .root_module = exe_module });
 
-    exe_module.addImport("zap", zap.module("zap"));
-    exe_module.addImport("regex", regex.module("regex"));
-    exe_module.addImport("pg", pg.module("pg"));
-    exe_module.addImport("pretty", pretty.module("pretty"));
-    exe_module.addImport("sqlite", sqlite.module("sqlite"));
-    exe_module.addImport("curl", curl.module("curl"));
-    exe_module.addImport("smtp_client", smtp_client.module("smtp_client"));
+    addCommonImports(exe_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     exe.linkLibrary(sqlite.artifact("sqlite"));
     exe.linkLibC();
 
     // MySQL 客户端库链接
-    exe.linkSystemLibrary("mysqlclient");
-
-    // macOS: Homebrew 安装路径
-    if (target.result.os.tag == .macos) {
-        // 尝试多个可能的 Homebrew MySQL 安装路径
-        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
-        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
-        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-    }
-    // Linux: 标准路径
-    if (target.result.os.tag == .linux) {
-        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
-        exe.addIncludePath(.{ .cwd_relative = "/usr/include/mysql" });
-    }
+    setupMySQLPaths(exe, target);
 
     b.installArtifact(exe);
 
@@ -151,27 +164,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // 添加测试所需的依赖
-    lib_unit_tests_module.addImport("zap", zap.module("zap"));
-    lib_unit_tests_module.addImport("pg", pg.module("pg"));
-    lib_unit_tests_module.addImport("pretty", pretty.module("pretty"));
-    lib_unit_tests_module.addImport("regex", regex.module("regex"));
-    lib_unit_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    lib_unit_tests_module.addImport("sqlite", sqlite.module("sqlite"));
-    lib_unit_tests_module.addImport("curl", curl.module("curl"));
+    addCommonImports(lib_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     const lib_unit_tests = b.addTest(.{
         .name = "zigcms-lib-tests",
         .root_module = lib_unit_tests_module,
     });
     lib_unit_tests.linkLibrary(sqlite.artifact("sqlite"));
-    lib_unit_tests.linkSystemLibrary("mysqlclient");
     lib_unit_tests.linkLibC();
-
-    if (target.result.os.tag == .macos) {
-        lib_unit_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        lib_unit_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-    }
+    setupMySQLPaths(lib_unit_tests, target);
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
@@ -180,27 +181,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // 添加测试所需的依赖
-    exe_unit_tests_module.addImport("zap", zap.module("zap"));
-    exe_unit_tests_module.addImport("pg", pg.module("pg"));
-    exe_unit_tests_module.addImport("pretty", pretty.module("pretty"));
-    exe_unit_tests_module.addImport("regex", regex.module("regex"));
-    exe_unit_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    exe_unit_tests_module.addImport("sqlite", sqlite.module("sqlite"));
-    exe_unit_tests_module.addImport("curl", curl.module("curl"));
+    addCommonImports(exe_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     const exe_unit_tests = b.addTest(.{
         .name = "zigcms-exe-tests",
         .root_module = exe_unit_tests_module,
     });
     exe_unit_tests.linkLibrary(sqlite.artifact("sqlite"));
-    exe_unit_tests.linkSystemLibrary("mysqlclient");
     exe_unit_tests.linkLibC();
-
-    if (target.result.os.tag == .macos) {
-        exe_unit_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        exe_unit_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-    }
+    setupMySQLPaths(exe_unit_tests, target);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
@@ -212,13 +201,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    integration_tests_module.addImport("zap", zap.module("zap"));
-    integration_tests_module.addImport("pg", pg.module("pg"));
-    integration_tests_module.addImport("pretty", pretty.module("pretty"));
-    integration_tests_module.addImport("regex", regex.module("regex"));
-    integration_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    integration_tests_module.addImport("sqlite", sqlite.module("sqlite"));
-    integration_tests_module.addImport("curl", curl.module("curl"));
+    addCommonImports(integration_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
 
     // 添加项目内部模块引用
     integration_tests_module.addImport("zigcms", lib_module);
@@ -228,17 +211,8 @@ pub fn build(b: *std.Build) void {
         .root_module = integration_tests_module,
     });
     integration_tests.linkLibrary(sqlite.artifact("sqlite"));
-    integration_tests.linkSystemLibrary("mysqlclient");
     integration_tests.linkLibC();
-
-    if (target.result.os.tag == .macos) {
-        // Intel Mac (Homebrew)
-        integration_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        integration_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-        // Apple Silicon Mac (Homebrew)
-        integration_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
-        integration_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
-    }
+    setupMySQLPaths(integration_tests, target);
 
     const run_integration_tests = b.addRunArtifact(integration_tests);
 
@@ -265,13 +239,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    property_tests_module.addImport("zap", zap.module("zap"));
-    property_tests_module.addImport("pg", pg.module("pg"));
-    property_tests_module.addImport("pretty", pretty.module("pretty"));
-    property_tests_module.addImport("regex", regex.module("regex"));
-    property_tests_module.addImport("smtp_client", smtp_client.module("smtp_client"));
-    property_tests_module.addImport("sqlite", sqlite.module("sqlite"));
-    property_tests_module.addImport("curl", curl.module("curl"));
+    addCommonImports(property_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
     // 添加 zigcms 库模块引用
     property_tests_module.addImport("zigcms", lib_module);
 
@@ -280,15 +248,8 @@ pub fn build(b: *std.Build) void {
         .root_module = property_tests_module,
     });
     property_tests.linkLibrary(sqlite.artifact("sqlite"));
-    property_tests.linkSystemLibrary("mysqlclient");
     property_tests.linkLibC();
-
-    if (target.result.os.tag == .macos) {
-        property_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-        property_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-        property_tests.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
-        property_tests.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
-    }
+    setupMySQLPaths(property_tests, target);
 
     const run_property_tests = b.addRunArtifact(property_tests);
 
@@ -299,106 +260,22 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // Code Generation Tool (from commands/)
     // ========================================================================
-    const codegen_module = b.createModule(.{
-        .root_source_file = b.path("commands/codegen.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const codegen_exe = b.addExecutable(.{ .name = "codegen", .root_module = codegen_module });
-
-    codegen_exe.linkLibC();
-
-    b.installArtifact(codegen_exe);
-
-    const run_codegen_cmd = b.addRunArtifact(codegen_exe);
-    run_codegen_cmd.step.dependOn(b.getInstallStep());
-
-    const codegen_step = b.step("codegen", "Run the code generation tool (model, controller, DTO)");
-    codegen_step.dependOn(&run_codegen_cmd.step);
-
-    if (b.args) |args| {
-        for (args) |arg| {
-            run_codegen_cmd.addArg(arg);
-        }
-    }
+    _ = createCommandTool(b, "codegen", "commands/codegen.zig", "Run the code generation tool (model, controller, DTO)", target, optimize);
 
     // ========================================================================
     // Database Migration Tool (from commands/)
     // ========================================================================
-    const migrate_module = b.createModule(.{
-        .root_source_file = b.path("commands/migrate.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const migrate_exe = b.addExecutable(.{ .name = "migrate", .root_module = migrate_module });
-
-    migrate_exe.linkLibC();
-
-    b.installArtifact(migrate_exe);
-
-    const run_migrate_cmd = b.addRunArtifact(migrate_exe);
-    run_migrate_cmd.step.dependOn(b.getInstallStep());
-
-    const migrate_step = b.step("migrate", "Run database migrations (up/down/status/create)");
-    migrate_step.dependOn(&run_migrate_cmd.step);
-
-    if (b.args) |args| {
-        for (args) |arg| {
-            run_migrate_cmd.addArg(arg);
-        }
-    }
+    _ = createCommandTool(b, "migrate", "commands/migrate.zig", "Run database migrations (up/down/status/create)", target, optimize);
 
     // ========================================================================
     // Plugin Code Generator (from commands/)
     // ========================================================================
-    const plugin_gen_module = b.createModule(.{
-        .root_source_file = b.path("commands/plugin_gen.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const plugin_gen_exe = b.addExecutable(.{ .name = "plugin-gen", .root_module = plugin_gen_module });
-
-    plugin_gen_exe.linkLibC();
-
-    b.installArtifact(plugin_gen_exe);
-
-    const run_plugin_gen_cmd = b.addRunArtifact(plugin_gen_exe);
-    run_plugin_gen_cmd.step.dependOn(b.getInstallStep());
-
-    const plugin_gen_step = b.step("plugin-gen", "Generate plugin code from template (--help for options)");
-    plugin_gen_step.dependOn(&run_plugin_gen_cmd.step);
-
-    if (b.args) |args| {
-        for (args) |arg| {
-            run_plugin_gen_cmd.addArg(arg);
-        }
-    }
+    _ = createCommandTool(b, "plugin-gen", "commands/plugin_gen.zig", "Generate plugin code from template (--help for options)", target, optimize);
 
     // ========================================================================
     // Configuration Generator (from commands/)
     // ========================================================================
-    const config_gen_module = b.createModule(.{
-        .root_source_file = b.path("commands/config_gen.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const config_gen_exe = b.addExecutable(.{ .name = "config-gen", .root_module = config_gen_module });
-
-    config_gen_exe.linkLibC();
-
-    b.installArtifact(config_gen_exe);
-
-    const run_config_gen_cmd = b.addRunArtifact(config_gen_exe);
-    run_config_gen_cmd.step.dependOn(b.getInstallStep());
-
-    const config_gen_step = b.step("config-gen", "Generate configuration structure from .env file (--help for options)");
-    config_gen_step.dependOn(&run_config_gen_cmd.step);
-
-    if (b.args) |args| {
-        for (args) |arg| {
-            run_config_gen_cmd.addArg(arg);
-        }
-    }
+    _ = createCommandTool(b, "config-gen", "commands/config_gen.zig", "Generate configuration structure from .env file (--help for options)", target, optimize);
 
     // // ========================================================================
     // // MySQL 集成测试

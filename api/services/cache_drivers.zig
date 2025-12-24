@@ -9,7 +9,7 @@
 const std = @import("std");
 const cache_contract = @import("cache_contract.zig");
 const cache_service = @import("cache.zig");
-const redis = @import("../../redis/redis.zig");
+const redis = @import("../../redis/mod.zig");
 
 // ========================================
 // 内存缓存驱动
