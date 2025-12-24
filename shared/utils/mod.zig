@@ -34,9 +34,6 @@ pub const github = @import("github.zig");
 /// 腾讯云对象存储工具
 pub const tos = @import("tos.zig");
 
-/// Web UI 工具
-pub const webui = @import("webui.zig");
-
 /// 工具模块统一访问结构
 ///
 /// 提供所有工具的统一访问点，便于导入和使用。
@@ -48,5 +45,4 @@ pub const Utils = struct {
     pub const Regex = regex;
     pub const GitHub = github;
     pub const TOS = tos;
-    pub const WebUI = webui;
 };

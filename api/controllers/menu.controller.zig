@@ -23,7 +23,7 @@ const base = @import("base.fn.zig");
 const global = @import("../../shared/primitives/global.zig");
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const dtos = @import("../dto/mod.zig");
-const services = @import("../../application/services/services.zig");
+const services = @import("../../application/services/mod.zig");
 const Allocator = std.mem.Allocator;
 
 const Self = @This();

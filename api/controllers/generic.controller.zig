@@ -29,7 +29,7 @@ const dtos = @import("../dto/mod.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const mw = @import("../middleware/mod.zig");
-const services = @import("../../application/services/services.zig");
+const services = @import("../../application/services/mod.zig");
 
 /// 泛型 CRUD 控制器（使用 ORM）
 ///
@@ -87,8 +87,8 @@ pub fn Generic(comptime T: type) type {
             req.parseQuery();
 
             var params = req.parametersToOwnedStrList(self.allocator, true) catch |err| {
-        return base.send_error(req, err);
-    };
+                return base.send_error(req, err);
+            };
             defer params.deinit();
 
             for (params.items) |value| {

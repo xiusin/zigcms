@@ -58,7 +58,7 @@ pub const usecases = @import("usecases/mod.zig");
 /// 这些服务被用例和控制器使用。
 pub const services = struct {
     /// 服务管理器 - 统一管理服务生命周期
-    pub const manager = @import("services/services.zig").ServiceManager;
+    pub const manager = @import("services/mod.zig").ServiceManager;
 
     /// ORM 服务 - 对象关系映射
     pub const orm = @import("services/orm/orm.zig");

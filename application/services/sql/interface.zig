@@ -184,6 +184,76 @@ pub const Row = struct {
         return null;
     }
 
+    /// 获取指定索引的列值
+    pub fn get(self: *const Row, comptime T: type, index: usize) !T {
+        if (index >= self.values.len) return error.ColumnOutOfBounds;
+
+        const value = self.values[index] orelse return error.NullValue;
+
+        if (T == []const u8) {
+            return value;
+        }
+
+        if (T == ?[]const u8) {
+            return value;
+        }
+
+        if (T == i32) {
+            return @intCast(try std.fmt.parseInt(i64, value, 10));
+        }
+
+        if (T == ?i32) {
+            if (value.len == 0) return null;
+            return @intCast(try std.fmt.parseInt(i64, value, 10));
+        }
+
+        if (T == i64) {
+            return try std.fmt.parseInt(i64, value, 10);
+        }
+
+        if (T == ?i64) {
+            if (value.len == 0) return null;
+            return try std.fmt.parseInt(i64, value, 10);
+        }
+
+        if (T == f64) {
+            return try std.fmt.parseFloat(f64, value);
+        }
+
+        if (T == bool) {
+            if (std.mem.eql(u8, value, "1") or std.mem.eql(u8, value, "true")) return true;
+            if (std.mem.eql(u8, value, "0") or std.mem.eql(u8, value, "false")) return false;
+            return error.InvalidBoolValue;
+        }
+
+        return error.UnsupportedType;
+    }
+
+    /// 解析字符串值为指定类型
+    fn parseValue(self: *const Row, comptime T: type, value: []const u8) !T {
+        _ = self; // unused
+
+        if (T == i32) {
+            return @intCast(try std.fmt.parseInt(i64, value, 10));
+        }
+
+        if (T == i64) {
+            return try std.fmt.parseInt(i64, value, 10);
+        }
+
+        if (T == f64) {
+            return try std.fmt.parseFloat(f64, value);
+        }
+
+        if (T == bool) {
+            if (std.mem.eql(u8, value, "1") or std.mem.eql(u8, value, "true")) return true;
+            if (std.mem.eql(u8, value, "0") or std.mem.eql(u8, value, "false")) return false;
+            return error.InvalidBoolValue;
+        }
+
+        return error.UnsupportedType;
+    }
+
     pub fn deinit(self: *Row) void {
         // 释放值字符串
         for (self.values) |val| {
@@ -240,11 +310,28 @@ pub const ResultSet = struct {
     }
 
     /// 获取下一行
-    pub fn next(self: *ResultSet) ?*Row {
-        if (self.current_index >= self.rows.items.len) return null;
-        const row = &self.rows.items[self.current_index];
+    pub fn next(self: *ResultSet) bool {
+        if (self.current_index >= self.rows.items.len) return false;
         self.current_index += 1;
-        return row;
+        return true;
+    }
+
+    /// 获取当前行
+    pub fn getCurrentRow(self: *const ResultSet) ?*const Row {
+        if (self.current_index == 0 or self.current_index > self.rows.items.len) return null;
+        return &self.rows.items[self.current_index - 1];
+    }
+
+    /// 获取当前行的指定列值（按索引）
+    pub fn get(self: *const ResultSet, comptime T: type, index: usize) !T {
+        const row = self.getCurrentRow() orelse return error.NoCurrentRow;
+        return row.get(T, index);
+    }
+
+    /// 获取当前行的指定列值（按列名）
+    pub fn getByName(self: *const ResultSet, comptime T: type, name: []const u8) !T {
+        const row = self.getCurrentRow() orelse return error.NoCurrentRow;
+        return row.getByName(T, name);
     }
 
     /// 重置迭代器

@@ -43,6 +43,21 @@ const std = @import("std");
 const logger = @import("application/services/logger/logger.zig");
 const sql_orm = @import("application/services/sql/orm.zig");
 
+// 用户服务相关导入
+const UserService = @import("api/services/user_service.zig").UserService;
+const UserRepository = @import("domain/repositories/user_repository.zig").UserRepository;
+const SqliteUserRepository = @import("infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
+
+// 会员服务相关导入
+const MemberService = @import("api/services/member_service.zig").MemberService;
+const MemberRepository = @import("domain/repositories/member_repository.zig").MemberRepository;
+const SqliteMemberRepository = @import("infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
+
+// 分类服务相关导入
+const CategoryService = @import("api/services/category_service.zig").CategoryService;
+const CategoryRepository = @import("domain/repositories/category_repository.zig").CategoryRepository;
+const SqliteCategoryRepository = @import("infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
+
 // ============================================================================
 // 编译选项
 // ============================================================================
@@ -96,12 +111,24 @@ pub const redis = @import("application/services/redis/redis.zig");
 // ============================================================================
 
 /// 服务管理器类型
-pub const ServiceManager = @import("application/services/Services.zig").ServiceManager;
+pub const ServiceManager = @import("application/services/mod.zig").ServiceManager;
 
 // 全局服务实例
 var service_manager: ?ServiceManager = null;
 // 基础设施数据库连接（需要清理）
 var infrastructure_db: ?*sql_orm.Database = null;
+// 用户服务相关实例（需要清理）
+var user_service_instance: ?*UserService = null;
+var user_repository_instance: ?UserRepository = null;
+var sqlite_repo_instance: ?*SqliteUserRepository = null;
+// 会员服务相关实例（需要清理）
+var member_service_instance: ?*MemberService = null;
+var member_repository_instance: ?MemberRepository = null;
+var sqlite_member_repo_instance: ?*SqliteMemberRepository = null;
+// 分类服务相关实例（需要清理）
+var category_service_instance: ?*CategoryService = null;
+var category_repository_instance: ?CategoryRepository = null;
+var sqlite_category_repo_instance: ?*SqliteCategoryRepository = null;
 // 全局分配器（用于清理资源）
 var global_allocator: ?std.mem.Allocator = null;
 
@@ -298,6 +325,10 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
 
     // 存储基础设施数据库连接以便后续清理
     infrastructure_db = db;
+
+    // 在这里添加应用服务的依赖注入组装
+    try initApplicationServices(allocator, db);
+
     logger.info("系统初始化完成", .{});
 
     // 初始化全局模块（使用基础设施层创建的数据库连接）
@@ -308,6 +339,82 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 初始化服务管理器
     service_manager = try ServiceManager.init(allocator, db, config);
     logger.info("服务管理器初始化完成", .{});
+}
+
+/// 初始化应用服务
+///
+/// 按照依赖倒置原则组装用户、会员和分类相关的各层组件：
+/// 1. 创建基础设施层实现（SqliteUserRepository, SqliteMemberRepository, SqliteCategoryRepository）
+/// 2. 创建领域层接口（UserRepository, MemberRepository, CategoryRepository）
+/// 3. 创建应用层服务（UserService, MemberService, CategoryService）
+/// 4. 注册到全局服务管理器
+///
+/// ## 参数
+/// - `allocator`: 内存分配器
+/// - `db`: 数据库连接
+///
+/// ## 错误
+/// 如果服务初始化失败，返回相应的错误。
+fn initApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+    // 1. 创建用户服务基础设施层实现
+    const sqlite_repo_impl = try allocator.create(SqliteUserRepository);
+    errdefer allocator.destroy(sqlite_repo_impl);
+
+    sqlite_repo_impl.* = SqliteUserRepository.init(allocator, db);
+
+    // 2. 创建用户领域层接口（注入基础设施实现）
+    const user_repository = domain.repositories.user_repository.create(sqlite_repo_impl, &SqliteUserRepository.vtable());
+
+    // 3. 创建用户应用层服务（注入领域层接口）
+    const user_service = try allocator.create(UserService);
+    errdefer allocator.destroy(user_service);
+
+    user_service.* = UserService.init(allocator, user_repository);
+
+    // 4. 创建会员服务基础设施层实现
+    const sqlite_member_repo_impl = try allocator.create(SqliteMemberRepository);
+    errdefer allocator.destroy(sqlite_member_repo_impl);
+
+    sqlite_member_repo_impl.* = SqliteMemberRepository.init(allocator, db);
+
+    // 5. 创建会员领域层接口（注入基础设施实现）
+    const member_repository = domain.repositories.member_repository.create(sqlite_member_repo_impl, &SqliteMemberRepository.vtable());
+
+    // 6. 创建会员应用层服务（注入领域层接口）
+    const member_service = try allocator.create(MemberService);
+    errdefer allocator.destroy(member_service);
+
+    member_service.* = MemberService.init(allocator, member_repository);
+
+    // 7. 创建分类服务基础设施层实现
+    const sqlite_category_repo_impl = try allocator.create(SqliteCategoryRepository);
+    errdefer allocator.destroy(sqlite_category_repo_impl);
+
+    sqlite_category_repo_impl.* = SqliteCategoryRepository.init(allocator, db);
+
+    // 8. 创建分类领域层接口（注入基础设施实现）
+    const category_repository = domain.repositories.category_repository.create(sqlite_category_repo_impl, &SqliteCategoryRepository.vtable());
+
+    // 9. 创建分类应用层服务（注入领域层接口）
+    const category_service = try allocator.create(CategoryService);
+    errdefer allocator.destroy(category_service);
+
+    category_service.* = CategoryService.init(allocator, category_repository);
+
+    // 10. 存储服务实例以便后续清理
+    user_service_instance = user_service;
+    user_repository_instance = user_repository;
+    sqlite_repo_instance = sqlite_repo_impl;
+
+    member_service_instance = member_service;
+    member_repository_instance = member_repository;
+    sqlite_member_repo_instance = sqlite_member_repo_impl;
+
+    category_service_instance = category_service;
+    category_repository_instance = category_repository;
+    sqlite_category_repo_instance = sqlite_category_repo_impl;
+
+    logger.info("应用服务初始化完成", .{});
 }
 
 /// 清理整个系统
@@ -325,6 +432,57 @@ pub fn deinitSystem() void {
 
     // 清理全局模块（在数据库之前，因为它持有数据库引用）
     shared.global.deinit();
+
+    // 清理分类服务实例
+    if (category_service_instance) |service| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(service);
+        }
+    }
+    category_service_instance = null;
+    category_repository_instance = null;
+
+    // 清理分类仓储实现实例
+    if (sqlite_category_repo_instance) |repo| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(repo);
+        }
+    }
+    sqlite_category_repo_instance = null;
+
+    // 清理会员服务实例
+    if (member_service_instance) |service| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(service);
+        }
+    }
+    member_service_instance = null;
+    member_repository_instance = null;
+
+    // 清理会员仓储实现实例
+    if (sqlite_member_repo_instance) |repo| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(repo);
+        }
+    }
+    sqlite_member_repo_instance = null;
+
+    // 清理用户服务实例
+    if (user_service_instance) |service| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(service);
+        }
+    }
+    user_service_instance = null;
+    user_repository_instance = null;
+
+    // 清理用户仓储实现实例
+    if (sqlite_repo_instance) |repo| {
+        if (global_allocator) |allocator| {
+            allocator.destroy(repo);
+        }
+    }
+    sqlite_repo_instance = null;
 
     // 清理基础设施数据库连接
     if (infrastructure_db) |db| {

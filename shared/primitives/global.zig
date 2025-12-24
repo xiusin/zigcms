@@ -34,7 +34,7 @@ const models = @import("../../domain/entities/models.zig");
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const base = @import("../../api/controllers/base.fn.zig");
-const services = @import("../../application/services/services.zig");
+const services = @import("../../application/services/mod.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
 pub const logger = @import("../../application/services/logger/logger.zig");
@@ -64,7 +64,7 @@ var is_initialized: bool = false;
 /// - 日志器由 main.zig 管理，不在此处清理
 pub fn deinit() void {
     if (!is_initialized) return;
-    
+
     std.debug.print("[INFO] global module deinit, cleaning up resources...\n", .{});
 
     // 1. 先执行插件系统清理（独立于 ServiceManager 的插件系统实例）
@@ -94,7 +94,7 @@ pub fn deinit() void {
     config.deinit();
     config = undefined;
     _allocator = null;
-    
+
     // 6. 重置初始化状态，允许重新初始化（用于测试）
     is_initialized = false;
 
@@ -163,7 +163,7 @@ fn init_some() void {
     };
 
     restore_setting() catch {};
-    
+
     is_initialized = true;
 }
 
@@ -218,14 +218,14 @@ fn initServiceManager(allocator: Allocator) !void {
     // 加载配置（包括环境变量覆盖）
     const config_loader = @import("../config/config_loader.zig").ConfigLoader;
     const system_config = try config_loader.loadInfraConfig(allocator);
-    
+
     // 调试：检查环境变量是否被正确读取
     if (std.posix.getenv("ZIGCMS_API_PORT")) |port_val| {
         std.debug.print("🔧 环境变量 ZIGCMS_API_PORT 已设置: {s}\n", .{port_val});
     } else {
         std.debug.print("⚠️ 环境变量 ZIGCMS_API_PORT 未设置，使用默认值\n", .{});
     }
-    
+
     // 调试：显示最终配置的端口
     std.debug.print("🔧 最终配置端口: {d}\n", .{system_config.api.port});
 
@@ -273,16 +273,16 @@ fn initPluginSystem(allocator: Allocator) !void {
 /// - db: 外部提供的数据库连接（由 root.zig 创建）
 pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
     if (is_initialized) return;
-    
+
     _allocator = allocator;
     _db = db;
-    
+
     // 初始化配置
     config = std.StringHashMap([]const u8).init(allocator);
-    
+
     // 初始化所有 ORM 模型
     orm_models.init(db);
-    
+
     is_initialized = true;
     logger.info("[global] 全局模块初始化完成（使用外部数据库连接）", .{});
 }
@@ -297,7 +297,7 @@ pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
 /// - allocator: 全局使用的内存分配器
 pub fn init(allocator: Allocator) void {
     if (is_initialized) return;
-    
+
     _allocator = allocator;
     init_some();
 }

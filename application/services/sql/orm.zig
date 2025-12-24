@@ -1326,7 +1326,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             var result = try db.rawQuery(sql, .{});
             defer result.deinit();
 
-            if (result.next()) |row| {
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return @intCast(0);
                 return @intCast(row.getInt("cnt") orelse 0);
             }
             return 0;
@@ -1459,7 +1460,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             var result = try db.rawQuery(sql, .{});
             defer result.deinit();
 
-            if (result.next()) |row| {
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return null;
                 return row.getString(field_name);
             }
             return null;
@@ -1476,7 +1478,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             var values = std.ArrayList([]const u8).init(db.allocator);
             errdefer values.deinit();
 
-            while (result.next()) |row| {
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
                 if (row.getString(field_name)) |v| {
                     try values.append(try db.allocator.dupe(u8, v));
                 }
@@ -2773,7 +2776,8 @@ pub fn ModelQuery(comptime T: type) type {
             var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
-            if (result.next()) |row| {
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return null;
                 return row.getString(field_name);
             }
             return null;
@@ -2799,7 +2803,8 @@ pub fn ModelQuery(comptime T: type) type {
             var values = std.ArrayList([]const u8).init(self.db.allocator);
             errdefer values.deinit();
 
-            while (result.next()) |row| {
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
                 if (row.getString(field_name)) |v| {
                     try values.append(try self.db.allocator.dupe(u8, v));
                 }
@@ -2833,7 +2838,8 @@ pub fn ModelQuery(comptime T: type) type {
             var result = try self.db.rawQuery(sql_str, .{});
             defer result.deinit();
 
-            if (result.next()) |row| {
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return @intCast(0);
                 return @intCast(row.getInt("cnt") orelse 0);
             }
             return 0;
@@ -2963,7 +2969,8 @@ pub fn ModelQuery(comptime T: type) type {
                 }
             }
 
-            while (result.next()) |row| {
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
                 var model: T = undefined;
 
                 inline for (fields, 0..) |field, f_idx| {
