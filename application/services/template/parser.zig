@@ -12,22 +12,23 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                 try nodes.append(.{ .text = try allocator.dupe(u8, token.lexeme) });
             },
             .variable_start => {
-                const var_token = try lex.next() orelse return error.UnexpectedEof;
-                if (var_token.type != .identifier) return error.ExpectedIdentifier;
-                var variable = ast.Variable{ .path = try allocator.dupe(u8, var_token.lexeme), .filter = null };
+                const expr = try parseExpression(allocator, lex);
                 const next_token = try lex.next() orelse return error.UnexpectedEof;
                 if (next_token.type == .pipe) {
                     const filter_token = try lex.next() orelse return error.UnexpectedEof;
                     if (filter_token.type != .identifier) return error.ExpectedIdentifier;
-                    variable.filter = try allocator.dupe(u8, filter_token.lexeme);
+                    const filtered_ptr = try allocator.create(ast.Filtered);
+                    const expr_ptr = try allocator.create(ast.Expression);
+                    expr_ptr.* = expr;
+                    filtered_ptr.* = .{ .expr = expr_ptr, .filter = try allocator.dupe(u8, filter_token.lexeme) };
                     const end_token = try lex.next() orelse return error.UnexpectedEof;
                     if (end_token.type != .variable_end) return error.ExpectedVariableEnd;
+                    try nodes.append(.{ .variable = ast.Expression{ .filtered = filtered_ptr } });
                 } else if (next_token.type == .variable_end) {
-                    // no filter
+                    try nodes.append(.{ .variable = expr });
                 } else {
                     return error.ExpectedPipeOrVariableEnd;
                 }
-                try nodes.append(.{ .variable = variable });
             },
             .tag_start => {
                 const tag_token = try lex.next() orelse return error.UnexpectedEof;
@@ -108,15 +109,76 @@ fn parseLiteral(allocator: std.mem.Allocator, token: lexer.Token) !std.json.Valu
     }
 }
 
+fn parsePrimary(allocator: std.mem.Allocator, lex: *lexer.Lexer) !ast.Expression {
+    const token = try lex.next() orelse return error.UnexpectedEof;
+    switch (token.type) {
+        .identifier => {
+            const peeked = try lex.peek();
+            if (peeked != null and peeked.?.type == .operator and peeked.?.lexeme[0] == '(') {
+                _ = try lex.next(); // consume (
+                var args = std.ArrayList(*ast.Expression).init(allocator);
+                while (true) {
+                    const arg = try parseExpression(allocator, lex);
+                    const arg_ptr = try allocator.create(ast.Expression);
+                    arg_ptr.* = arg;
+                    try args.append(arg_ptr);
+                    const sep = try lex.next() orelse return error.UnexpectedEof;
+                    if (sep.type == .operator and sep.lexeme[0] == ')') break;
+                    if (!(sep.type == .operator and sep.lexeme[0] == ',')) return error.ExpectedComma;
+                }
+                return ast.Expression{ .function_call = try allocator.create(FunctionCall) };
+                fc.* = .{ .name = try allocator.dupe(u8, token.lexeme), .args = args };
+                return ast.Expression{ .function_call = fc };
+            } else {
+                return ast.Expression{ .variable = try allocator.dupe(u8, token.lexeme) };
+            }
+        },
+        .string => return ast.Expression{ .literal = std.json.Value{ .string = try allocator.dupe(u8, token.lexeme[1 .. token.lexeme.len - 1]) } },
+        .number => {
+            const num = try std.fmt.parseInt(i64, token.lexeme, 10);
+            return ast.Expression{ .literal = std.json.Value{ .integer = num } };
+        },
+        else => {
+            if (std.mem.eql(u8, token.lexeme, "true")) return ast.Expression{ .literal = std.json.Value{ .bool = true } };
+            if (std.mem.eql(u8, token.lexeme, "false")) return ast.Expression{ .literal = std.json.Value{ .bool = false } };
+            if (token.type == .identifier) return ast.Expression{ .variable = try allocator.dupe(u8, token.lexeme) };
+            return error.InvalidPrimary;
+        },
+    }
+}
+
+fn parseExpression(allocator: std.mem.Allocator, lex: *lexer.Lexer) !ast.Expression {
+    return parsePrimary(allocator, lex);
+}
+
+fn freeExpression(allocator: std.mem.Allocator, expr: ast.Expression) void {
+    switch (expr) {
+        .literal => |lit| if (lit == .string) allocator.free(lit.string),
+        .variable => |v| allocator.free(v),
+        .function_call => |fc| {
+            allocator.free(fc.name);
+            for (fc.args.items) |arg| {
+                freeExpression(allocator, arg.*);
+                allocator.destroy(arg);
+            }
+            fc.args.deinit();
+            allocator.destroy(fc);
+        },
+        .filtered => |f| {
+            freeExpression(allocator, f.expr.*);
+            allocator.destroy(f.expr);
+            allocator.free(f.filter);
+            allocator.destroy(f);
+        },
+    }
+}
+
 pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) void {
     for (nodes.items) |node| {
         switch (node) {
             .text => |t| allocator.free(t),
 
-            .variable => |v| {
-                allocator.free(v.path);
-                if (v.filter) |f| allocator.free(f);
-            },
+            .variable => |v| freeExpression(allocator, v),
 
             .for_loop => |f| {
                 allocator.free(f.item_var);

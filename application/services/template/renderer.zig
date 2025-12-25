@@ -12,10 +12,7 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
         switch (node) {
             .text => |t| try output.appendSlice(t),
             .variable => |v| {
-                var value = try getValue(context, v.path);
-                if (v.filter) |f| {
-                    value = try applyFilter(alloc, value, f);
-                }
+                const value = try evaluate(v, context, alloc);
                 const str = try valueToString(alloc, value);
                 try output.appendSlice(str);
             },
@@ -58,6 +55,32 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
         }
     }
     return output.toOwnedSlice();
+}
+
+fn evaluate(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Allocator) !std.json.Value {
+    switch (expr) {
+        .literal => |lit| return lit,
+        .variable => |var| return getValue(context, var),
+        .function_call => |fc| {
+            if (std.mem.eql(u8, fc.name, "range")) {
+                if (fc.args.items.len != 2) return error.InvalidArgs;
+                const start_val = try evaluate(fc.args.items[0].*, context, allocator);
+                const end_val = try evaluate(fc.args.items[1].*, context, allocator);
+                if (start_val != .integer or end_val != .integer) return error.InvalidArgs;
+                var arr = std.json.Array.init(allocator);
+                var i = start_val.integer;
+                while (i <= end_val.integer) : (i += 1) {
+                    try arr.append(std.json.Value{ .integer = i });
+                }
+                return std.json.Value{ .array = arr };
+            }
+            return error.UnknownFunction;
+        },
+        .filtered => |f| {
+            const value = try evaluate(f.expr.*, context, allocator);
+            return applyFilter(allocator, value, f.filter);
+        },
+    }
 }
 
 fn isTrue(value: std.json.Value) bool {

@@ -137,5 +137,13 @@ pub const Lexer = struct {
                 return Token{ .type = .operator, .lexeme = self.source[self.start..self.current], .line = self.line };
             }
         }
+    pub fn peek(self: *Lexer) !?Token {
+        const saved_start = self.start;
+        const saved_current = self.current;
+        const saved_line = self.line;
+        const tok = try self.next();
+        self.start = saved_start;
+        self.current = saved_current;
+        self.line = saved_line;
+        return tok;
     }
-};

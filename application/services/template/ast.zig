@@ -19,9 +19,26 @@ pub const Variable = struct {
     filter: ?[]const u8 = null,
 };
 
+pub const Filtered = struct {
+    expr: *const Expression,
+    filter: []const u8,
+};
+
+pub const FunctionCall = struct {
+    name: []const u8,
+    args: std.ArrayList(*const Expression),
+};
+
+pub const Expression = union(enum) {
+    literal: std.json.Value,
+    variable: []const u8,
+    function_call: *FunctionCall,
+    filtered: *Filtered,
+};
+
 pub const Node = union(NodeType) {
     text: []const u8,
-    variable: Variable,
+    variable: Expression,
     for_loop: struct {
         item_var: []const u8,
         iterable_var: []const u8,
