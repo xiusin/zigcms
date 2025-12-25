@@ -1929,8 +1929,8 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE 条件
-        pub fn where(self: *Self, field: []const u8, op: []const u8, value: anytype) *Self {
-            const clause = formatWhere(self.db.allocator, field, op, value) catch return self;
+        pub fn where(self: *Self, field: []const u8, op: []const u8, val: anytype) *Self {
+            const clause = formatWhere(self.db.allocator, field, op, val) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
             };
@@ -2071,33 +2071,33 @@ pub fn ModelQuery(comptime T: type) type {
 
         /// WHERE 简化版（默认 = 操作符）
         /// 使用: .whereEq("name", "John")
-        pub fn whereEq(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, "=", value);
+        pub fn whereEq(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "=", val);
         }
 
         /// WHERE NOT EQUAL
-        pub fn whereNe(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, "!=", value);
+        pub fn whereNe(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "!=", val);
         }
 
         /// WHERE GREATER THAN
-        pub fn whereGt(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, ">", value);
+        pub fn whereGt(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, ">", val);
         }
 
         /// WHERE GREATER THAN OR EQUAL
-        pub fn whereGte(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, ">=", value);
+        pub fn whereGte(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, ">=", val);
         }
 
         /// WHERE LESS THAN
-        pub fn whereLt(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, "<", value);
+        pub fn whereLt(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "<", val);
         }
 
         /// WHERE LESS THAN OR EQUAL
-        pub fn whereLte(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.where(field, "<=", value);
+        pub fn whereLte(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "<=", val);
         }
 
         /// WHERE NOT IN
@@ -2267,8 +2267,8 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// OR WHERE 条件
-        pub fn orWhere(self: *Self, field: []const u8, op: []const u8, value: anytype) *Self {
-            const cond = formatWhere(self.db.allocator, field, op, value) catch return self;
+        pub fn orWhere(self: *Self, field: []const u8, op: []const u8, val: anytype) *Self {
+            const cond = formatWhere(self.db.allocator, field, op, val) catch return self;
             defer self.db.allocator.free(cond);
 
             if (self.where_clauses.items.len > 0) {
@@ -2287,8 +2287,8 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// OR WHERE 简化版
-        pub fn orWhereEq(self: *Self, field: []const u8, value: anytype) *Self {
-            return self.orWhere(field, "=", value);
+        pub fn orWhereEq(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.orWhere(field, "=", val);
         }
 
         /// 分组条件查询 (Laravel: ->where(function($query) { ... }))
@@ -2610,8 +2610,8 @@ pub fn ModelQuery(comptime T: type) type {
                 if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
                 try sql.appendSlice(self.db.allocator, field.name);
                 try sql.appendSlice(self.db.allocator, " = ");
-                const value = @field(data, field.name);
-                try appendValueToSql(self.db.allocator, &sql, value);
+                const val = @field(data, field.name);
+                try appendValueToSql(self.db.allocator, &sql, val);
             }
 
             try self.appendWhere(&sql);
@@ -2622,41 +2622,41 @@ pub fn ModelQuery(comptime T: type) type {
             return self.db.rawExec(sql_str, .{});
         }
 
-        fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype) !void {
-            const VT = @TypeOf(value);
+        fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), val: anytype) !void {
+            const VT = @TypeOf(val);
             const type_info = @typeInfo(VT);
 
             if (VT == []const u8) {
                 try sql.append(allocator, '\'');
                 // 转义危险字符以防止 SQL 注入
-                try appendEscapedStrToSql(allocator, sql, value);
+                try appendEscapedStrToSql(allocator, sql, val);
                 try sql.append(allocator, '\'');
             } else if (type_info == .pointer and type_info.pointer.size == .one) {
                 const child_info = @typeInfo(type_info.pointer.child);
                 if (child_info == .array and child_info.array.child == u8) {
                     try sql.append(allocator, '\'');
-                    const str: []const u8 = value;
+                    const str: []const u8 = val;
                     try appendEscapedStrToSql(allocator, sql, str);
                     try sql.append(allocator, '\'');
                 } else {
                     try sql.appendSlice(allocator, "NULL");
                 }
             } else if (type_info == .optional) {
-                if (value) |v| {
+                if (val) |v| {
                     try appendValueToSql(allocator, sql, v);
                 } else {
                     try sql.appendSlice(allocator, "NULL");
                 }
             } else if (type_info == .int or type_info == .comptime_int) {
                 var buf: [32]u8 = undefined;
-                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{val});
                 try sql.appendSlice(allocator, formatted);
             } else if (type_info == .float or type_info == .comptime_float) {
                 var buf: [64]u8 = undefined;
-                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{val});
                 try sql.appendSlice(allocator, formatted);
             } else if (VT == bool) {
-                try sql.appendSlice(allocator, if (value) "1" else "0");
+                try sql.appendSlice(allocator, if (val) "1" else "0");
             } else {
                 try sql.appendSlice(allocator, "NULL");
             }
@@ -3031,16 +3031,16 @@ pub fn ModelQuery(comptime T: type) type {
 
                 inline for (fields, 0..) |field, f_idx| {
                     // 使用缓存索引
-                    var value: ?[]const u8 = null;
+                    var val: ?[]const u8 = null;
                     if (field_indices[f_idx]) |idx| {
                         if (idx < row.values.len) {
-                            value = row.values[idx];
+                            val = row.values[idx];
                         }
                     }
 
                     if (@typeInfo(field.type) == .optional) {
                         const child_type = @typeInfo(field.type).optional.child;
-                        if (value) |v| {
+                        if (val) |v| {
                             // 根据可选类型的子类型进行转换
                             if (child_type == []const u8) {
                                 @field(model, field.name) = try self.db.allocator.dupe(u8, v);
@@ -3056,25 +3056,25 @@ pub fn ModelQuery(comptime T: type) type {
                         }
                     } else if (field.type == []const u8) {
                         // 复制字符串到堆内存（避免悬空指针）
-                        if (value) |v| {
+                        if (val) |v| {
                             @field(model, field.name) = try self.db.allocator.dupe(u8, v);
                         } else {
                             @field(model, field.name) = "";
                         }
                     } else if (@typeInfo(field.type) == .int) {
-                        if (value) |v| {
+                        if (val) |v| {
                             @field(model, field.name) = std.fmt.parseInt(field.type, v, 10) catch 0;
                         } else {
                             @field(model, field.name) = 0;
                         }
                     } else if (@typeInfo(field.type) == .float) {
-                        if (value) |v| {
+                        if (val) |v| {
                             @field(model, field.name) = std.fmt.parseFloat(field.type, v) catch 0;
                         } else {
                             @field(model, field.name) = 0;
                         }
                     } else if (field.type == bool) {
-                        @field(model, field.name) = if (value) |v| std.mem.eql(u8, v, "1") else false;
+                        @field(model, field.name) = if (val) |v| std.mem.eql(u8, v, "1") else false;
                     }
                 }
 

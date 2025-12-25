@@ -91,7 +91,14 @@ pub fn list(self: *Self, req: zap.Request) !void {
 
     // 转换为 JSON 友好格式
     var items = std.ArrayListUnmanaged(std.json.Value){};
-    defer items.deinit(self.allocator);
+    defer {
+        for (items.items) |*val| {
+            if (val.* == .object) {
+                val.object.deinit();
+            }
+        }
+        items.deinit(self.allocator);
+    }
 
     for (result.rows) |*row| {
         var obj = std.json.ObjectMap.init(self.allocator);
@@ -513,7 +520,14 @@ pub fn query(self: *Self, req: zap.Request) !void {
 
     // 转换结果
     var items = std.ArrayListUnmanaged(std.json.Value){};
-    defer items.deinit(self.allocator);
+    defer {
+        for (items.items) |*val| {
+            if (val.* == .object) {
+                val.object.deinit();
+            }
+        }
+        items.deinit(self.allocator);
+    }
 
     for (result.rows) |*row| {
         var obj = std.json.ObjectMap.init(self.allocator);

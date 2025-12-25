@@ -136,7 +136,16 @@ fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
 
     // 构建响应
     var response_data = std.StringHashMap(json_mod.Value).init(self.allocator);
-    defer response_data.deinit();
+    defer {
+        var iter = response_data.valueIterator();
+        while (iter.next()) |val| {
+            // json_mod.Value is likely an alias for std.json.Value
+            if (val.* == .object) {
+                val.object.deinit();
+            }
+        }
+        response_data.deinit();
+    }
 
     try response_data.put("code", json_mod.Value{ .integer = 0 });
     try response_data.put("msg", json_mod.Value{ .string = "success" });

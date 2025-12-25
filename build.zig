@@ -32,9 +32,12 @@ fn addCommonImports(module: *std.Build.Module, deps: anytype) void {
 fn setupMySQLPaths(artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
     artifact.linkSystemLibrary("mysqlclient");
     if (target.result.os.tag == .macos) {
-        // 使用 brew --prefix mysql-client 确认的路径
+        // Intel Mac
         artifact.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
         artifact.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+        // Apple Silicon
+        artifact.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+        artifact.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
     }
     if (target.result.os.tag == .linux) {
         artifact.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
