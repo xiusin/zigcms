@@ -46,10 +46,11 @@ pub const UserController = struct {
         };
 
         // 调用应用层服务
-        const user = try self.user_service.getUser(user_id) orelse {
+        var user = try self.user_service.getUser(user_id) orelse {
             try response.jsonError(404, "User not found");
             return;
         };
+        defer user.deinit(self.allocator);
 
         // 返回用户JSON
         try response.json(user);
@@ -95,7 +96,7 @@ pub const UserController = struct {
         const nickname = body.getString("nickname") orelse "";
 
         // 调用应用层服务创建用户
-        const user = try self.user_service.createUser(username, email, nickname) catch |err| switch (err) {
+        var user = try self.user_service.createUser(username, email, nickname) catch |err| switch (err) {
             error.InvalidUsername => {
                 try response.jsonError(400, "Invalid username");
                 return;
@@ -106,6 +107,7 @@ pub const UserController = struct {
             },
             else => return err,
         };
+        defer user.deinit(self.allocator);
 
         // 返回创建的用户
         try response.jsonWithStatus(201, user);
@@ -264,8 +266,13 @@ pub const UserController = struct {
     pub fn getUsers(self: *UserController, request: *http.Request, response: *http.Response) !void {
         _ = request; // 未使用请求参数
 
-        const users = try self.user_service.getAllUsers();
-        defer self.allocator.free(users);
+        var users = try self.user_service.getAllUsers();
+        defer {
+            for (users) |*user| {
+                user.deinit(self.allocator);
+            }
+            self.allocator.free(users);
+        }
 
         try response.json(.{ .users = users });
     }

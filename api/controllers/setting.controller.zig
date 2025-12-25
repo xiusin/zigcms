@@ -72,10 +72,11 @@ pub fn save(self: Self, req: zap.Request) !void {
 
         // 插入新值
         if (entity.value_ptr.getString()) |val| {
-            _ = Setting.Create(.{
+            var new_setting = Setting.Create(.{
                 .key = entity.key_ptr.*,
                 .value = val,
-            }) catch {};
+            }) catch continue;
+            Setting.freeModel(self.allocator, &new_setting);
         }
     }
 
@@ -196,17 +197,17 @@ pub fn test_upload_config(self: Self, req: zap.Request) !void {
 
 /// 保存单个设置项的辅助方法
 fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
-    _ = self;
     // 先删除已存在的 key
     var del_q = Setting.WhereEq("key", key);
     defer del_q.deinit();
     _ = del_q.delete() catch {};
 
     // 插入新值
-    _ = Setting.Create(.{
+    var new_setting = Setting.Create(.{
         .key = key,
         .value = value,
-    }) catch {};
+    }) catch return;
+    Setting.freeModel(self.allocator, &new_setting);
 }
 
 /// 发送测试邮件

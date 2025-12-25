@@ -15,10 +15,10 @@
 //! ```
 
 pub const base = @import("base.zig");
-pub const codegen = @import("codegen.zig");
-pub const migrate = @import("migrate.zig");
-pub const plugin_gen = @import("plugin_gen.zig");
-pub const config_gen = @import("config_gen.zig");
+pub const codegen = @import("codegen/main.zig");
+pub const migrate = @import("migrate/main.zig");
+pub const plugin_gen = @import("plugin_gen/main.zig");
+pub const config_gen = @import("config_gen/main.zig");
 
 // 导出常用类型
 pub const Command = base.Command;

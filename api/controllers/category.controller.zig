@@ -8,7 +8,7 @@ const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
-const CategoryService = @import("../../api/services/category_service.zig").CategoryService;
+const CategoryService = @import("../../application/services/category_service.zig").CategoryService;
 const json_mod = @import("../../application/services/json/json.zig");
 const strings = @import("../../shared/utils/strings.zig");
 const mw = @import("../middleware/mod.zig");

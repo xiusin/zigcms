@@ -4,61 +4,34 @@
 
 ```
 zigcms/
-├── domain/entities/          # 领域模型层
-│   ├── {entity}.model.zig    # 实体模型定义
-│   ├── models.zig            # 模型导出汇总
-│   └── orm_models.zig        # ORM 模型定义
-├── api/
-│   ├── controllers/          # 控制器层
-│   │   └── {entity}.controller.zig
-│   └── dto/                  # 数据传输对象层
-│       ├── {entity}_create.dto.zig
-│       ├── {entity}_update.dto.zig
-│       └── {entity}_response.dto.zig
-└── application/services/     # 应用服务层
-    └── {feature}/
-        └── {feature}_service.zig
+├── domain/entities/          # 领域实体 (RAII 内存管理)
+│   ├── {entity}.model.zig    
+├── api/controllers/          # 协议控制器 (通过 DI 注入服务)
+├── application/services/     # 业务服务层 (实现业务逻辑)
+├── infrastructure/           # 外部实现 (数据库、缓存驱动)
+├── commands/                 # CLI 工具集 (codegen, migrate)
+└── shared/di/                # 依赖注入核心
 ```
 
 ## 命名规范
 
-### 文件命名
-- **Model**: `{entity}.model.zig` (小写，如 `employee.model.zig`)
-- **Controller**: `{entity}.controller.zig` (小写，如 `employee.controller.zig`)
-- **DTO**: `{entity}_{action}.dto.zig` (小写，如 `employee_create.dto.zig`)
-- **Service**: `{feature}_service.zig` (小写，如 `dict_service.zig`)
+### 变量与参数
+- **普通变量**: `snake_case`
+- ** shadowing 防护**: 禁止定义名为 `value` 的参数，统一使用 `val`（避免与 ORM 内置方法冲突）。
+- **未使用参数**: 必须显式丢弃，如 `_ = self;`。
 
-### 类型命名
-- **Model**: `PascalCase` (如 `Employee`, `Department`)
-- **DTO**: `{Entity}{Action}Dto` (如 `EmployeeCreateDto`, `DepartmentResponseDto`)
-- **Controller**: 使用 `@This()` 作为 `Self`
+## 初始化 (DI 模式)
 
-## Model 规范
+控制器和服务必须使用构造函数注入，不再允许手动初始化全局变量：
 
 ```zig
-//! {实体名}管理模型
-//!
-//! {简要描述}
-
-/// {实体名}实体
-pub const {Entity} = struct {
-    /// 主键ID
-    id: ?i32 = null,
-    /// 名称
-    name: []const u8 = "",
-    /// 状态（0禁用 1启用）
-    status: i32 = 1,
-    /// 排序
-    sort: i32 = 0,
-    /// 备注
-    remark: []const u8 = "",
-    /// 创建时间
-    create_time: ?i64 = null,
-    /// 更新时间
-    update_time: ?i64 = null,
-    /// 软删除标记
-    is_delete: i32 = 0,
-};
+// ✅ 推荐 (DI 模式)
+pub fn init(allocator: Allocator, auth_service: *AuthService) Self {
+    return .{ 
+        .allocator = allocator, 
+        .auth_service = auth_service 
+    };
+}
 ```
 
 ### 标准字段
@@ -226,34 +199,33 @@ pub const {Entity}ResponseDto = struct {
 };
 ```
 
-## 响应格式规范
+## ORM 链式调用规范
 
-### 成功响应
-```json
-{
-    "code": 0,
-    "msg": "success",
-    "data": { ... }
-}
+利用重构后的 QueryBuilder 编写更具表现力的代码：
+
+```zig
+// 查询单条
+const admin = try Admin.Where("username", "=", val).firstOrFail();
+
+// 批量更新
+try Article.Where("status", "=", 0).update(.{ .status = 1 });
+
+// 原子增减
+try Product.WhereEq("id", id).increment("stock", 1);
+
+// 动态查询
+var query = User.Query();
+_ = query.When(hasRole, struct {
+    fn apply(q: *UserQuery) *UserQuery {
+        return q.whereEq("role", role);
+    }
+}.apply);
 ```
 
-### 分页响应（LayUI 格式）
-```json
-{
-    "code": 0,
-    "msg": "",
-    "count": 100,
-    "data": [ ... ]
-}
-```
-
-### 错误响应
-```json
-{
-    "code": 1,
-    "msg": "错误信息"
-}
-```
+### 内存管理 (ORM)
+- **单条记录**: 必须调用 `freeModel(allocator, &model)`。
+- **列表记录**: 必须调用 `freeModels(allocator, slice)`。
+- **List 包装器**: 推荐使用 `collect()` 方法并配合 `defer list.deinit()`。
 
 ## 注释规范
 

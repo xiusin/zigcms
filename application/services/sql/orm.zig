@@ -1136,6 +1136,12 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return paginate(getDb(), page_num, page_size);
         }
 
+        /// 无参 When - 条件查询
+        pub fn When(condition: bool, comptime apply: fn (*ModelQuery(T)) *ModelQuery(T)) ModelQuery(T) {
+            var q = query(getDb());
+            return q.when(condition, apply).*;
+        }
+
         /// 无参 Query - 创建查询构建器
         pub fn Query() ModelQuery(T) {
             return query(getDb());
@@ -1144,6 +1150,11 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 无参 Find
         pub fn Find(id: anytype) !?T {
             return find(getDb(), id);
+        }
+
+        /// 无参 FindOrFail
+        pub fn FindOrFail(id: anytype) !T {
+            return (try find(getDb(), id)) orelse error.ModelNotFound;
         }
 
         /// 无参 All
@@ -1159,6 +1170,11 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 无参 First
         pub fn First() !?T {
             return first(getDb());
+        }
+
+        /// 无参 FirstOrFail
+        pub fn FirstOrFail() !T {
+            return (try first(getDb())) orelse error.ModelNotFound;
         }
 
         /// 无参 Count
@@ -2820,6 +2836,46 @@ pub fn ModelQuery(comptime T: type) type {
             if (results.len == 0) return null;
             defer self.db.allocator.free(results);
             return results[0];
+        }
+
+        /// 获取第一条，如果不存在则报错 (Laravel: firstOrFail)
+        pub fn firstOrFail(self: *Self) !T {
+            return (try self.first()) orelse error.ModelNotFound;
+        }
+
+        /// 获取指定字段的值 (Laravel: value)
+        pub fn value(self: *Self, field_name: []const u8) !?[]const u8 {
+            return self.getValue(field_name);
+        }
+
+        /// 批量更新匹配的记录 (Laravel: update)
+        /// 使用: User.where("status", "=", 0).update(.{ .status = 1 })
+        pub fn update(self: *Self, data: anytype) !u64 {
+            return self.updateBatch(data);
+        }
+
+        /// 批量自增指定字段 (Laravel: increment)
+        pub fn increment(self: *Self, field_name: []const u8, amount: i64) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){};
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "UPDATE ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            const clause = try std.fmt.allocPrint(self.db.allocator, " SET {s} = {s} + {d}", .{ field_name, field_name, amount });
+            defer self.db.allocator.free(clause);
+            try sql.appendSlice(self.db.allocator, clause);
+
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.rawExec(sql_str, .{});
+        }
+
+        /// 批量自减指定字段 (Laravel: decrement)
+        pub fn decrement(self: *Self, field_name: []const u8, amount: i64) !u64 {
+            return self.increment(field_name, -amount);
         }
 
         /// 获取数量

@@ -10,7 +10,7 @@
 //! ```
 
 const std = @import("std");
-const base = @import("base.zig");
+const base = @import("base");
 
 const Command = base.Command;
 const CommandArgs = base.CommandArgs;

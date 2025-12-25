@@ -58,7 +58,8 @@ pub fn main() !void {
     // ========================================================================
     // 5. 使用 Bootstrap 注册路由
     // ========================================================================
-    var bootstrap = Bootstrap.init(allocator, &app, global_logger);
+    const container = zigcms.shared.di.getGlobalContainer() orelse @panic("DI Container not initialized");
+    var bootstrap = try Bootstrap.init(allocator, &app, global_logger, container);
     try bootstrap.registerRoutes();
 
     // ========================================================================

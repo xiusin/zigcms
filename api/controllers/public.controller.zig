@@ -93,7 +93,7 @@ pub fn upload(self: *Self, req: zap.Request) !void {
                     const Upload = orm_models.Upload;
                     const now = std.time.milliTimestamp();
 
-                    _ = Upload.Create(.{
+                    var new_upload = Upload.Create(.{
                         .original_name = origin_filename,
                         .path = filename,
                         .md5 = md5,
@@ -105,6 +105,7 @@ pub fn upload(self: *Self, req: zap.Request) !void {
                         .update_time = now,
                         .is_delete = 0,
                     }) catch |e| return base.send_error(req, e);
+                    defer Upload.freeModel(self.allocator, &new_upload);
 
                     return base.send_ok(req, .{
                         .path = filename,

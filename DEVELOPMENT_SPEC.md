@@ -162,54 +162,28 @@ pub fn registerUser(data: UserCreateData) !User {
 ```
 
 #### 2.1.2 内存管理模式
+
+ZigCMS 采用"职责明确，生命周期托管"的内存策略：
+
+**1. Arena 托管单例**
+系统级单例服务（如 `AuthService`, `Logger`）统一由 DI 系统的 `di_arena` 托管。
+- **创建**: 通过容器注册工厂函数分配。
+- **销毁**: 在系统关闭时通过 `arena.deinit()` 一次性自动释放，无需手动销毁单个服务。
+
+**2. 请求级局部 Arena**
+在处理复杂请求（如大型 JSON 解析）时，建议在控制器内部使用局部 `ArenaAllocator` 提高效率并防止泄漏。
+
+**3. 实体 RAII 模式**
+具有堆内存分配的结构体必须实现 `deinit` 方法：
 ```zig
-// ✅ 推荐：Arena 分配器用于临时分配
-pub fn processRequest(allocator: Allocator, request: Request) !Response {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arena_allocator = arena.allocator();
-    
-    // 所有临时分配都使用 arena_allocator
-    const parsed_data = try parseRequestData(arena_allocator, request.body);
-    const processed = try processData(arena_allocator, parsed_data);
-    
-    // 返回前复制到主分配器
-    return try allocator.dupe(u8, processed);
-}
-
-// ✅ 推荐：RAII 模式
-pub const DatabaseConnection = struct {
-    handle: *c.sqlite3,
-    
-    pub fn init(path: []const u8) !DatabaseConnection {
-        var handle: ?*c.sqlite3 = null;
-        const result = c.sqlite3_open(path.ptr, &handle);
-        if (result != c.SQLITE_OK) return error.DatabaseOpenFailed;
-        
-        return DatabaseConnection{ .handle = handle.? };
-    }
-    
-    pub fn deinit(self: *DatabaseConnection) void {
-        _ = c.sqlite3_close(self.handle);
-    }
-};
-
-// ✅ 推荐：defer 确保资源清理
-pub fn readFile(allocator: Allocator, path: []const u8) ![]u8 {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
-        log.err("Failed to open file {s}: {}", .{ path, err });
-        return err;
-    };
-    defer file.close();
-    
-    const size = try file.getEndPos();
-    const content = try allocator.alloc(u8, size);
-    errdefer allocator.free(content);
-    
-    _ = try file.readAll(content);
-    return content;
+pub fn deinit(self: *Self, allocator: Allocator) void {
+    if (self.name.len > 0) allocator.free(self.name);
+    // ...
 }
 ```
+
+**4. 避免 Shadowing (命名遮蔽)**
+Zig 0.15+ 严禁变量名遮蔽函数名或外部作用域变量。在 ORM 操作中，建议将参数名 `value` 统一改为 `val` 以避免与 `ModelQuery.value()` 冲突。
 
 #### 2.1.3 编译时计算与泛型
 ```zig
@@ -432,20 +406,23 @@ test "UserService.createUser" {
 ```
 zigcms/
 ├── api/
-│   ├── controllers/     # 控制器层
+│   ├── controllers/     # 控制器层 (仅协议逻辑)
 │   ├── dto/            # 数据传输对象
 │   └── middleware/     # 中间件
 ├── application/
-│   ├── services/       # 业务服务层
-│   └── config/         # 配置管理
+│   ├── services/       # 业务服务层 (核心业务逻辑所在)
+│   └── usecases/       # 业务用例
 ├── domain/
-│   ├── entities/       # 领域实体
-│   └── repositories/   # 数据访问层
+│   ├── entities/       # 领域实体 (包含 RAII 管理)
+│   └── repositories/   # 仓储接口
+├── infrastructure/
+│   ├── database/       # 数据库实现
+│   └── cache/          # 缓存契约驱动实现
 ├── shared/
-│   ├── utils/          # 工具函数
-│   └── primitives/     # 基础类型
-├── docs/               # 文档
-└── tests/              # 测试代码
+│   ├── di/             # 依赖注入系统 (Arena 托管单例)
+│   └── utils/          # 工具函数
+├── commands/           # CLI 工具子包 (codegen, migrate)
+└── main.zig            # 程序入口 (Compose Root)
 ```
 
 #### 1.2.2 文件结构规范
@@ -1607,66 +1584,43 @@ pub const SqliteUserRepository = struct {
 };
 ```
 
-### 3.2 依赖注入容器
+### 3.2 依赖注入容器 (DI System)
+
+ZigCMS 使用显式工厂模式的 DI 容器：
+
+**注册服务**:
+```zig
+try container.registerSingleton(UserService, UserService, struct {
+    fn factory(di: *DIContainer, allocator: Allocator) anyerror!*UserService {
+        const repo = try di.resolve(UserRepository);
+        const service = try allocator.create(UserService);
+        service.* = UserService.init(allocator, repo.*);
+        return service;
+    }
+}.factory);
+```
+
+**解析依赖**:
+控制器应通过构造函数注入服务，并在 `Bootstrap` 阶段由容器自动解析。
+
+### 3.3 ORM 高级查询规范 (Laravel 风格)
+
+推荐使用链式谓词构建查询，替代原始 SQL：
 
 ```zig
-// shared/container/service_container.zig
-pub const ServiceContainer = struct {
-    allocator: Allocator,
-    services: std.StringHashMap(*anyopaque),
-    
-    pub fn init(allocator: Allocator) ServiceContainer {
-        return .{
-            .allocator = allocator,
-            .services = std.StringHashMap(*anyopaque).init(allocator),
-        };
-    }
-    
-    pub fn deinit(self: *ServiceContainer) void {
-        self.services.deinit();
-    }
-    
-    pub fn register(self: *ServiceContainer, comptime T: type, service: *T) !void {
-        const type_name = @typeName(T);
-        try self.services.put(type_name, @ptrCast(service));
-    }
-    
-    pub fn resolve(self: *ServiceContainer, comptime T: type) !*T {
-        const type_name = @typeName(T);
-        const ptr = self.services.get(type_name) orelse return error.ServiceNotFound;
-        return @ptrCast(@alignCast(ptr));
-    }
-};
+// ✅ 推荐
+const user = try User.Where("email", "=", val).firstOrFail();
+try User.Where("status", "=", 0).update(.{ .status = 1 });
 
-// 使用示例
-pub fn setupContainer(allocator: Allocator) !ServiceContainer {
-    var container = ServiceContainer.init(allocator);
-    
-    // 注册服务
-    const db = try allocator.create(Database);
-    db.* = try Database.init(allocator, "zigcms.db");
-    try container.register(Database, db);
-    
-    const user_repo = try allocator.create(SqliteUserRepository);
-    user_repo.* = SqliteUserRepository.init(allocator, db);
-    try container.register(SqliteUserRepository, user_repo);
-    
-    const email_service = try allocator.create(EmailService);
-    email_service.* = EmailService.init(allocator);
-    try container.register(EmailService, email_service);
-    
-    const create_user_usecase = try allocator.create(CreateUserUseCase);
-    create_user_usecase.* = .{
-        .allocator = allocator,
-        .user_repository = user_repo.toInterface(),
-        .email_service = email_service.toInterface(),
-        .password_service = PasswordService.init(),
-    };
-    try container.register(CreateUserUseCase, create_user_usecase);
-    
-    return container;
-}
+// ❌ 避免
+const users = try db.query("SELECT * FROM users ...");
 ```
+
+主要语法糖清单：
+- `firstOrFail()`: 找不到记录时返回 `error.ModelNotFound`。
+- `getFieldValue(field)`: 快速提取单列值。
+- `increment(field, n)` / `decrement(field, n)`: 原子增减。
+- `When(condition, callback)`: 动态条件查询。
 
 ## 领域驱动设计
 

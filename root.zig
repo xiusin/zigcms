@@ -44,19 +44,22 @@ const logger = @import("application/services/logger/logger.zig");
 const sql_orm = @import("application/services/sql/orm.zig");
 
 // 用户服务相关导入
-const UserService = @import("api/services/user_service.zig").UserService;
+const UserService = @import("application/services/user_service.zig").UserService;
 const UserRepository = @import("domain/repositories/user_repository.zig").UserRepository;
 const SqliteUserRepository = @import("infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
 
 // 会员服务相关导入
-const MemberService = @import("api/services/member_service.zig").MemberService;
+const MemberService = @import("application/services/member_service.zig").MemberService;
 const MemberRepository = @import("domain/repositories/member_repository.zig").MemberRepository;
 const SqliteMemberRepository = @import("infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
 
 // 分类服务相关导入
-const CategoryService = @import("api/services/category_service.zig").CategoryService;
+const CategoryService = @import("application/services/category_service.zig").CategoryService;
 const CategoryRepository = @import("domain/repositories/category_repository.zig").CategoryRepository;
 const SqliteCategoryRepository = @import("infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
+
+// 认证服务导入
+const AuthService = @import("application/services/auth_service.zig").AuthService;
 
 // ============================================================================
 // 编译选项
@@ -203,6 +206,7 @@ pub fn loadConfigFromFiles(allocator: std.mem.Allocator, config_dir: []const u8)
 /// 从配置文件加载配置并转换为 SystemConfig
 ///
 /// 这是一个便捷函数，加载文件配置并转换为系统使用的 SystemConfig 格式。
+/// 配置加载器已自动处理环境变量覆盖。
 ///
 /// ## 参数
 /// - `allocator`: 内存分配器
@@ -212,8 +216,8 @@ pub fn loadConfigFromFiles(allocator: std.mem.Allocator, config_dir: []const u8)
 pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     const file_config = try loadConfigFromFiles(allocator, "configs");
 
-    // 应用环境变量覆盖
-    var system_config = SystemConfig{
+    // 将文件配置映射到系统配置（防腐层转换）
+    return SystemConfig{
         .api = .{
             .host = file_config.api.host,
             .port = file_config.api.port,
@@ -247,31 +251,6 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
         },
         .shared = .{},
     };
-
-    // 应用环境变量覆盖
-    if (std.posix.getenv("ZIGCMS_API_HOST")) |val| {
-        system_config.api.host = val;
-    }
-    if (std.posix.getenv("ZIGCMS_API_PORT")) |val| {
-        system_config.api.port = std.fmt.parseInt(u16, val, 10) catch system_config.api.port;
-    }
-    if (std.posix.getenv("ZIGCMS_DB_HOST")) |val| {
-        system_config.infra.db_host = val;
-    }
-    if (std.posix.getenv("ZIGCMS_DB_PORT")) |val| {
-        system_config.infra.db_port = std.fmt.parseInt(u16, val, 10) catch system_config.infra.db_port;
-    }
-    if (std.posix.getenv("ZIGCMS_DB_NAME")) |val| {
-        system_config.infra.db_name = val;
-    }
-    if (std.posix.getenv("ZIGCMS_DB_USER")) |val| {
-        system_config.infra.db_user = val;
-    }
-    if (std.posix.getenv("ZIGCMS_DB_PASSWORD")) |val| {
-        system_config.infra.db_password = val;
-    }
-
-    return system_config;
 }
 
 /// 初始化整个系统
@@ -354,7 +333,10 @@ fn registerApplicationServices(_: std.mem.Allocator, db: *sql_orm.Database) !voi
         // 3. 注册分类服务相关
         try registerCategoryServices(container, db);
 
-        // 4. 注册基础设施服务
+        // 4. 注册认证服务
+        try registerAuthServices(container);
+
+        // 5. 注册基础设施服务
         try container.registerInstance(sql_orm.Database, db);
 
         logger.info("应用服务注册到DI容器完成", .{});
@@ -375,9 +357,8 @@ fn registerUserServices(container: *@import("shared/di/container.zig").DIContain
     try container.registerInstance(UserRepository, user_repo);
 
     try container.registerSingleton(UserService, UserService, struct {
-        fn factory(allocator: std.mem.Allocator) anyerror!*UserService {
-            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
-            const resolved_user_repo = try global_container.resolve(UserRepository);
+        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*UserService {
+            const resolved_user_repo = try di.resolve(UserRepository);
 
             const user_service = try allocator.create(UserService);
             errdefer allocator.destroy(user_service);
@@ -407,9 +388,8 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
     try container.registerInstance(MemberRepository, member_repo);
 
     try container.registerSingleton(MemberService, MemberService, struct {
-        fn factory(allocator: std.mem.Allocator) anyerror!*MemberService {
-            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
-            const resolved_member_repo = try global_container.resolve(MemberRepository);
+        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*MemberService {
+            const resolved_member_repo = try di.resolve(MemberRepository);
 
             const member_service = try allocator.create(MemberService);
             errdefer allocator.destroy(member_service);
@@ -431,9 +411,8 @@ fn registerCategoryServices(container: *@import("shared/di/container.zig").DICon
     try container.registerInstance(CategoryRepository, category_repo);
 
     try container.registerSingleton(CategoryService, CategoryService, struct {
-        fn factory(allocator: std.mem.Allocator) anyerror!*CategoryService {
-            const global_container = @import("shared/di/mod.zig").getGlobalContainer() orelse return error.ContainerNotAvailable;
-            const resolved_category_repo = try global_container.resolve(CategoryRepository);
+        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*CategoryService {
+            const resolved_category_repo = try di.resolve(CategoryRepository);
 
             const category_service = try allocator.create(CategoryService);
             errdefer allocator.destroy(category_service);
@@ -451,7 +430,7 @@ fn createSqliteMemberRepository(db: *sql_orm.Database) !*SqliteMemberRepository 
     return repo;
 }
 
-/// 创建分类仓储实现
+/// 注册分类服务实现
 fn createSqliteCategoryRepository(db: *sql_orm.Database) !*SqliteCategoryRepository {
     const allocator = std.heap.page_allocator;
     const repo = try allocator.create(SqliteCategoryRepository);
@@ -459,46 +438,43 @@ fn createSqliteCategoryRepository(db: *sql_orm.Database) !*SqliteCategoryReposit
     return repo;
 }
 
+/// 注册认证服务
+fn registerAuthServices(container: *@import("shared/di/container.zig").DIContainer) !void {
+    try container.registerSingleton(AuthService, AuthService, struct {
+        fn factory(_: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*AuthService {
+            const auth_service = try allocator.create(AuthService);
+            errdefer allocator.destroy(auth_service);
+            auth_service.* = AuthService.init(allocator);
+            return auth_service;
+        }
+    }.factory);
+}
+
 /// 清理整个系统
-///
-/// 按照初始化的逆序清理各层资源。
-/// 应在程序退出前调用以避免内存泄漏。
 pub fn deinitSystem() void {
     std.debug.print("[INFO] 开始系统清理...\n", .{});
 
-    // 清理服务管理器
-    if (service_manager) |*sm| {
-        sm.deinit();
-    }
+    // 1. 清理服务管理器
+    if (service_manager) |*sm| sm.deinit();
     service_manager = null;
 
-    // 清理全局模块（在数据库之前，因为它持有数据库引用）
+    // 2. 清理全局模块
     shared.global.deinit();
 
-    // 服务实例清理现在由DI容器统一管理，无需手动清理
-    // 在deinitGlobalDISystem()中会自动清理所有注册的服务
-
-    // 清理基础设施数据库连接
+    // 3. 清理基础设施数据库
     if (infrastructure_db) |db| {
         db.deinit();
-        // 释放数据库结构体内存
-        if (global_allocator) |allocator| {
-            allocator.destroy(db);
-        }
+        if (global_allocator) |allocator| allocator.destroy(db);
     }
     infrastructure_db = null;
 
-    // 清理配置加载器
-    if (global_config_loader) |*loader| {
-        loader.deinit();
-    }
+    // 4. 清理配置加载器
+    if (global_config_loader) |*loader| loader.deinit();
     global_config_loader = null;
 
-    // 其他各层清理
+    // 5. 核心：由 DI 系统的 Arena 回收所有单例和服务资源
     shared.deinit();
 
-    // 清理全局分配器引用
     global_allocator = null;
-
     std.debug.print("[INFO] 系统清理完成\n", .{});
 }

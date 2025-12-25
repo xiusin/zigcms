@@ -84,4 +84,12 @@ pub const User = struct {
         }
         return self.username;
     }
+
+    /// 释放用户资源
+    pub fn deinit(self: *User, allocator: std.mem.Allocator) void {
+        if (self.username.len > 0) allocator.free(self.username);
+        if (self.email.len > 0) allocator.free(self.email);
+        if (self.nickname.len > 0) allocator.free(self.nickname);
+        if (self.avatar.len > 0) allocator.free(self.avatar);
+    }
 };

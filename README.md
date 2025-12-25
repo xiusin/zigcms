@@ -1,20 +1,20 @@
 # ZigCMS
 
-基于 Zig 语言开发的现代化 CMS 系统，具备高性能、内存安全和易扩展的特性。
+基于 Zig 语言开发的现代化 CMS 系统，具备高性能、内存安全和易扩展的特性。项目采用整洁架构（Clean Architecture）并深度集成了依赖注入（DI）机制。
 
-## 📚 文档导航
+## ✨ 核心特性
 
-- **[开发规范](DEVELOPMENT_SPEC.md)** - 详细的开发标准和规范
-- **[使用指南](USAGE_GUIDE.md)** - 完整的使用说明和教程
-- **[项目结构](STRUCTURE.md)** - 代码组织和架构说明
-- **[技术文档](DOCS.md)** - 技术实现细节和API文档
-- **[API文档](docs/api/)** - 交互式API文档
+- **整洁架构**: 严格的分层设计（API、Application、Domain、Infrastructure），确保业务逻辑的高度独立。
+- **自动依赖注入**: 采用基于 Arena 托管的全局 DI 容器，实现服务的自动化装配与零泄漏清理。
+- **Laravel 风格 ORM**: 增强型 QueryBuilder，支持链式调用（`where`, `getFieldValue`, `firstOrFail`）及模型关联。
+- **工程化工具链**: 模块化的 CLI 工具集，支持代码生成（`codegen`）、数据库迁移（`migrate`）及插件管理。
+- **统一缓存契约**: 标准化的 `CacheInterface`，支持内存与 Redis 驱动的无缝切换。
 
 ## 🚀 快速开始
 
 ### 环境要求
 
-- Zig 0.12.0+
+- Zig 0.15.0+
 - SQLite 3.8+ (内置支持)
 - MySQL/PostgreSQL (可选)
 
@@ -25,64 +25,35 @@
 git clone <repository-url>
 cd zigcms
 
+# 初始化环境
+make setup
+
 # 构建项目
-zig build
+make build
 
 # 运行开发服务器
-zig build run
-
-# 生产环境构建
-zig build -Doptimize=ReleaseSafe run
+make dev
 ```
 
-### 访问系统
+## 🛠️ 命令行工具
 
-- 管理后台: http://localhost:8080/admin
-- API文档: http://localhost:8080/docs/api/
+项目提供了一套强大的工程化命令，均已重组至 `commands/` 目录：
 
-## 📖 详细文档
+- **代码生成**: `zig build codegen -- --name=Article --all` (自动生成模型、DTO、控制器)
+- **数据库迁移**: `zig build migrate -- up` (执行迁移), `zig build migrate -- create add_user_table`
+- **配置生成**: `zig build config-gen` (根据 .env 自动生成配置结构)
+- **插件模板**: `zig build plugin-gen -- --name=MyPlugin`
 
-### 开发者指南
+## 🧪 内存安全与测试
 
-请参考 [开发规范](DEVELOPMENT_SPEC.md) 了解：
-- 代码风格和命名规范
-- 架构设计原则
-- API设计标准
-- 数据库设计规范
-
-### 使用指南
-
-请参考 [使用指南](USAGE_GUIDE.md) 了解：
-- 系统安装配置
-- 功能模块使用
-- 管理后台操作
-- 常见问题解决
-
-### 项目结构
-
-请参考 [项目结构](STRUCTURE.md) 了解：
-- 目录组织结构
-- 模块职责划分
-- 依赖关系说明
-
-### 技术文档
-
-请参考 [技术文档](DOCS.md) 了解：
-- 技术栈介绍
-- 核心功能实现
-- 依赖管理
-- 部署说明
-
-## 🧪 测试
-
-### 运行测试
+项目高度重视内存安全，所有持久化组件均通过 DI 系统的 Arena 进行托管，确保运行期零泄漏。
 
 ```bash
-# 运行所有测试
-zig build test
+# 运行全量测试
+make test
 
-# 运行特定测试
-zig build test -- <test_name>
+# 手动运行编译好的程序观察内存
+./zig-out/bin/zigcms
 ```
 
 ### 数据库测试

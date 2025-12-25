@@ -13,6 +13,8 @@ const App = @import("App.zig").App;
 const controllers = @import("controllers/mod.zig");
 const models = @import("../domain/entities/models.zig");
 
+const DIContainer = @import("../shared/di/container.zig").DIContainer;
+
 /// Bootstrap 模块 - 系统启动编排器
 pub const Bootstrap = struct {
     const Self = @This();
@@ -20,15 +22,22 @@ pub const Bootstrap = struct {
     allocator: std.mem.Allocator,
     app: *App,
     global_logger: *logger.Logger,
+    container: *DIContainer,
     route_count: usize,
     crud_count: usize,
 
     /// 初始化 Bootstrap 模块
-    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger) Self {
+    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer) !Self {
+        // 注册日志服务实例
+        if (!container.isRegistered(logger.Logger)) {
+            try container.registerInstance(logger.Logger, global_logger);
+        }
+
         return .{
             .allocator = allocator,
             .app = app,
             .global_logger = global_logger,
+            .container = container,
             .route_count = 0,
             .crud_count = 0,
         };
@@ -90,36 +99,85 @@ pub const Bootstrap = struct {
 
     /// 注册认证相关路由
     fn registerAuthRoutes(self: *Self) !void {
-        var login = controllers.auth.Login.init(self.allocator, self.global_logger);
-        try self.app.route("/login", &login, &controllers.auth.Login.login);
-        try self.app.route("/register", &login, &controllers.auth.Login.register);
+        // 注册 Login 控制器
+        if (!self.container.isRegistered(controllers.auth.Login)) {
+            try self.container.registerSingleton(controllers.auth.Login, controllers.auth.Login, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.auth.Login {
+                    const l = try di.resolve(logger.Logger);
+                    // 从容器中解析 AuthService
+                    const auth_service = try di.resolve(@import("../application/services/auth_service.zig").AuthService);
+                    
+                    const ctrl = try allocator.create(controllers.auth.Login);
+                    ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);
+                    return ctrl;
+                }
+            }.factory);
+        }
+
+        const login = try self.container.resolve(controllers.auth.Login);
+        try self.app.route("/login", login, &controllers.auth.Login.login);
+        try self.app.route("/register", login, &controllers.auth.Login.register);
         self.route_count += 2;
     }
 
     /// 注册公共接口路由
     fn registerPublicRoutes(self: *Self) !void {
-        var public = controllers.common.Public.init(self.allocator, self.global_logger);
-        try self.app.route("/public/upload", &public, &controllers.common.Public.upload);
-        try self.app.route("/public/folder", &public, &controllers.common.Public.folder);
-        try self.app.route("/public/files", &public, &controllers.common.Public.files);
+        // 注册 Public 控制器
+        if (!self.container.isRegistered(controllers.common.Public)) {
+            try self.container.registerSingleton(controllers.common.Public, controllers.common.Public, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.common.Public {
+                    const l = try di.resolve(logger.Logger);
+                    const ctrl = try allocator.create(controllers.common.Public);
+                    ctrl.* = controllers.common.Public.init(allocator, l);
+                    return ctrl;
+                }
+            }.factory);
+        }
+
+        const public = try self.container.resolve(controllers.common.Public);
+        try self.app.route("/public/upload", public, &controllers.common.Public.upload);
+        try self.app.route("/public/folder", public, &controllers.common.Public.folder);
+        try self.app.route("/public/files", public, &controllers.common.Public.files);
         self.route_count += 3;
     }
 
     /// 注册管理后台路由
     fn registerAdminRoutes(self: *Self) !void {
-        // 菜单控制器
-        var menu = controllers.admin.Menu.init(self.allocator, self.global_logger);
-        try self.app.route("/menu/list", &menu, &controllers.admin.Menu.list);
+        // 注册 Menu 控制器
+        if (!self.container.isRegistered(controllers.admin.Menu)) {
+            try self.container.registerSingleton(controllers.admin.Menu, controllers.admin.Menu, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.admin.Menu {
+                    const l = try di.resolve(logger.Logger);
+                    const ctrl = try allocator.create(controllers.admin.Menu);
+                    ctrl.* = controllers.admin.Menu.init(allocator, l);
+                    return ctrl;
+                }
+            }.factory);
+        }
+        
+        const menu = try self.container.resolve(controllers.admin.Menu);
+        try self.app.route("/menu/list", menu, &controllers.admin.Menu.list);
         self.route_count += 1;
 
-        // 设置控制器
-        var setting = controllers.admin.Setting.init(self.allocator);
-        try self.app.route("/setting/get", &setting, &controllers.admin.Setting.get);
-        try self.app.route("/setting/save", &setting, &controllers.admin.Setting.save);
-        try self.app.route("/setting/send_email", &setting, &controllers.admin.Setting.send_mail);
-        try self.app.route("/setting/upload_config/get", &setting, &controllers.admin.Setting.get_upload_config);
-        try self.app.route("/setting/upload_config/save", &setting, &controllers.admin.Setting.save_upload_config);
-        try self.app.route("/setting/upload_config/test", &setting, &controllers.admin.Setting.test_upload_config);
+        // 注册 Setting 控制器
+        if (!self.container.isRegistered(controllers.admin.Setting)) {
+            try self.container.registerSingleton(controllers.admin.Setting, controllers.admin.Setting, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.admin.Setting {
+                    _ = di; // Setting 控制器不需要其他依赖
+                    const ctrl = try allocator.create(controllers.admin.Setting);
+                    ctrl.* = controllers.admin.Setting.init(allocator);
+                    return ctrl;
+                }
+            }.factory);
+        }
+
+        const setting = try self.container.resolve(controllers.admin.Setting);
+        try self.app.route("/setting/get", setting, &controllers.admin.Setting.get);
+        try self.app.route("/setting/save", setting, &controllers.admin.Setting.save);
+        try self.app.route("/setting/send_email", setting, &controllers.admin.Setting.send_mail);
+        try self.app.route("/setting/upload_config/get", setting, &controllers.admin.Setting.get_upload_config);
+        try self.app.route("/setting/upload_config/save", setting, &controllers.admin.Setting.save_upload_config);
+        try self.app.route("/setting/upload_config/test", setting, &controllers.admin.Setting.test_upload_config);
         self.route_count += 6;
 
         // 注意：角色管理路由已在 registerCrudModules 中通过 crud("role", models.Role) 注册
