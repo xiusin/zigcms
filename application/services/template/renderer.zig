@@ -3,6 +3,11 @@ const std = @import("std");
 const ast = @import("ast.zig");
 
 pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), context: std.json.Value) ![]u8 {
+    return renderWithMacros(allocator, nodes, context, null);
+}
+
+/// 使用宏上下文渲染模板
+pub fn renderWithMacros(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), context: std.json.Value, macros: ?*const std.StringHashMap(ast.Macro)) ![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -12,7 +17,7 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
         switch (node) {
             .text => |t| try output.appendSlice(allocator, t),
             .variable => |v| {
-                const value = try evaluate(v, context, alloc);
+                const value = try evaluateWithMacros(v, context, alloc, macros);
                 const str = try valueToString(alloc, value);
                 try output.appendSlice(allocator, str);
             },
@@ -108,6 +113,61 @@ fn evaluate(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Al
             return applyFilter(allocator, value, f.filter);
         },
     }
+}
+
+/// 支持宏调用的表达式求值
+fn evaluateWithMacros(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Allocator, macros: ?*const std.StringHashMap(ast.Macro)) !std.json.Value {
+    switch (expr) {
+        .literal => |lit| return lit,
+        .variable => |path| return getValue(context, path),
+        .function_call => |fc| {
+            // 检查是否是宏调用
+            if (macros != null) {
+                if (macros.*.get(fc.name)) |macro| {
+                    // 调用宏
+                    return try callMacro(allocator, macro, fc.args, context, macros);
+                }
+            }
+            
+            // 检查是否是内置函数
+            if (std.mem.eql(u8, fc.name, "range")) {
+                if (fc.args.items.len != 2) return error.InvalidArgs;
+                const start_val = try evaluateWithMacros(fc.args.items[0].*, context, allocator, macros);
+                const end_val = try evaluateWithMacros(fc.args.items[1].*, context, allocator, macros);
+                if (start_val != .integer or end_val != .integer) return error.InvalidArgs;
+                var arr = std.json.Array.init(allocator);
+                var i = start_val.integer;
+                while (i <= end_val.integer) : (i += 1) {
+                    try arr.append(std.json.Value{ .integer = i });
+                }
+                return std.json.Value{ .array = arr };
+            }
+            return error.UnknownFunction;
+        },
+        .filtered => |f| {
+            const value = try evaluateWithMacros(f.expr.*, context, allocator, macros);
+            return applyFilter(allocator, value, f.filter);
+        },
+    }
+}
+
+/// 调用宏
+fn callMacro(allocator: std.mem.Allocator, macro: ast.Macro, args: std.ArrayList(*const ast.Expression), context: std.json.Value, macros: ?*const std.StringHashMap(ast.Macro)) !std.json.Value {
+    // 验证参数数量
+    if (args.items.len != macro.params.items.len) return error.InvalidMacroArgs;
+    
+    // 创建宏参数上下文
+    var macro_context = std.StringHashMap(std.json.Value).init(allocator);
+    for (args.items, 0..) |arg_expr, i| {
+        const arg_value = try evaluateWithMacros(arg_expr.*, context, allocator, macros);
+        try macro_context.put(macro.params.items[i], arg_value);
+    }
+    
+    // 渲染宏体
+    const output = try renderWithMacros(allocator, macro.body, std.json.Value{ .object = macro_context }, macros);
+    defer allocator.free(output);
+    
+    return std.json.Value{ .string = output };
 }
 
 fn isTrue(value: std.json.Value) bool {
@@ -270,6 +330,50 @@ fn applyFilter(allocator: std.mem.Allocator, value: std.json.Value, filter: []co
         // last 过滤器：获取数组最后一个元素
         if (value == .array and value.array.items.len > 0) {
             return value.array.items[value.array.items.len - 1];
+        }
+    } else if (std.mem.eql(u8, filter_name, "format")) {
+        // format 过滤器：字符串格式化
+        // 用法：{{ value | format:"Hello {s}!" }}
+        if (value == .string and filter_arg != null) {
+            // 简单的字符串替换，将 {s} 替换为实际值
+            var result = std.ArrayList(u8).init(allocator);
+            defer result.deinit(allocator);
+            
+            var i: usize = 0;
+            while (i < filter_arg.?.len) : (i += 1) {
+                if (i + 1 < filter_arg.?.len and filter_arg.?[i] == '{' and filter_arg.?[i + 1] == 's') {
+                    try result.appendSlice(allocator, value.string);
+                    i += 1;
+                } else {
+                    try result.append(allocator, filter_arg.?[i]);
+                }
+            }
+            if (i < filter_arg.?.len) {
+                try result.appendSlice(allocator, filter_arg.?[i..]);
+            }
+            return std.json.Value{ .string = result.toOwnedSlice(allocator) };
+        }
+    } else if (std.mem.eql(u8, filter_name, "replace")) {
+        // replace 过滤器：字符串替换
+        // 用法：{{ value | replace:"old:new" }}
+        if (value == .string and filter_arg != null) {
+            if (std.mem.indexOf(u8, filter_arg.?, ":")) |colon_idx| {
+                const search = filter_arg.?[0..colon_idx];
+                const replacement = filter_arg.?[colon_idx + 1 ..];
+                
+                var result = std.ArrayList(u8).init(allocator);
+                defer result.deinit(allocator);
+                
+                var start: usize = 0;
+                while (std.mem.indexOf(u8, value.string[start..], search)) |idx| {
+                    try result.appendSlice(allocator, value.string[start .. start + idx]);
+                    try result.appendSlice(allocator, replacement);
+                    start += idx + search.len;
+                }
+                try result.appendSlice(allocator, value.string[start..]);
+                
+                return std.json.Value{ .string = result.toOwnedSlice(allocator) };
+            }
         }
     }
     return value;

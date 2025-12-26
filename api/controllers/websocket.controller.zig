@@ -13,7 +13,7 @@ pub const WebSocketController = struct {
     const Handler = struct {
         allocator: std.mem.Allocator,
         /// 连接 ID，用于标识客户端
-        connection_id: std.atomic.Atomic(usize) = .{},
+        connection_id: std.atomic.Value(usize) = .{},
 
         /// 连接的客户端列表
         clients: std.AutoHashMap(usize, *zap.WebSocket),

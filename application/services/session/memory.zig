@@ -51,13 +51,4 @@ pub const MemoryDriver = struct {
             std.json.parseFree(std.json.Value, kv.value, self.data.allocator);
         }
     }
-
-    pub fn driver(self: *MemoryDriver) Session.SessionDriver {
-        return .{
-            .ptr = self,
-            .saveFn = saveFn,
-            .loadFn = loadFn,
-            .deleteFn = deleteFn,
-        };
-    }
 };

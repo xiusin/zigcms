@@ -56,17 +56,56 @@ pub const Session = struct {
 
 pub const MemoryDriver = @import("memory.zig").MemoryDriver;
 
+/// Helper function to create a SessionDriver from MemoryDriver
+pub fn createMemoryDriver(memory_driver: *MemoryDriver) Session.SessionDriver {
+    return .{
+        .ptr = memory_driver,
+        .saveFn = struct {
+            fn saveFn(ptr: *anyopaque, id: []const u8, data: std.json.Value) !void {
+                const self: *MemoryDriver = @ptrCast(@alignCast(ptr));
+                const key = try self.data.allocator.dupe(u8, id);
+                errdefer self.data.allocator.free(key);
+                const str = try std.json.stringifyAlloc(self.data.allocator, data, .{});
+                defer self.data.allocator.free(str);
+                const value = try std.json.parseFromSlice(std.json.Value, self.data.allocator, str, .{});
+                try self.data.put(key, value);
+            }
+        }.saveFn,
+        .loadFn = struct {
+            fn loadFn(ptr: *anyopaque, allocator: std.mem.Allocator, id: []const u8) !std.json.Value {
+                const self: *MemoryDriver = @ptrCast(@alignCast(ptr));
+                if (self.data.get(id)) |val| {
+                    const str = try std.json.stringifyAlloc(self.data.allocator, val, .{});
+                    defer self.data.allocator.free(str);
+                    return std.json.parseFromSlice(std.json.Value, allocator, str, .{});
+                } else {
+                    return std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+                }
+            }
+        }.loadFn,
+        .deleteFn = struct {
+            fn deleteFn(ptr: *anyopaque, id: []const u8) !void {
+                const self: *MemoryDriver = @ptrCast(@alignCast(ptr));
+                if (self.data.fetchRemove(id)) |kv| {
+                    self.data.allocator.free(kv.key);
+                    std.json.parseFree(std.json.Value, kv.value, self.data.allocator);
+                }
+            }
+        }.deleteFn,
+    };
+}
+
 test "session save and load" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
     var driver = MemoryDriver.init(allocator);
     defer driver.deinit();
-    var session = try Session.init(allocator, driver.driver(), null);
+    var session = try Session.init(allocator, createMemoryDriver(&driver), null);
     defer session.destroy();
     try session.data.object.put("key", std.json.Value{ .string = "value" });
     try session.save();
-    var session2 = try Session.init(allocator, driver.driver(), session.id);
+    var session2 = try Session.init(allocator, createMemoryDriver(&driver), session.id);
     defer session2.destroy();
     if (session2.data.object.get("key")) |val| {
         try std.testing.expectEqualStrings("value", val.string);

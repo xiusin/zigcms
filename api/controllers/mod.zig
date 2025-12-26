@@ -82,8 +82,9 @@ pub const external = struct {
 
 // 实时通信控制器
 pub const realtime = struct {
-    pub const WebSocket = @import("websocket.controller.zig").WebSocketController;
-    pub const SSE = @import("sse.controller.zig").SSEController;
+    // TODO: WebSocket 和 SSE 功能需要 zap 支持，暂时注释
+    // pub const WebSocket = @import("websocket.controller.zig").WebSocketController;
+    // pub const SSE = @import("sse.controller.zig").SSEController;
 };
 
 // 通用控制器类型

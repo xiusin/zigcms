@@ -189,59 +189,62 @@ pub const Bootstrap = struct {
 
     /// 注册实时通信路由
     fn registerRealtimeRoutes(self: *Self) !void {
+        _ = self; // TODO: 实时通信功能需要 zap 支持，暂时注释
         // WebSocket 控制器
-        const WSController = controllers.realtime.WebSocket;
-        const ws_ctrl_ptr = try self.allocator.create(WSController);
+        // TODO: WebSocket 功能需要 zap 支持，暂时注释
+        // const WSController = controllers.realtime.WebSocket;
+        // const ws_ctrl_ptr = try self.allocator.create(WSController);
 
-        var owned_ws = false;
-        errdefer if (!owned_ws) self.allocator.destroy(ws_ctrl_ptr);
+        // var owned_ws = false;
+        // errdefer if (!owned_ws) self.allocator.destroy(ws_ctrl_ptr);
 
-        ws_ctrl_ptr.* = WSController.init(self.allocator);
+        // ws_ctrl_ptr.* = WSController.init(self.allocator);
 
-        // 追踪控制器指针以便后续清理
-        const wsDestroyFn = struct {
-            fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
-                const typed_ptr: *WSController = @ptrCast(@alignCast(ptr));
-                typed_ptr.deinit();
-                alloc.destroy(typed_ptr);
-            }
-        }.destroy;
+        // // 追踪控制器指针以便后续清理
+        // const wsDestroyFn = struct {
+        //     fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
+        //         const typed_ptr: *WSController = @ptrCast(@alignCast(ptr));
+        //         typed_ptr.deinit();
+        //         alloc.destroy(typed_ptr);
+        //     }
+        // }.destroy;
 
-        try self.app.controllers.append(self.allocator, .{
-            .ptr = @ptrCast(ws_ctrl_ptr),
-            .deinit_fn = wsDestroyFn,
-        });
-        owned_ws = true;
+        // try self.app.controllers.append(self.allocator, .{
+        //     .ptr = @ptrCast(ws_ctrl_ptr),
+        //     .deinit_fn = wsDestroyFn,
+        // });
+        // owned_ws = true;
 
-        try self.app.route("/ws", ws_ctrl_ptr, &WSController.upgrade);
-        self.route_count += 1;
+        // try self.app.route("/ws", ws_ctrl_ptr, &WSController.upgrade);
+        // self.route_count += 1;
 
         // SSE 控制器
-        const SSEController = controllers.realtime.SSE;
-        const sse_ctrl_ptr = try self.allocator.create(SSEController);
+        // TODO: SSE 功能需要 zap 支持，暂时注释
+        // const SSEController = controllers.realtime.SSE;
+        // const sse_ctrl_ptr = try self.allocator.create(SSEController);
 
-        var owned_sse = false;
-        errdefer if (!owned_sse) self.allocator.destroy(sse_ctrl_ptr);
+        // var owned_sse = false;
+        // errdefer if (!owned_sse) self.allocator.destroy(sse_ctrl_ptr);
 
-        sse_ctrl_ptr.* = SSEController.init(self.allocator);
+        // sse_ctrl_ptr.* = SSEController.init(self.allocator);
 
-        // 追踪控制器指针以便后续清理
-        const sseDestroyFn = struct {
-            fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
-                const typed_ptr: *SSEController = @ptrCast(@alignCast(ptr));
-                typed_ptr.deinit();
-                alloc.destroy(typed_ptr);
-            }
-        }.destroy;
+        // // 追踪控制器指针以便后续清理
+        // const sseDestroyFn = struct {
+        //     fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
+        //         const typed_ptr: *SSEController = @ptrCast(@alignCast(ptr));
+        //         typed_ptr.deinit();
+        //         alloc.destroy(typed_ptr);
+        //     }
+        // }.destroy;
 
-        try self.app.controllers.append(self.allocator, .{
-            .ptr = @ptrCast(sse_ctrl_ptr),
-            .deinit_fn = sseDestroyFn,
-        });
-        owned_sse = true;
+        // try self.app.controllers.append(self.allocator, .{
+        //     .ptr = @ptrCast(sse_ctrl_ptr),
+        //     .deinit_fn = sseDestroyFn,
+        // });
+        // owned_sse = true;
 
-        try self.app.route("/sse", sse_ctrl_ptr, &SSEController.connect);
-        self.route_count += 1;
+        // try self.app.route("/sse", sse_ctrl_ptr, &SSEController.connect);
+        // self.route_count += 1;
     }
 
     /// 获取路由统计信息

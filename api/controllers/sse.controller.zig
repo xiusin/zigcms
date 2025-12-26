@@ -13,14 +13,14 @@ pub const SSEController = struct {
     const Handler = struct {
         allocator: std.mem.Allocator,
         /// 连接 ID
-        connection_id: std.atomic.Atomic(usize) = .{},
+        connection_id: std.atomic.Value(usize) = .{},
 
         /// 活跃的 SSE 连接
         clients: std.AutoHashMap(usize, *zap.SSE),
         mutex: std.Thread.Mutex = .{},
 
         /// 事件计数器
-        event_counter: std.atomic.Atomic(usize) = .{},
+        event_counter: std.atomic.Value(usize) = .{},
 
         /// 初始化处理器
         pub fn init(alloc: std.mem.Allocator) Handler {
