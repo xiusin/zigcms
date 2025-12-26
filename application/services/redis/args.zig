@@ -18,14 +18,18 @@
 //! client.Do(ctx, args...)
 //! ```
 //!
-//! Zig 版本：
+//! Zig 版本（优雅链式）：
 //! ```zig
 //! var args = Args.init(allocator);
 //! defer args.deinit();
 //!
-//! try args.add("SET").add(key).add(value);
-//! try args.when(opts.ex > 0).add("EX").add(opts.ex);
-//! try args.when(opts.nx).add("NX");
+//! // 优雅链式调用，无需 try
+//! args.add("SET").add(key).add(value);
+//! args.when(opts.ex > 0).add("EX").add(opts.ex).endWhen();
+//! args.when(opts.nx).add("NX").endWhen();
+//!
+//! // 最后检查错误
+//! try args.checkError();
 //!
 //! try conn.doArgs(args);
 //! ```
@@ -36,6 +40,7 @@
 //! 2. 调用 `deinit()` 时会释放所有分配的内存
 //! 3. 使用 `defer args.deinit()` 确保资源释放
 //! 4. 编译时类型检查，避免运行时错误
+//! 5. 错误被延迟检查，支持优雅的链式调用
 
 const std = @import("std");
 const types = @import("types.zig");
@@ -55,15 +60,25 @@ pub const Arg = union(enum) {
 
 /// 动态参数构建器
 ///
+/// ## 设计理念：优雅的链式调用
+///
+/// 为了提供类似 Go 的流畅体验，Args 采用延迟错误检查模式：
+/// - 所有构建方法返回 `*Self`，支持无限链式调用
+/// - 错误被捕获并存储在内部，不会中断链式调用
+/// - 在最后通过 `checkError()` 检查是否有错误发生
+///
 /// ## 使用示例
 ///
-/// ### 基础用法
+/// ### 基础用法（优雅链式）
 /// ```zig
 /// var args = Args.init(allocator);
 /// defer args.deinit();
 ///
-/// // 链式添加参数
-/// _ = try args.add("SET").add("key").add("value");
+/// // 无需 try，优雅链式调用
+/// args.add("SET").add("key").add("value");
+///
+/// // 在最后检查错误
+/// try args.checkError();
 ///
 /// // 发送命令
 /// const reply = try conn.doArgs(args);
@@ -82,23 +97,27 @@ pub const Arg = union(enum) {
 /// };
 ///
 /// fn setEx(args: *Args, key: []const u8, value: []const u8, opts: SetOptions) !void {
-///     _ = try args.add("SET").add(key).add(value);
+///     // 优雅链式，无需 try
+///     args.add("SET").add(key).add(value);
 ///
 ///     // 条件添加 EX
 ///     if (opts.ex) |ex| {
-///         _ = try args.add("EX").add(ex);
+///         args.add("EX").add(ex);
 ///     }
 ///
 ///     // 条件添加 PX
 ///     if (opts.px) |px| {
-///         _ = try args.add("PX").add(px);
+///         args.add("PX").add(px);
 ///     }
 ///
 ///     // 条件添加标志
-///     _ = try args.flag(opts.nx, "NX");
-///     _ = try args.flag(opts.xx, "XX");
-///     _ = try args.flag(opts.keepttl, "KEEPTTL");
-///     _ = try args.flag(opts.get, "GET");
+///     args.flag(opts.nx, "NX");
+///     args.flag(opts.xx, "XX");
+///     args.flag(opts.keepttl, "KEEPTTL");
+///     args.flag(opts.get, "GET");
+///
+///     // 最后检查错误
+///     try args.checkError();
 /// }
 /// ```
 ///
@@ -106,7 +125,9 @@ pub const Arg = union(enum) {
 /// ```zig
 /// // MSET key1 value1 key2 value2 ...
 /// var args = Args.init(allocator);
-/// _ = try args.add("MSET");
+/// defer args.deinit();
+///
+/// args.add("MSET");
 ///
 /// const pairs = [_][2][]const u8{
 ///     .{"key1", "value1"},
@@ -115,14 +136,25 @@ pub const Arg = union(enum) {
 /// };
 ///
 /// for (pairs) |pair| {
-///     _ = try args.add(pair[0]).add(pair[1]);
+///     args.add(pair[0]).add(pair[1]);
 /// }
+///
+/// try args.checkError();
 /// ```
+///
+/// ## 错误处理说明
+///
+/// - 构建过程中的错误会被捕获并存储
+/// - 第一个错误会被保留，后续错误会被忽略
+/// - 调用 `checkError()` 会返回存储的错误（如果有）
+/// - 如果没有错误，`checkError()` 返回 void
 pub const Args = struct {
     /// 内部使用 CommandBuilder 存储参数
     builder: CommandBuilder,
     /// 是否启用添加（用于条件链式调用）
     enabled: bool = true,
+    /// 存储构建过程中发生的错误
+    build_error: ?anyerror = null,
 
     const Self = @This();
 
@@ -148,6 +180,7 @@ pub const Args = struct {
     pub fn reset(self: *Self) void {
         self.builder.reset();
         self.enabled = true;
+        self.build_error = null;
     }
 
     /// 添加任意类型参数
@@ -160,45 +193,63 @@ pub const Args = struct {
     ///
     /// ## 示例
     /// ```zig
-    /// _ = try args.add("SET");      // 字符串
-    /// _ = try args.add(3600);       // 整数
-    /// _ = try args.add(3.14);       // 浮点数
+    /// args.add("SET").add(3600).add(3.14);
     /// ```
-    pub fn add(self: *Self, value: anytype) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.add(value);
+    pub fn add(self: *Self, value: anytype) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.add(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 添加字符串参数
-    pub fn addStr(self: *Self, value: []const u8) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addStr(value);
+    pub fn addStr(self: *Self, value: []const u8) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addStr(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 添加整数参数
-    pub fn addInt(self: *Self, value: i64) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addInt(value);
+    pub fn addInt(self: *Self, value: i64) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addInt(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 添加无符号整数参数
-    pub fn addUint(self: *Self, value: u64) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addUint(value);
+    pub fn addUint(self: *Self, value: u64) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addUint(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 添加浮点数参数
-    pub fn addFloat(self: *Self, value: f64) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addFloat(value);
+    pub fn addFloat(self: *Self, value: f64) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addFloat(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
@@ -210,12 +261,15 @@ pub const Args = struct {
     /// ## 示例
     /// ```zig
     /// // 如果 opts.nx 为 true，添加 "NX"
-    /// _ = try args.flag(opts.nx, "NX");
-    /// _ = try args.flag(opts.xx, "XX");
+    /// args.flag(opts.nx, "NX").flag(opts.xx, "XX");
     /// ```
-    pub fn flag(self: *Self, condition: bool, name: []const u8) !*Self {
-        if (self.enabled and condition) {
-            _ = try self.builder.addStr(name);
+    pub fn flag(self: *Self, condition: bool, name: []const u8) *Self {
+        if (self.enabled and condition and self.build_error == null) {
+            _ = self.builder.addStr(name) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
@@ -248,12 +302,15 @@ pub const Args = struct {
     ///
     /// ## 示例
     /// ```zig
-    /// _ = try args.addIf(ttl > 0, "EX");
-    /// _ = try args.addIf(ttl > 0, ttl);
+    /// args.addIf(ttl > 0, "EX").addIf(ttl > 0, ttl);
     /// ```
-    pub fn addIf(self: *Self, condition: bool, value: anytype) !*Self {
-        if (condition) {
-            _ = try self.builder.add(value);
+    pub fn addIf(self: *Self, condition: bool, value: anytype) *Self {
+        if (condition and self.build_error == null) {
+            _ = self.builder.add(value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
@@ -268,14 +325,18 @@ pub const Args = struct {
     /// const px: ?i64 = null;
     ///
     /// // 添加 "EX" "3600"（ex 有值）
-    /// _ = try args.optional("EX", ex);
+    /// args.optional("EX", ex);
     ///
     /// // 不添加任何内容（px 为 null）
-    /// _ = try args.optional("PX", px);
+    /// args.optional("PX", px);
     /// ```
-    pub fn optional(self: *Self, prefix: ?[]const u8, value: anytype) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addOptional(prefix, value);
+    pub fn optional(self: *Self, prefix: ?[]const u8, value: anytype) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addOptional(prefix, value) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
@@ -284,30 +345,63 @@ pub const Args = struct {
     ///
     /// ## 示例
     /// ```zig
-    /// _ = try args.many(.{"SET", key, value});
-    /// _ = try args.many(.{"EX", 3600, "NX"});
+    /// args.many(.{"SET", key, value}).many(.{"EX", 3600, "NX"});
     /// ```
-    pub fn many(self: *Self, values: anytype) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addMany(values);
+    pub fn many(self: *Self, values: anytype) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addMany(values) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 条件添加多个参数
-    pub fn manyIf(self: *Self, condition: bool, values: anytype) !*Self {
-        if (self.enabled and condition) {
-            _ = try self.builder.addMany(values);
+    pub fn manyIf(self: *Self, condition: bool, values: anytype) *Self {
+        if (self.enabled and condition and self.build_error == null) {
+            _ = self.builder.addMany(values) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
     }
 
     /// 添加字符串切片
-    pub fn slice(self: *Self, values: []const []const u8) !*Self {
-        if (self.enabled) {
-            _ = try self.builder.addSlice(values);
+    pub fn slice(self: *Self, values: []const []const u8) *Self {
+        if (self.enabled and self.build_error == null) {
+            _ = self.builder.addSlice(values) catch |err| {
+                if (self.build_error == null) {
+                    self.build_error = err;
+                }
+            };
         }
         return self;
+    }
+
+    /// 检查构建过程中是否发生错误
+    ///
+    /// ## 使用方式
+    ///
+    /// 在完成所有参数构建后，调用此方法检查是否有错误：
+    /// ```zig
+    /// args.add("SET").add("key").add("value");
+    /// try args.checkError();  // 如果有错误会返回
+    ///
+    /// const reply = try conn.doArgs(args);
+    /// ```
+    ///
+    /// ## 返回值
+    ///
+    /// - 如果没有错误，返回 void
+    /// - 如果有错误，返回第一个发生的错误
+    pub fn checkError(self: *const Self) !void {
+        if (self.build_error) |err| {
+            return err;
+        }
     }
 
     /// 获取参数列表
@@ -345,10 +439,11 @@ test "Args basic usage" {
     var a = Args.init(allocator);
     defer a.deinit();
 
-    // 链式调用需要每步都 try
-    _ = try a.add("SET");
-    _ = try a.add("key");
-    _ = try a.add("value");
+    // 优雅链式调用，无需 try
+    _ = a.add("SET").add("key").add("value");
+
+    // 检查错误
+    try a.checkError();
 
     try std.testing.expectEqual(@as(usize, 3), a.len());
     try std.testing.expectEqualStrings("SET", a.getArgs()[0]);
@@ -367,13 +462,11 @@ test "Args conditional add" {
     const xx = false;
 
     // 模拟 SET key value [EX seconds] [NX|XX]
-    _ = try a.add("SET");
-    _ = try a.add("key");
-    _ = try a.add("value");
-    _ = try a.addIf(ttl > 0, "EX");
-    _ = try a.addIf(ttl > 0, ttl);
-    _ = try a.flag(nx, "NX");
-    _ = try a.flag(xx, "XX");
+    _ = a.add("SET").add("key").add("value");
+    _ = a.addIf(ttl > 0, "EX").addIf(ttl > 0, ttl);
+    _ = a.flag(nx, "NX").flag(xx, "XX");
+
+    try a.checkError();
 
     try std.testing.expectEqual(@as(usize, 6), a.len());
     try std.testing.expectEqualStrings("EX", a.getArgs()[3]);
@@ -390,21 +483,15 @@ test "Args when/endWhen chain" {
     const ex: i64 = 3600;
     const px: i64 = 0;
 
-    _ = try a.add("SET");
-    _ = try a.add("key");
-    _ = try a.add("value");
+    _ = a.add("SET").add("key").add("value");
 
     // ex > 0，所以添加 EX 和 ex
-    _ = a.when(ex > 0);
-    _ = try a.add("EX");
-    _ = try a.add(ex);
-    _ = a.endWhen();
+    _ = a.when(ex > 0).add("EX").add(ex).endWhen();
 
     // px <= 0，所以不添加任何内容
-    _ = a.when(px > 0);
-    _ = try a.add("PX");
-    _ = try a.add(px);
-    _ = a.endWhen();
+    _ = a.when(px > 0).add("PX").add(px).endWhen();
+
+    try a.checkError();
 
     try std.testing.expectEqual(@as(usize, 5), a.len());
 }
@@ -419,11 +506,12 @@ test "Args optional parameters" {
     const count: ?u64 = 100;
     const filter: ?[]const u8 = null;
 
-    _ = try a.add("SCAN");
-    _ = try a.add("0");
-    _ = try a.optional("MATCH", pattern);
-    _ = try a.optional("COUNT", count);
-    _ = try a.optional("TYPE", filter);
+    _ = a.add("SCAN").add("0");
+    _ = a.optional("MATCH", pattern);
+    _ = a.optional("COUNT", count);
+    _ = a.optional("TYPE", filter);
+
+    try a.checkError();
 
     try std.testing.expectEqual(@as(usize, 6), a.len());
 }
@@ -434,8 +522,10 @@ test "Args many" {
     var a = Args.init(allocator);
     defer a.deinit();
 
-    _ = try a.many(.{ "ZADD", "scores", @as(i64, 100), "player1" });
-    _ = try a.many(.{ @as(i64, 200), "player2" });
+    _ = a.many(.{ "ZADD", "scores", @as(i64, 100), "player1" });
+    _ = a.many(.{ @as(i64, 200), "player2" });
+
+    try a.checkError();
 
     try std.testing.expectEqual(@as(usize, 6), a.len());
 }
@@ -446,15 +536,30 @@ test "Args reset and reuse" {
     var a = Args.init(allocator);
     defer a.deinit();
 
-    _ = try a.add("GET");
-    _ = try a.add("key1");
+    _ = a.add("GET").add("key1");
+    try a.checkError();
     try std.testing.expectEqual(@as(usize, 2), a.len());
 
     a.reset();
     try std.testing.expectEqual(@as(usize, 0), a.len());
 
-    _ = try a.add("SET");
-    _ = try a.add("key2");
-    _ = try a.add("value2");
+    _ = a.add("SET").add("key2").add("value2");
+    try a.checkError();
     try std.testing.expectEqual(@as(usize, 3), a.len());
+}
+
+test "Args checkError" {
+    const allocator = std.testing.allocator;
+
+    var a = Args.init(allocator);
+    defer a.deinit();
+
+    // 正常情况：checkError 不应返回错误
+    _ = a.add("SET").add("key").add("value");
+    try a.checkError();
+
+    // 重置后再次测试
+    a.reset();
+    _ = a.add("GET").add("test");
+    try a.checkError();
 }
