@@ -80,6 +80,12 @@ pub const external = struct {
     pub const Github = @import("github.controller.zig");
 };
 
+// 实时通信控制器
+pub const realtime = struct {
+    pub const WebSocket = @import("websocket.controller.zig").WebSocketController;
+    pub const SSE = @import("sse.controller.zig").SSEController;
+};
+
 // 通用控制器类型
 pub const ControllerType = enum {
     crud,

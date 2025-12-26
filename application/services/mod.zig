@@ -154,3 +154,8 @@ pub const ServiceManager = struct {
         return try self.plugin_system.getStatistics();
     }
 };
+
+// New exports
+pub const template = @import("template/mod.zig");
+pub const cookie = @import("cookie/mod.zig");
+pub const session = @import("session/mod.zig");
