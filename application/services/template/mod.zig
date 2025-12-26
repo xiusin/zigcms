@@ -65,3 +65,59 @@ test "render variable with filter" {
     defer allocator.free(result);
     try std.testing.expectEqualStrings("WORLD", result);
 }
+
+test "render with join filter" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{{ items | join:\", \" }}";
+    var context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    var items = std.json.Array.init(allocator);
+    try items.append(std.json.Value{ .string = "a" });
+    try items.append(std.json.Value{ .string = "b" });
+    try items.append(std.json.Value{ .string = "c" });
+    try context.object.put("items", std.json.Value{ .array = items });
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("a, b, c", result);
+}
+
+test "render with escape filter" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{{ content | escape }}";
+    var context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    try context.object.put("content", std.json.Value{ .string = "<script>alert('xss')</script>" });
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("&lt;script&gt;alert(&#039;xss&#039;)&lt;/script&gt;", result);
+}
+
+test "render with trim filter" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{{ text | trim }}";
+    var context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    try context.object.put("text", std.json.Value{ .string = "  hello world  " });
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("hello world", result);
+}
+
+test "render with reverse filter" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% for item in items | reverse %}{{ item }}{% endfor %}";
+    var context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    var items = std.json.Array.init(allocator);
+    try items.append(std.json.Value{ .string = "a" });
+    try items.append(std.json.Value{ .string = "b" });
+    try items.append(std.json.Value{ .string = "c" });
+    try context.object.put("items", std.json.Value{ .array = items });
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("cba", result);
+}

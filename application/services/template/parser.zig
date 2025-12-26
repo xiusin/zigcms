@@ -5,11 +5,11 @@ const lexer = @import("lexer.zig");
 const ast = @import("ast.zig");
 
 pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.TokenType) !std.ArrayList(ast.Node) {
-    var nodes = std.ArrayList(ast.Node).init(allocator);
+    var nodes = try std.ArrayList(ast.Node).initCapacity(allocator, 0);
     while (try lex.next()) |token| {
         switch (token.type) {
             .text => {
-                try nodes.append(.{ .text = try allocator.dupe(u8, token.lexeme) });
+                try nodes.append(allocator, .{ .text = try allocator.dupe(u8, token.lexeme) });
             },
             .variable_start => {
                 const expr = try parseExpression(allocator, lex);
@@ -17,15 +17,37 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                 if (next_token.type == .pipe) {
                     const filter_token = try lex.next() orelse return error.UnexpectedEof;
                     if (filter_token.type != .identifier) return error.ExpectedIdentifier;
+                    
+                    // 检查是否有参数（冒号）
+                    const param_token = try lex.next() orelse return error.UnexpectedEof;
+                    var filter_with_param = filter_token.lexeme;
+                    var need_free = false;
+                    if (param_token.type == .operator and std.mem.eql(u8, param_token.lexeme, ":")) {
+                        // 读取参数值
+                        const arg_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (arg_token.type == .string) {
+                            // 创建带参数的过滤器名称
+                            const full_filter = try std.fmt.allocPrint(allocator, "{s}:{s}", .{filter_token.lexeme, arg_token.lexeme});
+                            filter_with_param = full_filter;
+                            need_free = true;
+                        }
+                        const end_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (end_token.type != .variable_end) return error.ExpectedVariableEnd;
+                    } else if (param_token.type == .variable_end) {
+                        // 没有参数，需要复制过滤器名称
+                        filter_with_param = try allocator.dupe(u8, filter_token.lexeme);
+                        need_free = true;
+                    } else {
+                        return error.ExpectedVariableEnd;
+                    }
+                    
                     const filtered_ptr = try allocator.create(ast.Filtered);
                     const expr_ptr = try allocator.create(ast.Expression);
                     expr_ptr.* = expr;
-                    filtered_ptr.* = .{ .expr = expr_ptr, .filter = try allocator.dupe(u8, filter_token.lexeme) };
-                    const end_token = try lex.next() orelse return error.UnexpectedEof;
-                    if (end_token.type != .variable_end) return error.ExpectedVariableEnd;
-                    try nodes.append(.{ .variable = ast.Expression{ .filtered = filtered_ptr } });
+                    filtered_ptr.* = .{ .expr = expr_ptr, .filter = filter_with_param };
+                    try nodes.append(allocator, .{ .variable = ast.Expression{ .filtered = filtered_ptr } });
                 } else if (next_token.type == .variable_end) {
-                    try nodes.append(.{ .variable = expr });
+                    try nodes.append(allocator, .{ .variable = expr });
                 } else {
                     return error.ExpectedPipeOrVariableEnd;
                 }
@@ -45,12 +67,27 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                         if (in_token.type != .in_kw) return error.ExpectedIn;
                         const iterable_token = try lex.next() orelse return error.UnexpectedEof;
                         if (iterable_token.type != .identifier) return error.ExpectedIdentifier;
-                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
-                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        
+                        // 检查是否有过滤器
+                        const next_after_iterable = try lex.next() orelse return error.UnexpectedEof;
+                        var iterable_filter: ?[]const u8 = null;
+                        if (next_after_iterable.type == .pipe) {
+                            const filter_token = try lex.next() orelse return error.UnexpectedEof;
+                            if (filter_token.type != .identifier) return error.ExpectedIdentifier;
+                            iterable_filter = try allocator.dupe(u8, filter_token.lexeme);
+                            const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                            if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        } else if (next_after_iterable.type == .tag_end) {
+                            // 没有过滤器
+                        } else {
+                            return error.ExpectedTagEnd;
+                        }
+                        
                         const body = try parse(allocator, lex, .endfor_kw);
-                        try nodes.append(.{ .for_loop = .{
+                        try nodes.append(allocator, .{ .for_loop = .{
                             .item_var = try allocator.dupe(u8, item_token.lexeme),
                             .iterable_var = try allocator.dupe(u8, iterable_token.lexeme),
+                            .iterable_filter = iterable_filter,
                             .body = body,
                         } });
                     },
@@ -71,10 +108,10 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                             return error.ExpectedOperatorOrTagEnd;
                         }
                         const body = try parse(allocator, lex, .endif_kw);
-                        try nodes.append(.{ .if_stmt = .{
+                        try nodes.append(allocator, .{ .if_stmt = .{
                             .condition = condition,
                             .body = body,
-                            .else_body = std.ArrayList(ast.Node).init(allocator),
+                            .else_body = try std.ArrayList(ast.Node).initCapacity(allocator, 0),
                         } });
                     },
                     else => return error.UnexpectedToken,
@@ -109,24 +146,27 @@ fn parseLiteral(allocator: std.mem.Allocator, token: lexer.Token) !std.json.Valu
     }
 }
 
-fn parsePrimary(allocator: std.mem.Allocator, lex: *lexer.Lexer) !ast.Expression {
-    const token = try lex.next() orelse return error.UnexpectedEof;
+fn parsePrimary(allocator: std.mem.Allocator, lex: *lexer.Lexer) error{UnexpectedEof,ExpectedIdentifier,ExpectedIn,ExpectedTagEnd,ExpectedVariableEnd,ExpectedPipeOrVariableEnd,InvalidLiteral,ExpectedOperatorOrTagEnd,ExpectedComma,InvalidPrimary,UnterminatedString,OutOfMemory,InvalidCharacter,Overflow}!ast.Expression {
+
+        const token = try lex.next() orelse return error.UnexpectedEof;
     switch (token.type) {
         .identifier => {
+            if (std.mem.eql(u8, token.lexeme, "true")) return ast.Expression{ .literal = std.json.Value{ .bool = true } };
+            if (std.mem.eql(u8, token.lexeme, "false")) return ast.Expression{ .literal = std.json.Value{ .bool = false } };
             const peeked = try lex.peek();
             if (peeked != null and peeked.?.type == .operator and peeked.?.lexeme[0] == '(') {
                 _ = try lex.next(); // consume (
-                var args = std.ArrayList(*ast.Expression).init(allocator);
+                var args = try std.ArrayList(*const ast.Expression).initCapacity(allocator, 0);
                 while (true) {
                     const arg = try parseExpression(allocator, lex);
                     const arg_ptr = try allocator.create(ast.Expression);
                     arg_ptr.* = arg;
-                    try args.append(arg_ptr);
+                    try args.append(allocator, @ptrCast(arg_ptr));
                     const sep = try lex.next() orelse return error.UnexpectedEof;
                     if (sep.type == .operator and sep.lexeme[0] == ')') break;
                     if (!(sep.type == .operator and sep.lexeme[0] == ',')) return error.ExpectedComma;
                 }
-                return ast.Expression{ .function_call = try allocator.create(FunctionCall) };
+                const fc = try allocator.create(ast.FunctionCall);
                 fc.* = .{ .name = try allocator.dupe(u8, token.lexeme), .args = args };
                 return ast.Expression{ .function_call = fc };
             } else {
@@ -147,7 +187,7 @@ fn parsePrimary(allocator: std.mem.Allocator, lex: *lexer.Lexer) !ast.Expression
     }
 }
 
-fn parseExpression(allocator: std.mem.Allocator, lex: *lexer.Lexer) !ast.Expression {
+fn parseExpression(allocator: std.mem.Allocator, lex: *lexer.Lexer) error{UnexpectedEof,ExpectedIdentifier,ExpectedIn,ExpectedTagEnd,ExpectedVariableEnd,ExpectedPipeOrVariableEnd,InvalidLiteral,ExpectedOperatorOrTagEnd,ExpectedComma,InvalidPrimary,UnterminatedString,OutOfMemory,InvalidCharacter,Overflow}!ast.Expression {
     return parsePrimary(allocator, lex);
 }
 
@@ -156,15 +196,14 @@ fn freeExpression(allocator: std.mem.Allocator, expr: ast.Expression) void {
         .literal => |lit| if (lit == .string) allocator.free(lit.string),
         .variable => |v| allocator.free(v),
         .function_call => |fc| {
-            allocator.free(fc.name);
-            for (fc.args.items) |arg| {
-                freeExpression(allocator, arg.*);
-                allocator.destroy(arg);
-            }
-            fc.args.deinit();
-            allocator.destroy(fc);
-        },
-        .filtered => |f| {
+                            allocator.free(fc.name);
+                            for (fc.args.items) |arg| {
+                                freeExpression(allocator, arg.*);
+                                allocator.destroy(arg);
+                            }
+                            fc.args.deinit(allocator);
+                            allocator.destroy(fc);
+                        },        .filtered => |f| {
             freeExpression(allocator, f.expr.*);
             allocator.destroy(f.expr);
             allocator.free(f.filter);
@@ -187,7 +226,7 @@ pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) voi
 
                 freeAst(allocator, f.body);
 
-                f.body.deinit();
+                @constCast(&f.body).deinit(allocator);
             },
 
             .if_stmt => |i| {
@@ -197,9 +236,9 @@ pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) voi
                     if (lit == .string) allocator.free(lit.string);
                 }
                 freeAst(allocator, i.body);
-                i.body.deinit();
+                @constCast(&i.body).deinit(allocator);
                 freeAst(allocator, i.else_body);
-                i.else_body.deinit();
+                @constCast(&i.else_body).deinit(allocator);
             },
 
             .set => |s| {
@@ -210,5 +249,5 @@ pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) voi
         }
     }
 
-    nodes.deinit();
+    @constCast(&nodes).deinit(allocator);
 }

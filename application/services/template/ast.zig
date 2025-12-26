@@ -42,6 +42,7 @@ pub const Node = union(NodeType) {
     for_loop: struct {
         item_var: []const u8,
         iterable_var: []const u8,
+        iterable_filter: ?[]const u8 = null,
         body: std.ArrayList(Node),
     },
     if_stmt: struct {

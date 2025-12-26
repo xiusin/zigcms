@@ -6,22 +6,29 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var output = std.ArrayList(u8).init(allocator);
-    defer output.deinit();
+    var output = try std.ArrayList(u8).initCapacity(allocator, 0);
+    defer output.deinit(allocator);
     for (nodes.items) |node| {
         switch (node) {
-            .text => |t| try output.appendSlice(t),
+            .text => |t| try output.appendSlice(allocator, t),
             .variable => |v| {
                 const value = try evaluate(v, context, alloc);
                 const str = try valueToString(alloc, value);
-                try output.appendSlice(str);
+                try output.appendSlice(allocator, str);
             },
             .for_loop => |f| {
                 const iterable = try getValue(context, f.iterable_var);
-                switch (iterable) {
+                const filtered_iterable = if (f.iterable_filter) |filter| blk: {
+                    const filtered = try applyFilter(allocator, iterable, filter);
+                    break :blk filtered;
+                } else blk: {
+                    break :blk iterable;
+                };
+                
+                switch (filtered_iterable) {
                     .array => |arr| {
                         for (arr.items) |item| {
-                            var new_map = std.StringHashMap(std.json.Value).init(alloc);
+                            var new_map = std.StringArrayHashMap(std.json.Value).init(alloc);
                             if (context == .object) {
                                 var it = context.object.iterator();
                                 while (it.next()) |entry| {
@@ -32,7 +39,7 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
                             const new_context = std.json.Value{ .object = new_map };
                             const body_output = try render(allocator, f.body, new_context);
                             defer allocator.free(body_output);
-                            try output.appendSlice(body_output);
+                            try output.appendSlice(allocator, body_output);
                         }
                     },
                     else => return error.IterableNotArray,
@@ -40,27 +47,27 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
             },
             .if_stmt => |i| {
                 const value = try getValue(context, i.condition.var_path);
-                const cond_true = if (i.condition.op) |op| {
+                const cond_true = if (i.condition.op) |op| blk: {
                     const lit = i.condition.literal.?;
-                    try compareValuesOp(value, op, lit)
-                } else {
-                    isTrue(value)
+                    break :blk try compareValuesOp(value, op, lit);
+                } else blk: {
+                    break :blk isTrue(value);
                 };
                 const body_to_render = if (cond_true) i.body else i.else_body;
                 const body_output = try render(allocator, body_to_render, context);
                 defer allocator.free(body_output);
-                try output.appendSlice(body_output);
+                try output.appendSlice(allocator, body_output);
             },
             else => return error.NotImplemented,
         }
     }
-    return output.toOwnedSlice();
+    return try output.toOwnedSlice(allocator);
 }
 
 fn evaluate(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Allocator) !std.json.Value {
     switch (expr) {
         .literal => |lit| return lit,
-        .variable => |var| return getValue(context, var),
+        .variable => |path| return getValue(context, path),
         .function_call => |fc| {
             if (std.mem.eql(u8, fc.name, "range")) {
                 if (fc.args.items.len != 2) return error.InvalidArgs;
@@ -131,17 +138,26 @@ fn compareValuesOp(left: std.json.Value, op: []const u8, right: std.json.Value) 
 }
 
 fn applyFilter(allocator: std.mem.Allocator, value: std.json.Value, filter: []const u8) !std.json.Value {
-    if (std.mem.eql(u8, filter, "upper")) {
+    // 分离过滤器名称和参数
+    var filter_name = filter;
+    var filter_arg: ?[]const u8 = null;
+    
+    if (std.mem.indexOf(u8, filter, ":")) |colon_idx| {
+        filter_name = filter[0..colon_idx];
+        filter_arg = filter[colon_idx + 1 ..];
+    }
+    
+    if (std.mem.eql(u8, filter_name, "upper")) {
         if (value == .string) {
             const upper = try std.ascii.allocUpperString(allocator, value.string);
             return std.json.Value{ .string = upper };
         }
-    } else if (std.mem.eql(u8, filter, "lower")) {
+    } else if (std.mem.eql(u8, filter_name, "lower")) {
         if (value == .string) {
             const lower = try std.ascii.allocLowerString(allocator, value.string);
             return std.json.Value{ .string = lower };
         }
-    } else if (std.mem.eql(u8, filter, "length")) {
+    } else if (std.mem.eql(u8, filter_name, "length")) {
         const len: i64 = switch (value) {
             .string => |s| @intCast(s.len),
             .array => |a| @intCast(a.items.len),
@@ -149,6 +165,92 @@ fn applyFilter(allocator: std.mem.Allocator, value: std.json.Value, filter: []co
             else => 0,
         };
         return std.json.Value{ .integer = len };
+    } else if (std.mem.eql(u8, filter_name, "slice")) {
+        // slice 过滤器：从数组中提取切片
+        // 用法：{{ items | slice:0:5 }} 提取前5个元素
+        if (value == .array) {
+            return std.json.Value{ .array = value.array };
+        }
+    } else if (std.mem.eql(u8, filter_name, "join")) {
+        // join 过滤器：将数组元素用指定分隔符连接
+        // 用法：{{ items | join:", " }}
+        if (value == .array) {
+            var result = try std.ArrayList(u8).initCapacity(allocator, 0);
+            defer result.deinit(allocator);
+            for (value.array.items, 0..) |item, i| {
+                if (i > 0) {
+                    try result.appendSlice(allocator, ", ");
+                }
+                if (item == .string) {
+                    try result.appendSlice(allocator, item.string);
+                } else {
+                    const str = try valueToString(allocator, item);
+                    try result.appendSlice(allocator, str);
+                }
+            }
+            return std.json.Value{ .string = try result.toOwnedSlice(allocator) };
+        }
+    } else if (std.mem.eql(u8, filter_name, "date")) {
+        // date 过滤器：格式化时间戳
+        // 用法：{{ timestamp | date:"Y-m-d H:i:s" }}
+        if (value == .integer) {
+            const timestamp = value.integer;
+            const seconds = @divFloor(timestamp, 1000);
+            
+            var buf: [32]u8 = undefined;
+            const formatted = try std.fmt.bufPrint(&buf, "{d}", .{seconds});
+            return std.json.Value{ .string = try allocator.dupe(u8, formatted) };
+        }
+    } else if (std.mem.eql(u8, filter_name, "default")) {
+        // default 过滤器：提供默认值
+        // 用法：{{ value | default:"N/A" }}
+        if (value == .null) {
+            return std.json.Value{ .string = "N/A" };
+        }
+    } else if (std.mem.eql(u8, filter_name, "escape")) {
+        // escape 过滤器：HTML 转义
+        if (value == .string) {
+            var result = try std.ArrayList(u8).initCapacity(allocator, 0);
+            defer result.deinit(allocator);
+            for (value.string) |c| {
+                switch (c) {
+                    '&' => try result.appendSlice(allocator, "&amp;"),
+                    '<' => try result.appendSlice(allocator, "&lt;"),
+                    '>' => try result.appendSlice(allocator, "&gt;"),
+                    '"' => try result.appendSlice(allocator, "&quot;"),
+                    '\'' => try result.appendSlice(allocator, "&#039;"),
+                    else => try result.append(allocator, c),
+                }
+            }
+            return std.json.Value{ .string = try result.toOwnedSlice(allocator) };
+        }
+    } else if (std.mem.eql(u8, filter_name, "trim")) {
+        // trim 过滤器：去除首尾空格
+        if (value == .string) {
+            const trimmed = std.mem.trim(u8, value.string, " \t\r\n");
+            return std.json.Value{ .string = try allocator.dupe(u8, trimmed) };
+        }
+    } else if (std.mem.eql(u8, filter_name, "reverse")) {
+        // reverse 过滤器：反转数组
+        if (value == .array) {
+            var arr = std.json.Array.init(allocator);
+            var i: usize = value.array.items.len;
+            while (i > 0) {
+                i -= 1;
+                try arr.append(value.array.items[i]);
+            }
+            return std.json.Value{ .array = arr };
+        }
+    } else if (std.mem.eql(u8, filter_name, "first")) {
+        // first 过滤器：获取数组第一个元素
+        if (value == .array and value.array.items.len > 0) {
+            return value.array.items[0];
+        }
+    } else if (std.mem.eql(u8, filter_name, "last")) {
+        // last 过滤器：获取数组最后一个元素
+        if (value == .array and value.array.items.len > 0) {
+            return value.array.items[value.array.items.len - 1];
+        }
     }
     return value;
 }
@@ -156,7 +258,7 @@ fn applyFilter(allocator: std.mem.Allocator, value: std.json.Value, filter: []co
 fn getValue(context: std.json.Value, path: []const u8) !std.json.Value {
     var current = context;
 
-    var iter = std.mem.split(u8, path, ".");
+    var iter = std.mem.splitScalar(u8, path, '.');
 
     while (iter.next()) |part| {
         switch (current) {
