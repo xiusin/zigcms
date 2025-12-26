@@ -58,6 +58,26 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
                 defer allocator.free(body_output);
                 try output.appendSlice(allocator, body_output);
             },
+            .block => |b| {
+                // block 节点在解析时会被 engine 处理，这里直接渲染内容
+                const body_output = try render(allocator, b.body, context);
+                defer allocator.free(body_output);
+                try output.appendSlice(allocator, body_output);
+            },
+            .include => |_| {
+                // include 需要实际的文件加载，这里暂时跳过
+                // 在 engine 中会处理
+            },
+            .macro => |_| {
+                // macro 定义，不渲染任何内容
+            },
+            .import => |_| {
+                // import 语句，不渲染任何内容
+            },
+            .extends => |_| {
+                // extends 在 engine 中处理
+            },
+            .parent => {},
             else => return error.NotImplemented,
         }
     }

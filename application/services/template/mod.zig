@@ -121,3 +121,64 @@ test "render with reverse filter" {
     defer allocator.free(result);
     try std.testing.expectEqualStrings("cba", result);
 }
+
+test "render block" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% block content %}Default content{% endblock %}";
+    const context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Default content", result);
+}
+
+test "render macro" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% macro greet(name) %}Hello {{ name }}!{% endmacro %}";
+    const context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "render include" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% include \"header\" %}";
+    const context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    // include 需要实际的文件，这里只测试解析成功
+    // 结果为空字符串是正常的，因为没有实际的文件
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "render extends" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% extends \"base\" %}{% block content %}Child content{% endblock %}";
+    const context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    // extends 需要实际的文件，这里只测试解析成功
+    // block 内容会被渲染，因为没有父模板
+    try std.testing.expectEqualStrings("Child content", result);
+}
+
+test "render import" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const template = "{% from \"macros\" import greet %}";
+    const context = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const result = try render(allocator, template, context);
+    defer allocator.free(result);
+    // import 需要实际的文件，这里只测试解析成功
+    // 结果为空字符串是正常的，因为没有实际的宏文件
+    try std.testing.expectEqualStrings("", result);
+}

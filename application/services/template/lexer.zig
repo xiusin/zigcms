@@ -15,6 +15,15 @@ pub const TokenType = enum {
     in_kw,
     endfor_kw,
     endif_kw,
+    extends_kw,
+    block_kw,
+    endblock_kw,
+    include_kw,
+    macro_kw,
+    endmacro_kw,
+    from_kw,
+    import_kw,
+    parent_kw,
     pipe, // |
     eof,
 };
@@ -109,6 +118,15 @@ pub const Lexer = struct {
                 if (std.mem.eql(u8, lexeme, "in")) return Token{ .type = .in_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "endfor")) return Token{ .type = .endfor_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "endif")) return Token{ .type = .endif_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "extends")) return Token{ .type = .extends_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "block")) return Token{ .type = .block_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "endblock")) return Token{ .type = .endblock_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "include")) return Token{ .type = .include_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "macro")) return Token{ .type = .macro_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "endmacro")) return Token{ .type = .endmacro_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "from")) return Token{ .type = .from_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "import")) return Token{ .type = .import_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "parent")) return Token{ .type = .parent_kw, .lexeme = lexeme, .line = self.line };
                 return Token{ .type = .identifier, .lexeme = lexeme, .line = self.line };
             } else if (std.ascii.isDigit(c)) {
                 while (self.current < self.source.len and std.ascii.isDigit(self.source[self.current])) {

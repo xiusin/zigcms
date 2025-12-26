@@ -114,6 +114,88 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                             .else_body = try std.ArrayList(ast.Node).initCapacity(allocator, 0),
                         } });
                     },
+                    .extends_kw => {
+                        const template_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (template_token.type != .string) return error.ExpectedString;
+                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        try nodes.append(allocator, .{ .extends = .{
+                            .template_name = try allocator.dupe(u8, template_token.lexeme),
+                        } });
+                    },
+                    .block_kw => {
+                        const name_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (name_token.type != .identifier) return error.ExpectedIdentifier;
+                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        const body = try parse(allocator, lex, .endblock_kw);
+                        try nodes.append(allocator, .{ .block = .{
+                            .name = try allocator.dupe(u8, name_token.lexeme),
+                            .body = body,
+                        } });
+                    },
+                    .include_kw => {
+                        const template_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (template_token.type != .string) return error.ExpectedString;
+                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        try nodes.append(allocator, .{ .include = .{
+                            .template_name = try allocator.dupe(u8, template_token.lexeme),
+                        } });
+                    },
+                    .macro_kw => {
+                        const name_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (name_token.type != .identifier) return error.ExpectedIdentifier;
+                        
+                        // 解析参数列表
+                        var params = try std.ArrayList([]const u8).initCapacity(allocator, 0);
+                        const next_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (next_token.type == .operator and std.mem.eql(u8, next_token.lexeme, "(")) {
+                            while (true) {
+                                const param_token = try lex.next() orelse return error.UnexpectedEof;
+                                if (param_token.type == .operator and std.mem.eql(u8, param_token.lexeme, ")")) break;
+                                if (param_token.type != .identifier) return error.ExpectedIdentifier;
+                                try params.append(allocator, try allocator.dupe(u8, param_token.lexeme));
+                                
+                                const sep = try lex.next() orelse return error.UnexpectedEof;
+                                if (sep.type == .operator and std.mem.eql(u8, sep.lexeme, ")")) break;
+                                if (!(sep.type == .operator and std.mem.eql(u8, sep.lexeme, ","))) return error.ExpectedComma;
+                            }
+                            const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                            if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        } else if (next_token.type == .tag_end) {
+                            // 无参数
+                        } else {
+                            return error.ExpectedTagEnd;
+                        }
+                        
+                        const body = try parse(allocator, lex, .endmacro_kw);
+                        try nodes.append(allocator, .{ .macro = .{
+                            .name = try allocator.dupe(u8, name_token.lexeme),
+                            .params = params,
+                            .body = body,
+                        } });
+                    },
+                    .from_kw => {
+                        const template_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (template_token.type != .string) return error.ExpectedString;
+                        const import_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (import_token.type != .import_kw) return error.ExpectedImport;
+                        
+                        // 解析宏名称列表
+                        var macro_names = try std.ArrayList([]const u8).initCapacity(allocator, 0);
+                        const name_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (name_token.type != .identifier) return error.ExpectedIdentifier;
+                        try macro_names.append(allocator, try allocator.dupe(u8, name_token.lexeme));
+                        
+                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        
+                        try nodes.append(allocator, .{ .import = .{
+                            .template_name = try allocator.dupe(u8, template_token.lexeme),
+                            .macro_names = macro_names,
+                        } });
+                    },
                     else => return error.UnexpectedToken,
                 }
             },
@@ -246,6 +328,34 @@ pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) voi
 
                 allocator.free(s.value);
             },
+            .extends => |e| {
+                allocator.free(e.template_name);
+            },
+            .block => |b| {
+                allocator.free(b.name);
+                freeAst(allocator, b.body);
+                @constCast(&b.body).deinit(allocator);
+            },
+            .include => |i| {
+                allocator.free(i.template_name);
+            },
+            .macro => |m| {
+                allocator.free(m.name);
+                for (m.params.items) |param| {
+                    allocator.free(param);
+                }
+                @constCast(&m.params).deinit(allocator);
+                freeAst(allocator, m.body);
+                @constCast(&m.body).deinit(allocator);
+            },
+            .import => |i| {
+                allocator.free(i.template_name);
+                for (i.macro_names.items) |name| {
+                    allocator.free(name);
+                }
+                @constCast(&i.macro_names).deinit(allocator);
+            },
+            .parent => {},
         }
     }
 

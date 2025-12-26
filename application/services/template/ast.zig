@@ -6,6 +6,12 @@ pub const NodeType = enum {
     for_loop,
     if_stmt,
     set,
+    extends,
+    block,
+    include,
+    macro,
+    import,
+    parent,
 };
 
 pub const Condition = struct {
@@ -54,4 +60,24 @@ pub const Node = union(NodeType) {
         var_name: []const u8,
         value: []const u8,
     },
+    extends: struct {
+        template_name: []const u8,
+    },
+    block: struct {
+        name: []const u8,
+        body: std.ArrayList(Node),
+    },
+    include: struct {
+        template_name: []const u8,
+    },
+    macro: struct {
+        name: []const u8,
+        params: std.ArrayList([]const u8),
+        body: std.ArrayList(Node),
+    },
+    import: struct {
+        template_name: []const u8,
+        macro_names: std.ArrayList([]const u8),
+    },
+    parent: struct {},
 };
