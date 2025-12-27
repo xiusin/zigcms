@@ -12,6 +12,9 @@ pub const TokenType = enum {
     operator,
     for_kw,
     if_kw,
+    else_kw,
+    elif_kw,
+    set_kw,
     in_kw,
     endfor_kw,
     endif_kw,
@@ -115,6 +118,9 @@ pub const Lexer = struct {
                 // keywords
                 if (std.mem.eql(u8, lexeme, "for")) return Token{ .type = .for_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "if")) return Token{ .type = .if_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "else")) return Token{ .type = .else_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "elif")) return Token{ .type = .elif_kw, .lexeme = lexeme, .line = self.line };
+                if (std.mem.eql(u8, lexeme, "set")) return Token{ .type = .set_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "in")) return Token{ .type = .in_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "endfor")) return Token{ .type = .endfor_kw, .lexeme = lexeme, .line = self.line };
                 if (std.mem.eql(u8, lexeme, "endif")) return Token{ .type = .endif_kw, .lexeme = lexeme, .line = self.line };

@@ -1,5 +1,11 @@
 const std = @import("std");
 
+/// 宏定义类型
+pub const Macro = struct {
+    params: std.ArrayList([]const u8),
+    body: std.ArrayList(Node),
+};
+
 pub const NodeType = enum {
     text,
     variable,
@@ -54,11 +60,13 @@ pub const Node = union(NodeType) {
     if_stmt: struct {
         condition: Condition,
         body: std.ArrayList(Node),
+        elif_conditions: std.ArrayList(Condition),
+        elif_bodies: std.ArrayList(std.ArrayList(Node)),
         else_body: std.ArrayList(Node),
     },
     set: struct {
         var_name: []const u8,
-        value: []const u8,
+        value: Expression,
     },
     extends: struct {
         template_name: []const u8,

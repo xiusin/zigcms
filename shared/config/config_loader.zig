@@ -20,11 +20,11 @@
 
 const std = @import("std");
 const json = std.json;
-const SystemConfig = @import("system_config.zig").SystemConfig;
-const ApiConfig = @import("system_config.zig").ApiConfig;
-const AppConfig = @import("system_config.zig").AppConfig;
-const DomainConfig = @import("system_config.zig").DomainConfig;
-const InfraConfig = @import("system_config.zig").InfraConfig;
+const SystemConfig = @import("mod.zig").SystemConfig;
+const ApiConfig = @import("mod.zig").ApiConfig;
+const AppConfig = @import("mod.zig").AppConfig;
+const DomainConfig = @import("mod.zig").DomainConfig;
+const InfraConfig = @import("mod.zig").InfraConfig;
 
 /// 配置加载错误类型
 pub const ConfigError = error{
@@ -129,18 +129,18 @@ pub const ConfigLoader = struct {
     fn loadApiConfig(self: *Self) !ApiConfig {
         const content = try self.readConfigFile("api.json");
         defer self.allocator.free(content);
-        
+
         const parsed = json.parseFromSlice(ApiConfig, self.allocator, content, .{}) catch {
             return ConfigError.ParseError;
         };
         defer parsed.deinit();
-        
+
         var config = parsed.value;
-        
+
         // 复制字符串字段以避免依赖已释放的内存
         config.host = try self.allocString(config.host);
         config.public_folder = try self.allocString(config.public_folder);
-        
+
         return config;
     }
 
@@ -148,17 +148,17 @@ pub const ConfigLoader = struct {
     fn loadAppConfig(self: *Self) !AppConfig {
         const content = try self.readConfigFile("app.json");
         defer self.allocator.free(content);
-        
+
         const parsed = json.parseFromSlice(AppConfig, self.allocator, content, .{}) catch {
             return ConfigError.ParseError;
         };
         defer parsed.deinit();
-        
+
         var config = parsed.value;
-        
+
         // 复制字符串字段以避免依赖已释放的内存
         config.plugin_directory = try self.allocString(config.plugin_directory);
-        
+
         return config;
     }
 
@@ -166,12 +166,12 @@ pub const ConfigLoader = struct {
     fn loadDomainConfig(self: *Self) !DomainConfig {
         const content = try self.readConfigFile("domain.json");
         defer self.allocator.free(content);
-        
+
         const parsed = json.parseFromSlice(DomainConfig, self.allocator, content, .{}) catch {
             return ConfigError.ParseError;
         };
         defer parsed.deinit();
-        
+
         return parsed.value; // DomainConfig 没有字符串字段
     }
 
@@ -179,25 +179,23 @@ pub const ConfigLoader = struct {
     fn loadInfraConfig(self: *Self) !InfraConfig {
         const content = try self.readConfigFile("infra.json");
         defer self.allocator.free(content);
-        
+
         const parsed = json.parseFromSlice(InfraConfig, self.allocator, content, .{}) catch {
             return ConfigError.ParseError;
         };
         defer parsed.deinit();
-        
+
         var config = parsed.value;
-        
+
         // 复制字符串字段以避免依赖已释放的内存
         config.db_host = try self.allocString(config.db_host);
         config.db_name = try self.allocString(config.db_name);
         config.db_user = try self.allocString(config.db_user);
         config.db_password = try self.allocString(config.db_password);
         config.cache_host = try self.allocString(config.cache_host);
-        
+
         return config;
     }
-
-    
 
     /// 读取配置文件内容
     fn readConfigFile(self: *Self, filename: []const u8) ![]const u8 {
@@ -398,8 +396,6 @@ pub const ConfigLoader = struct {
             std.debug.print("❌ 配置错误: HTTP 超时时间不能为 0\n", .{});
             return ConfigError.InvalidValue;
         }
-
-        
     }
 
     /// 验证并返回详细错误信息

@@ -107,11 +107,107 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                         } else {
                             return error.ExpectedOperatorOrTagEnd;
                         }
-                        const body = try parse(allocator, lex, .endif_kw);
+                        
+                        // 解析 if 主体
+                        const body = try parse(allocator, lex, null);
+                        
+                        // 解析 elif 和 else 分支
+                        var elif_conditions = try std.ArrayList(ast.Condition).initCapacity(allocator, 0);
+                        var elif_bodies = try std.ArrayList(std.ArrayList(ast.Node)).initCapacity(allocator, 0);
+                        var else_body = try std.ArrayList(ast.Node).initCapacity(allocator, 0);
+                        
+                        // 检查是否有 elif 或 else
+                        while (true) {
+                            // 检查下一个 token 是否是 elif, else 或 endif
+                            const saved_start = lex.start;
+                            const saved_current = lex.current;
+                            const saved_line = lex.line;
+                            const saved_state = lex.state;
+                            
+                            const next_tag = try lex.peek() orelse {
+                                lex.start = saved_start;
+                                lex.current = saved_current;
+                                lex.line = saved_line;
+                                lex.state = saved_state;
+                                break;
+                            };
+                            
+                            if (next_tag.type == .tag_start) {
+                                // 跳过 tag_start
+                                _ = try lex.next();
+                                const keyword = try lex.next() orelse {
+                                    lex.start = saved_start;
+                                    lex.current = saved_current;
+                                    lex.line = saved_line;
+                                    lex.state = saved_state;
+                                    break;
+                                };
+                                
+                                if (keyword.type == .elif_kw) {
+                                    // 解析 elif 条件
+                                    const elif_var_token = try lex.next() orelse return error.UnexpectedEof;
+                                    if (elif_var_token.type != .identifier) return error.ExpectedIdentifier;
+                                    var elif_condition = ast.Condition{ .var_path = try allocator.dupe(u8, elif_var_token.lexeme) };
+                                    
+                                    const elif_next = try lex.next() orelse return error.UnexpectedEof;
+                                    if (elif_next.type == .operator) {
+                                        elif_condition.op = try allocator.dupe(u8, elif_next.lexeme);
+                                        const elif_lit = try lex.next() orelse return error.UnexpectedEof;
+                                        elif_condition.literal = try parseLiteral(allocator, elif_lit);
+                                        const elif_end = try lex.next() orelse return error.UnexpectedEof;
+                                        if (elif_end.type != .tag_end) return error.ExpectedTagEnd;
+                                    } else if (elif_next.type == .tag_end) {
+                                        // no op
+                                    } else {
+                                        return error.ExpectedOperatorOrTagEnd;
+                                    }
+                                    
+                                    try elif_conditions.append(allocator, elif_condition);
+                                    
+                                    // 解析 elif 主体
+                                    const elif_body = try parse(allocator, lex, null);
+                                    try elif_bodies.append(allocator, elif_body);
+                                } else if (keyword.type == .else_kw) {
+                                    // 解析 else 分支
+                                    const else_end = try lex.next() orelse return error.UnexpectedEof;
+                                    if (else_end.type != .tag_end) return error.ExpectedTagEnd;
+                                    
+                                    else_body = try parse(allocator, lex, null);
+                                    break;
+                                } else if (keyword.type == .endif_kw) {
+                                    // 恢复状态，让外层处理 endif
+                                    lex.start = saved_start;
+                                    lex.current = saved_current;
+                                    lex.line = saved_line;
+                                    lex.state = saved_state;
+                                    break;
+                                } else {
+                                    // 其他关键字，恢复状态并退出
+                                    lex.start = saved_start;
+                                    lex.current = saved_current;
+                                    lex.line = saved_line;
+                                    lex.state = saved_state;
+                                    break;
+                                }
+                            } else {
+                                // 不是 tag_start，恢复状态并退出
+                                lex.start = saved_start;
+                                lex.current = saved_current;
+                                lex.line = saved_line;
+                                lex.state = saved_state;
+                                break;
+                            }
+                        }
+                        
+                        // 解析 endif
+                        _ = try parse(allocator, lex, .endif_kw);
+                        
                         try nodes.append(allocator, .{ .if_stmt = .{
                             .condition = condition,
                             .body = body,
-                            .else_body = try std.ArrayList(ast.Node).initCapacity(allocator, 0),
+                            .elif_conditions = elif_conditions,
+                            .elif_bodies = elif_bodies,
+                            .else_body = else_body,
                         } });
                     },
                     .extends_kw => {
@@ -194,6 +290,26 @@ pub fn parse(allocator: std.mem.Allocator, lex: *lexer.Lexer, stop_on: ?lexer.To
                         try nodes.append(allocator, .{ .import = .{
                             .template_name = try allocator.dupe(u8, template_token.lexeme),
                             .macro_names = macro_names,
+                        } });
+                    },
+                    .set_kw => {
+                        const var_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (var_token.type != .identifier) return error.ExpectedIdentifier;
+                        
+                        const op_token = try lex.next() orelse return error.UnexpectedEof;
+                        if (!(op_token.type == .operator and std.mem.eql(u8, op_token.lexeme, "="))) {
+                            return error.ExpectedEquals;
+                        }
+                        
+                        // 解析值表达式
+                        const value_expr = try parseExpression(allocator, lex);
+                        
+                        const tag_end = try lex.next() orelse return error.UnexpectedEof;
+                        if (tag_end.type != .tag_end) return error.ExpectedTagEnd;
+                        
+                        try nodes.append(allocator, .{ .set = .{
+                            .var_name = try allocator.dupe(u8, var_token.lexeme),
+                            .value = value_expr,
                         } });
                     },
                     else => return error.UnexpectedToken,
@@ -288,7 +404,7 @@ fn freeExpression(allocator: std.mem.Allocator, expr: ast.Expression) void {
                         },        .filtered => |f| {
             freeExpression(allocator, f.expr.*);
             allocator.destroy(f.expr);
-            allocator.free(f.filter);
+            // filter 字符串可能指向 token.lexeme，不释放
             allocator.destroy(f);
         },
     }
@@ -319,14 +435,30 @@ pub fn freeAst(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node)) voi
                 }
                 freeAst(allocator, i.body);
                 @constCast(&i.body).deinit(allocator);
+                
+                // 清理 elif 分支
+                for (i.elif_conditions.items) |elif_cond| {
+                    allocator.free(elif_cond.var_path);
+                    if (elif_cond.op) |op| allocator.free(op);
+                    if (elif_cond.literal) |lit| {
+                        if (lit == .string) allocator.free(lit.string);
+                    }
+                }
+                @constCast(&i.elif_conditions).deinit(allocator);
+                
+                for (i.elif_bodies.items) |elif_body| {
+                    freeAst(allocator, elif_body);
+                    @constCast(&elif_body).deinit(allocator);
+                }
+                @constCast(&i.elif_bodies).deinit(allocator);
+                
                 freeAst(allocator, i.else_body);
                 @constCast(&i.else_body).deinit(allocator);
             },
 
             .set => |s| {
                 allocator.free(s.var_name);
-
-                allocator.free(s.value);
+                freeExpression(allocator, s.value);
             },
             .extends => |e| {
                 allocator.free(e.template_name);
