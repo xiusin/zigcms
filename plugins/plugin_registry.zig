@@ -19,14 +19,14 @@ pub const PluginEntry = struct {
 pub const PluginRegistry = struct {
     allocator: std.mem.Allocator,
     plugins: std.StringHashMap(PluginEntry),
-    by_capability: std.AutoHashMap(u32, std.ArrayList([]const u8)),
+    by_capability: std.AutoHashMap(u32, std.ArrayListUnmanaged([]const u8)),
     mutex: std.Thread.Mutex,
 
     pub fn init(allocator: std.mem.Allocator) PluginRegistry {
         return .{
             .allocator = allocator,
             .plugins = std.StringHashMap(PluginEntry).init(allocator),
-            .by_capability = std.AutoHashMap(u32, std.ArrayList([]const u8)).init(allocator),
+            .by_capability = std.AutoHashMap(u32, std.ArrayListUnmanaged([]const u8)).init(allocator),
             .mutex = .{},
         };
     }
@@ -43,7 +43,7 @@ pub const PluginRegistry = struct {
 
         var cap_iter = self.by_capability.iterator();
         while (cap_iter.next()) |entry| {
-            entry.value_ptr.deinit();
+            entry.value_ptr.deinit(self.allocator);
         }
         self.by_capability.deinit();
     }
@@ -68,15 +68,16 @@ pub const PluginRegistry = struct {
 
         try self.indexByCapability(plugin_manifest.id, plugin_manifest.capabilities);
 
-        std.log.info("Registered plugin: {s} v{}", .{ plugin_manifest.name, plugin_manifest.version });
+        std.log.info("Registered plugin: {s} v{any}", .{ plugin_manifest.name, plugin_manifest.version });
     }
 
     pub fn unregisterPlugin(self: *PluginRegistry, plugin_id: []const u8) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        if (self.plugins.fetchRemove(plugin_id)) |entry| {
-            entry.value.deinit(self.allocator);
+        if (self.plugins.fetchRemove(plugin_id)) |kv| {
+            var entry = kv.value;
+            entry.deinit(self.allocator);
 
             self.removeFromCapabilityIndex(plugin_id);
 
@@ -228,10 +229,10 @@ pub const PluginRegistry = struct {
 
         const result = try self.by_capability.getOrPut(bitmap);
         if (!result.found_existing) {
-            result.value_ptr.* = std.ArrayList([]const u8).init(self.allocator);
+            result.value_ptr.* = .{};
         }
 
-        try result.value_ptr.append(plugin_id);
+        try result.value_ptr.append(self.allocator, plugin_id);
     }
 
     fn removeFromCapabilityIndex(self: *PluginRegistry, plugin_id: []const u8) void {

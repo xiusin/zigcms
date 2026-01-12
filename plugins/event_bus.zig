@@ -22,13 +22,13 @@ pub const EventHandler = struct {
 
 pub const EventBus = struct {
     allocator: std.mem.Allocator,
-    subscribers: std.StringHashMap(std.ArrayList(EventHandler)),
+    subscribers: std.StringHashMap(std.ArrayListUnmanaged(EventHandler)),
     mutex: std.Thread.Mutex,
 
     pub fn init(allocator: std.mem.Allocator) EventBus {
         return .{
             .allocator = allocator,
-            .subscribers = std.StringHashMap(std.ArrayList(EventHandler)).init(allocator),
+            .subscribers = std.StringHashMap(std.ArrayListUnmanaged(EventHandler)).init(allocator),
             .mutex = .{},
         };
     }
@@ -39,7 +39,8 @@ pub const EventBus = struct {
 
         var iter = self.subscribers.iterator();
         while (iter.next()) |entry| {
-            entry.value_ptr.deinit();
+            entry.value_ptr.deinit(self.allocator);
+            self.allocator.free(entry.key_ptr.*);
         }
         self.subscribers.deinit();
     }
@@ -53,7 +54,7 @@ pub const EventBus = struct {
 
         const result = try self.subscribers.getOrPut(event_type_copy);
         if (!result.found_existing) {
-            result.value_ptr.* = std.ArrayList(EventHandler).init(self.allocator);
+            result.value_ptr.* = .{};
         }
 
         const handler_copy = EventHandler{
@@ -61,7 +62,7 @@ pub const EventBus = struct {
             .callback = handler.callback,
         };
 
-        try result.value_ptr.append(handler_copy);
+        try result.value_ptr.append(self.allocator, handler_copy);
 
         std.log.info("Plugin '{s}' subscribed to event '{s}'", .{ handler.plugin_id, event_type });
     }
@@ -81,12 +82,23 @@ pub const EventBus = struct {
                     i += 1;
                 }
             }
+            
+            if (handlers.items.len == 0) {
+                if (self.subscribers.fetchRemove(event_type)) |kv| {
+                    self.allocator.free(kv.key);
+                    var list = kv.value;
+                    list.deinit(self.allocator);
+                }
+            }
         }
     }
 
     pub fn unsubscribeAll(self: *EventBus, plugin_id: []const u8) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        var to_remove = std.ArrayListUnmanaged([]const u8){};
+        defer to_remove.deinit(self.allocator);
 
         var iter = self.subscribers.iterator();
         while (iter.next()) |entry| {
@@ -100,6 +112,18 @@ pub const EventBus = struct {
                     i += 1;
                 }
             }
+            
+            if (handlers.items.len == 0) {
+                try to_remove.append(self.allocator, entry.key_ptr.*);
+            }
+        }
+
+        for (to_remove.items) |key| {
+            if (self.subscribers.fetchRemove(key)) |kv| {
+                self.allocator.free(kv.key);
+                var list = kv.value;
+                list.deinit(self.allocator);
+            }
         }
 
         std.log.info("Plugin '{s}' unsubscribed from all events", .{plugin_id});
@@ -107,14 +131,14 @@ pub const EventBus = struct {
 
     pub fn publish(self: *EventBus, event: Event) !void {
         self.mutex.lock();
-        const handlers_opt = if (self.subscribers.get(event.type)) |handlers|
-            try handlers.clone()
+        var handlers_opt = if (self.subscribers.get(event.type)) |handlers|
+            try handlers.clone(self.allocator)
         else
             null;
         self.mutex.unlock();
 
-        if (handlers_opt) |handlers| {
-            defer handlers.deinit();
+        if (handlers_opt) |*handlers| {
+            defer handlers.deinit(self.allocator);
 
             std.log.debug("Publishing event '{s}' from '{s}' to {d} subscribers", .{
                 event.type,
