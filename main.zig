@@ -2,25 +2,18 @@
 //!
 //! 职责：
 //! - 初始化内存分配器
-//! - 调用 Bootstrap 模块进行系统初始化
-//! - 启动 HTTP 服务器
+//! - 创建并启动应用实例
 //!
-//! 遵循整洁架构原则，main.zig 只负责高层初始化和启动逻辑，
-//! 具体的路由注册和服务配置委托给 Bootstrap 模块处理。
+//! 遵循整洁架构原则，main.zig 只负责高层初始化，
+//! 具体的配置加载、系统初始化、路由注册等逻辑委托给 Application 模块处理。
 
 const std = @import("std");
-const zigcms = @import("root.zig");
-const logger = @import("application/services/logger/logger.zig");
-const App = @import("api/App.zig").App;
-const Bootstrap = @import("api/bootstrap.zig").Bootstrap;
+const Application = @import("api/Application.zig").Application;
 
 // ✅ 启用 MySQL 驱动（编译时标志，供 interface.zig 检测）
 pub const mysql_enabled = true;
 
 pub fn main() !void {
-    // ========================================================================
-    // 1. 初始化内存分配器
-    // ========================================================================
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer {
         const status = gpa.deinit();
@@ -33,39 +26,8 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    // ========================================================================
-    // 2. 加载系统配置
-    // ========================================================================
-    const config = try zigcms.loadSystemConfig(allocator);
+    var app = try Application.create(allocator);
+    defer app.destroy();
 
-    // ========================================================================
-    // 3. 初始化系统各层
-    // ========================================================================
-    try zigcms.initSystem(allocator, config);
-    defer zigcms.deinitSystem();
-
-    // 初始化日志系统
-    try logger.initDefault(allocator, .{ .level = .debug, .format = .colored });
-    defer logger.deinitDefault();
-    const global_logger = logger.getDefault() orelse @panic("Logger not initialized");
-
-    // ========================================================================
-    // 4. 初始化应用框架
-    // ========================================================================
-    var app = try App.init(allocator);
-    defer app.deinit();
-
-    // ========================================================================
-    // 5. 使用 Bootstrap 注册路由
-    // ========================================================================
-    const container = zigcms.shared.di.getGlobalContainer() orelse @panic("DI Container not initialized");
-    var bootstrap = try Bootstrap.init(allocator, &app, global_logger, container);
-    try bootstrap.registerRoutes();
-
-    // ========================================================================
-    // 6. 打印启动摘要并启动服务器
-    // ========================================================================
-    bootstrap.printStartupSummary();
-    logger.info("🚀 启动 ZigCMS 服务器", .{});
-    try app.listen();
+    try app.run();
 }

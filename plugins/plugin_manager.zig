@@ -10,6 +10,13 @@
 
 const std = @import("std");
 const interface = @import("plugin_interface.zig");
+const manifest_mod = @import("plugin_manifest.zig");
+const security_mod = @import("security_policy.zig");
+const verifier_mod = @import("plugin_verifier.zig");
+const registry_mod = @import("plugin_registry.zig");
+const event_bus_mod = @import("event_bus.zig");
+const resource_tracker_mod = @import("resource_tracker.zig");
+const dependency_resolver_mod = @import("dependency_resolver.zig");
 
 pub const PluginCapabilities = interface.PluginCapabilities;
 pub const PluginInfo = interface.PluginInfo;
@@ -18,6 +25,13 @@ pub const PluginError = interface.PluginError;
 pub const PluginVTable = interface.PluginVTable;
 pub const PluginContext = interface.PluginContext;
 pub const PLUGIN_API_VERSION = interface.PLUGIN_API_VERSION;
+pub const Manifest = manifest_mod.Manifest;
+pub const SecurityPolicy = security_mod.SecurityPolicy;
+pub const PluginVerifier = verifier_mod.PluginVerifier;
+pub const PluginRegistry = registry_mod.PluginRegistry;
+pub const EventBus = event_bus_mod.EventBus;
+pub const ResourceTracker = resource_tracker_mod.ResourceTracker;
+pub const DependencyResolver = dependency_resolver_mod.DependencyResolver;
 
 /// 已加载的插件实例
 pub const LoadedPlugin = struct {
@@ -31,12 +45,20 @@ pub const LoadedPlugin = struct {
     state: PluginState = .unloaded,
     /// 插件信息
     info: PluginInfo = PluginInfo.default(),
+    /// 插件清单
+    manifest: ?Manifest = null,
     /// 插件能力
     capabilities: PluginCapabilities = .{},
     /// 虚函数表
     vtable: PluginVTable = .{},
     /// 插件私有数据句柄
     plugin_handle: ?*anyopaque = null,
+    /// 插件上下文
+    context: ?PluginContext = null,
+    /// Arena 分配器
+    arena: ?std.heap.ArenaAllocator = null,
+    /// 资源追踪器
+    resource_tracker: ?ResourceTracker = null,
     /// 加载时间戳
     loaded_at: i64 = 0,
     /// 错误信息
@@ -48,6 +70,9 @@ pub const LoadedPlugin = struct {
     pub fn deinit(self: *LoadedPlugin) void {
         if (self.last_error) |err| {
             self.allocator.free(err);
+        }
+        if (self.arena) |*a| {
+            a.deinit();
         }
         self.allocator.free(self.name);
         self.allocator.free(self.path);
@@ -70,17 +95,36 @@ pub const PluginManager = struct {
     on_plugin_loaded: ?*const fn (*LoadedPlugin) void = null,
     /// 插件卸载回调
     on_plugin_unloaded: ?*const fn ([]const u8) void = null,
+    /// 安全策略
+    security_policy: SecurityPolicy,
+    /// 插件验证器
+    verifier: PluginVerifier,
+    /// 插件注册表
+    registry: PluginRegistry,
+    /// 事件总线
+    event_bus: EventBus,
+    /// 依赖解析器
+    dependency_resolver: DependencyResolver,
 
     const Self = @This();
 
     /// 初始化插件管理器
-    pub fn init(allocator: std.mem.Allocator, plugin_dir: []const u8) !Self {
+    pub fn init(allocator: std.mem.Allocator, plugin_dir: []const u8, policy: SecurityPolicy) !Self {
         const dir_copy = try allocator.dupe(u8, plugin_dir);
+
+        var registry = PluginRegistry.init(allocator);
+        var event_bus = EventBus.init(allocator);
+        var dependency_resolver = DependencyResolver.init(allocator, &registry);
 
         return Self{
             .allocator = allocator,
             .plugins = std.StringHashMap(LoadedPlugin).init(allocator),
             .plugin_dir = dir_copy,
+            .security_policy = policy,
+            .verifier = PluginVerifier.init(allocator),
+            .registry = registry,
+            .event_bus = event_bus,
+            .dependency_resolver = dependency_resolver,
         };
     }
 
@@ -95,43 +139,57 @@ pub const PluginManager = struct {
             entry.value_ptr.deinit();
         }
         self.plugins.deinit();
+        self.event_bus.deinit();
+        self.registry.deinit();
         self.allocator.free(self.plugin_dir);
     }
 
     /// 加载单个插件
-    pub fn loadPlugin(self: *Self, plugin_name: []const u8) PluginError!*LoadedPlugin {
+    pub fn loadPlugin(self: *Self, plugin_name: []const u8, plugin_manifest: ?Manifest) PluginError!*LoadedPlugin {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        // 检查是否已加载
         if (self.plugins.contains(plugin_name)) {
             return PluginError.AlreadyLoaded;
         }
 
-        // 构建插件路径
         const path = self.buildPluginPath(plugin_name) catch return PluginError.OutOfMemory;
         defer self.allocator.free(path);
 
-        // 检查文件是否存在
         std.fs.cwd().access(path, .{}) catch {
             return PluginError.PluginNotFound;
         };
 
-        // 创建插件实例
         var plugin = LoadedPlugin{
             .name = self.allocator.dupe(u8, plugin_name) catch return PluginError.OutOfMemory,
             .path = self.allocator.dupe(u8, path) catch return PluginError.OutOfMemory,
             .allocator = self.allocator,
+            .manifest = plugin_manifest,
         };
 
-        // 加载动态库
+        if (plugin.manifest) |*m| {
+            m.validate() catch {
+                std.log.err("Invalid manifest for plugin: {s}", .{plugin_name});
+                return PluginError.InitFailed;
+            };
+
+            self.verifier.checkPolicy(m, &self.security_policy) catch {
+                std.log.err("Plugin {s} failed security policy check", .{plugin_name});
+                return PluginError.InitFailed;
+            };
+
+            self.verifier.verifyAll(path, m, &self.security_policy) catch |err| {
+                std.log.err("Plugin {s} failed verification: {}", .{ plugin_name, err });
+                return PluginError.InitFailed;
+            };
+        }
+
         plugin.handle = std.DynLib.open(path) catch {
             plugin.state = .error_state;
             plugin.last_error = self.allocator.dupe(u8, "动态库加载失败") catch null;
             return PluginError.LoadFailed;
         };
 
-        // 解析符号
         self.resolveSymbols(&plugin) catch |err| {
             if (plugin.handle) |*h| h.close();
             plugin.state = .error_state;
@@ -141,23 +199,29 @@ pub const PluginManager = struct {
         plugin.state = .loaded;
         plugin.loaded_at = std.time.timestamp();
 
-        // 获取插件信息
         if (plugin.vtable.get_info) |get_info| {
             const info = get_info();
             plugin.info = info.*;
         }
 
-        // 获取插件能力
         if (plugin.vtable.get_capabilities) |get_caps| {
             plugin.capabilities = PluginCapabilities.fromBitmap(get_caps());
         }
 
-        // 添加到管理列表
+        const max_memory_mb = if (plugin.manifest) |m| m.max_memory_mb orelse self.security_policy.max_plugin_memory_mb else self.security_policy.max_plugin_memory_mb;
+        plugin.resource_tracker = ResourceTracker.init(max_memory_mb, 100, 10);
+
+        plugin.arena = std.heap.ArenaAllocator.init(self.allocator);
+        plugin.context = PluginContext{
+            .arena = &plugin.arena.?,
+            .event_bus = &self.event_bus,
+            .resource_tracker = &plugin.resource_tracker.?,
+        };
+
         self.plugins.put(plugin.name, plugin) catch return PluginError.OutOfMemory;
 
         const loaded = self.plugins.getPtr(plugin.name).?;
 
-        // 触发回调
         if (self.on_plugin_loaded) |callback| {
             callback(loaded);
         }
@@ -251,10 +315,9 @@ pub const PluginManager = struct {
 
     /// 热重载插件
     pub fn reloadPlugin(self: *Self, plugin_name: []const u8) PluginError!*LoadedPlugin {
-        // 先卸载
+        const manifest_backup = if (self.getPlugin(plugin_name)) |p| p.manifest else null;
         self.unloadPlugin(plugin_name) catch {};
-        // 再加载
-        return self.loadPlugin(plugin_name);
+        return self.loadPlugin(plugin_name, manifest_backup);
     }
 
     /// 获取插件
@@ -300,7 +363,6 @@ pub const PluginManager = struct {
 
             if (!std.mem.eql(u8, ext, valid_ext)) continue;
 
-            // 提取插件名称
             const name_end = std.mem.lastIndexOf(u8, entry.name, ".") orelse continue;
             var name_start: usize = 0;
             if (std.mem.startsWith(u8, entry.name, "lib")) {
@@ -308,7 +370,7 @@ pub const PluginManager = struct {
             }
             const plugin_name = entry.name[name_start..name_end];
 
-            if (self.loadPlugin(plugin_name)) |_| {
+            if (self.loadPlugin(plugin_name, null)) |_| {
                 count += 1;
             } else |err| {
                 std.log.warn("加载插件 '{s}' 失败: {}", .{ plugin_name, err });
@@ -448,11 +510,10 @@ pub fn deinitGlobalManager() void {
 test "PluginManager 基础功能" {
     const allocator = std.testing.allocator;
 
-    var manager = try PluginManager.init(allocator, "plugins");
+    var manager = try PluginManager.init(allocator, "plugins", SecurityPolicy.Default);
     defer manager.deinit();
 
-    // 测试加载不存在的插件
-    const result = manager.loadPlugin("nonexistent");
+    const result = manager.loadPlugin("nonexistent", null);
     try std.testing.expectError(PluginError.PluginNotFound, result);
 }
 

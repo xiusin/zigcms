@@ -9,11 +9,9 @@
 
 const std = @import("std");
 
-// 导出核心组件
 pub const PluginManager = @import("plugin_manager.zig").PluginManager;
 pub const LoadedPlugin = @import("plugin_manager.zig").LoadedPlugin;
 
-// 导出接口定义
 pub const interface = @import("plugin_interface.zig");
 pub const PluginCapabilities = interface.PluginCapabilities;
 pub const PluginInfo = interface.PluginInfo;
@@ -23,7 +21,25 @@ pub const PluginVTable = interface.PluginVTable;
 pub const PluginContext = interface.PluginContext;
 pub const PLUGIN_API_VERSION = interface.PLUGIN_API_VERSION;
 
-// 导出便捷函数
+pub const manifest = @import("plugin_manifest.zig");
+pub const Manifest = manifest.Manifest;
+pub const SemanticVersion = manifest.SemanticVersion;
+pub const Permission = manifest.Permission;
+pub const PluginDependency = manifest.PluginDependency;
+
+pub const security = @import("security_policy.zig");
+pub const SecurityPolicy = security.SecurityPolicy;
+
+pub const PluginVerifier = @import("plugin_verifier.zig").PluginVerifier;
+pub const PluginRegistry = @import("plugin_registry.zig").PluginRegistry;
+pub const EventBus = @import("event_bus.zig").EventBus;
+pub const Event = @import("event_bus.zig").Event;
+pub const EventHandler = @import("event_bus.zig").EventHandler;
+pub const ResourceTracker = @import("resource_tracker.zig").ResourceTracker;
+pub const ResourceStats = @import("resource_tracker.zig").ResourceStats;
+pub const TrackedAllocator = @import("resource_tracker.zig").TrackedAllocator;
+pub const DependencyResolver = @import("dependency_resolver.zig").DependencyResolver;
+
 pub const getGlobalManager = @import("plugin_manager.zig").getGlobalManager;
 pub const initGlobalManager = @import("plugin_manager.zig").initGlobalManager;
 pub const deinitGlobalManager = @import("plugin_manager.zig").deinitGlobalManager;
