@@ -132,10 +132,15 @@ pub const PluginVTable = struct {
 
 /// 插件上下文 - 传递给插件的运行时信息
 pub const PluginContext = struct {
-    allocator: std.mem.Allocator,
-    plugin_dir: []const u8,
+    arena: *std.heap.ArenaAllocator,
     config: ?*anyopaque = null,
     logger: ?*anyopaque = null,
+    event_bus: ?*anyopaque = null,
+    resource_tracker: ?*anyopaque = null,
+
+    pub fn allocator(self: *const PluginContext) std.mem.Allocator {
+        return self.arena.allocator();
+    }
 };
 
 /// 当前插件 API 版本
