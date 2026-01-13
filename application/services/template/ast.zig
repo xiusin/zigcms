@@ -46,6 +46,13 @@ pub const Expression = union(enum) {
     variable: []const u8,
     function_call: *FunctionCall,
     filtered: *Filtered,
+    binary: *BinaryExpression,
+};
+
+pub const BinaryExpression = struct {
+    left: *const Expression,
+    op: []const u8,
+    right: *const Expression,
 };
 
 pub const Node = union(NodeType) {

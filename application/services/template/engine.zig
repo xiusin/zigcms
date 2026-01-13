@@ -94,7 +94,7 @@ pub const Engine = struct {
                 entry.value_ptr.*.params.deinit(alloc);
             }
             all_macros.deinit();
-        };
+        }
         
         // 创建 set 变量存储
         var set_vars = std.StringHashMap(std.json.Value).init(alloc);
@@ -105,7 +105,7 @@ pub const Engine = struct {
                 else if (entry.value_ptr.* == .array) entry.value_ptr.*.array.deinit(alloc);
             }
             set_vars.deinit();
-        };
+        }
         
         // 合并父模板和当前模板
         try self.mergeTemplate(alloc, template, null, &merged_ast, &all_macros, null);
