@@ -22,6 +22,11 @@
 
 const std = @import("std");
 const chain = @import("chain.zig");
+const jwt = @import("../../shared/utils/jwt.zig");
+const context = @import("../../shared/utils/context.zig");
+
+/// JWT 密钥配置
+const JWT_SECRET = "zigcms-jwt-secret-key-2024";
 
 // 条件导入 zap（测试时使用模拟类型）
 const zap = if (@import("builtin").is_test) struct {
@@ -62,10 +67,24 @@ pub fn AuthChecker(comptime T: type) type {
                     token = authorization[7..];
                 }
 
-                // 简单验证 token 存在
-                if (token.len > 10) {
-                    // TODO: 实际 JWT 解析
-                    return .{ .ok = true, .user_id = 1 };
+                if (token.len > 0) {
+                    // 解析 JWT token
+                    const payload = jwt.decode(std.heap.page_allocator, token, .{
+                        .secret = JWT_SECRET,
+                        .verify_signature = true,
+                    }) catch {
+                        return .{ .ok = false, .error_msg = "无效的登录凭证" };
+                    };
+
+                    // 设置用户上下文
+                    context.setContext(.{
+                        .user_id = payload.user_id,
+                        .username = payload.username,
+                        .email = payload.email,
+                        .is_authenticated = true,
+                    });
+
+                    return .{ .ok = true, .user_id = @intCast(payload.user_id) };
                 }
             }
             return .{ .ok = false, .error_msg = "缺少登录凭证" };
@@ -84,6 +103,8 @@ pub fn AuthChecker(comptime T: type) type {
                     }
                     // 认证通过，调用原方法
                     try method(self, req);
+                    // 请求结束后清除上下文
+                    context.clearContext();
                 }
             }.wrapped;
         }
