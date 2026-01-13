@@ -4,21 +4,18 @@
 //! - codegen: 代码生成工具（模型、控制器、DTO）
 //! - migrate: 数据库迁移工具
 //! - plugin_gen: 插件代码生成器
-//! - config_gen: 配置结构生成器
 //!
 //! ## 使用方式
 //! ```
 //! zig build codegen -- --help
 //! zig build migrate -- up
 //! zig build plugin-gen -- --name=MyPlugin
-//! zig build config-gen -- .env ./generated_config.zig
 //! ```
 
 pub const base = @import("base.zig");
 pub const codegen = @import("codegen/main.zig");
 pub const migrate = @import("migrate/main.zig");
 pub const plugin_gen = @import("plugin_gen/main.zig");
-pub const config_gen = @import("config_gen/main.zig");
 
 // 导出常用类型
 pub const Command = base.Command;
