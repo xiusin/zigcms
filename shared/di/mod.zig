@@ -3,7 +3,7 @@
 //! 本模块使用双分配器策略确保内存零泄漏：
 //! 1. 系统级 Arena：管理所有服务单例、容器和注册表的生命周期。
 //! 2. GPA：传递给服务用于处理运行时临时业务。
-//! 
+//!
 //! //! ## 使用示例
 //! ```zig
 //! const di = @import("shared/di/mod.zig");
@@ -30,9 +30,13 @@ pub const ServiceLifetime = container.ServiceLifetime;
 var di_arena: ?std.heap.ArenaAllocator = null;
 var global_container: ?*DIContainer = null;
 var global_registry: ?*ServiceRegistry = null;
+var di_mutex = std.Thread.Mutex{};
 
 /// 初始化全局DI系统
 pub fn initGlobalDISystem(allocator: std.mem.Allocator) !void {
+    di_mutex.lock();
+    defer di_mutex.unlock();
+
     if (di_arena != null) return;
 
     // 创建 Arena，专门托管 DI 相关的持久内存
@@ -51,16 +55,23 @@ pub fn initGlobalDISystem(allocator: std.mem.Allocator) !void {
 
 /// 获取全局容器
 pub fn getGlobalContainer() ?*DIContainer {
+    di_mutex.lock();
+    defer di_mutex.unlock();
     return global_container;
 }
 
 /// 获取全局注册表
 pub fn getGlobalRegistry() ?*ServiceRegistry {
+    di_mutex.lock();
+    defer di_mutex.unlock();
     return global_registry;
 }
 
 /// 清理全局 DI 系统
 pub fn deinitGlobalDISystem() void {
+    di_mutex.lock();
+    defer di_mutex.unlock();
+
     if (di_arena) |*arena| {
         // 这一步是核武器：直接释放 Arena 块。
         // 它会瞬间销毁容器、注册表以及所有在里面分配的服务实例。
@@ -75,6 +86,9 @@ pub fn deinitGlobalDISystem() void {
 
 /// 便捷函数：注册服务
 pub fn registerService(comptime ServiceType: type, comptime ImplementationType: type, factory: anytype, lifetime: ServiceLifetime) !void {
+    di_mutex.lock();
+    defer di_mutex.unlock();
+
     if (global_container) |c| {
         switch (lifetime) {
             .Singleton => try c.registerSingleton(ServiceType, ImplementationType, factory),
@@ -85,6 +99,9 @@ pub fn registerService(comptime ServiceType: type, comptime ImplementationType: 
 
 /// 解析服务
 pub fn resolveService(comptime ServiceType: type) !*ServiceType {
+    di_mutex.lock();
+    defer di_mutex.unlock();
+
     if (global_container) |c| return c.resolve(ServiceType);
     return error.DIContainerNotInitialized;
 }

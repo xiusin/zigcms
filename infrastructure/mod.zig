@@ -135,10 +135,13 @@ pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
 /// 清理基础设施层
 ///
 /// 在应用程序关闭时调用，关闭数据库连接和其他外部服务。
+///
+/// 注意：基础设施层的实际清理由 root.zig 的 deinitSystem 统一管理：
+/// - 数据库连接通过 infrastructure_db 变量清理
+/// - 缓存连接通过 ServiceManager 清理
+/// - HTTP 客户端资源通过其自身的 deinit 方法清理
+///
+/// 此函数保留用于独立的清理场景，不应在正常流程中直接调用。
 pub fn deinit() void {
     std.debug.print("👋 基础设施层已清理\n", .{});
-
-    // TODO: 关闭数据库连接
-    // TODO: 关闭缓存连接
-    // TODO: 清理 HTTP 客户端
 }

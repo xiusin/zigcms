@@ -12,6 +12,10 @@
 //! - `github`: GitHub API 工具
 //! - `tos`: 腾讯云对象存储工具
 //! - `webui`: Web UI 工具
+//! - `benchmark`: 性能基准测试
+//! - `security`: 安全验证模块
+//! - `metrics`: 指标收集模块
+//! - `health`: 健康检查模块
 
 /// 字符串处理工具
 pub const strings = @import("strings.zig");
@@ -34,6 +38,18 @@ pub const github = @import("github.zig");
 /// 腾讯云对象存储工具
 pub const tos = @import("tos.zig");
 
+/// 性能基准测试
+pub const benchmark = @import("benchmark.zig");
+
+/// 安全验证模块
+pub const security = @import("security.zig");
+
+/// 指标收集模块
+pub const metrics = @import("metrics.zig");
+
+/// 健康检查模块
+pub const health = @import("health.zig");
+
 /// 工具模块统一访问结构
 ///
 /// 提供所有工具的统一访问点，便于导入和使用。
@@ -45,4 +61,8 @@ pub const Utils = struct {
     pub const Regex = regex;
     pub const GitHub = github;
     pub const TOS = tos;
+    pub const Benchmark = benchmark;
+    pub const Security = security;
+    pub const Metrics = metrics;
+    pub const Health = health;
 };

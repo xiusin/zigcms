@@ -140,18 +140,7 @@ pub const FileSystemConfig = shared.config.SystemConfig;
 /// 系统主配置
 ///
 /// 包含所有层的配置选项。
-pub const SystemConfig = struct {
-    /// API 层配置
-    api: api.ServerConfig = .{},
-    /// 应用层配置
-    app: application.AppConfig = .{},
-    /// 基础设施层配置
-    infra: infrastructure.InfraConfig = .{},
-    /// 领域层配置
-    domain: domain.DomainConfig = .{},
-    /// 共享层配置
-    shared: shared.SharedConfig = .{},
-};
+pub const SystemConfig = shared.config.SystemConfig;
 
 // 全局配置加载器（需要清理）
 var global_config_loader: ?ConfigLoader = null;
@@ -308,6 +297,12 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 初始化服务管理器
     service_manager = try ServiceManager.init(allocator, db, config);
     logger.info("服务管理器初始化完成", .{});
+
+    // 将服务管理器注册到 DI 容器，实现更好的生命周期管理
+    const di = @import("shared/di/mod.zig");
+    if (di.getGlobalContainer()) |container| {
+        try container.registerInstance(ServiceManager, &service_manager.?);
+    }
 }
 
 /// 注册应用服务到DI容器
@@ -320,18 +315,18 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
 ///
 /// ## 错误
 /// 如果服务注册失败，返回相应的错误。
-fn registerApplicationServices(_: std.mem.Allocator, db: *sql_orm.Database) !void {
+fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     const di_module = @import("shared/di/mod.zig");
 
     if (di_module.getGlobalContainer()) |container| {
         // 1. 注册用户服务相关
-        try registerUserServices(container, db);
+        try registerUserServices(container, allocator, db);
 
         // 2. 注册会员服务相关
-        try registerMemberServices(container, db);
+        try registerMemberServices(container, allocator, db);
 
         // 3. 注册分类服务相关
-        try registerCategoryServices(container, db);
+        try registerCategoryServices(container, allocator, db);
 
         // 4. 注册认证服务
         try registerAuthServices(container);
@@ -346,10 +341,11 @@ fn registerApplicationServices(_: std.mem.Allocator, db: *sql_orm.Database) !voi
 }
 
 /// 注册用户服务
-fn registerUserServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+fn registerUserServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     // 创建仓储实例
-    const sqlite_repo = try createSqliteUserRepository(db);
-    const user_repo = try std.heap.page_allocator.create(UserRepository);
+    const sqlite_repo = try createSqliteUserRepository(func_allocator, db);
+    const user_repo = try func_allocator.create(UserRepository);
+    errdefer func_allocator.destroy(user_repo);
     user_repo.* = domain.repositories.user_repository.create(sqlite_repo, &SqliteUserRepository.vtable());
 
     // 注册到容器
@@ -369,18 +365,19 @@ fn registerUserServices(container: *@import("shared/di/container.zig").DIContain
 }
 
 /// 创建用户仓储实现
-fn createSqliteUserRepository(db: *sql_orm.Database) !*SqliteUserRepository {
-    const allocator = std.heap.page_allocator;
+fn createSqliteUserRepository(allocator: std.mem.Allocator, db: *sql_orm.Database) !*SqliteUserRepository {
     const repo = try allocator.create(SqliteUserRepository);
+    errdefer allocator.destroy(repo);
     repo.* = SqliteUserRepository.init(allocator, db);
     return repo;
 }
 
 /// 注册会员服务
-fn registerMemberServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+fn registerMemberServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     // 创建仓储实例
-    const sqlite_repo = try createSqliteMemberRepository(db);
-    const member_repo = try std.heap.page_allocator.create(MemberRepository);
+    const sqlite_repo = try createSqliteMemberRepository(func_allocator, db);
+    const member_repo = try func_allocator.create(MemberRepository);
+    errdefer func_allocator.destroy(member_repo);
     member_repo.* = domain.repositories.member_repository.create(sqlite_repo, &SqliteMemberRepository.vtable());
 
     // 注册到容器
@@ -400,10 +397,11 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
 }
 
 /// 注册分类服务
-fn registerCategoryServices(container: *@import("shared/di/container.zig").DIContainer, db: *sql_orm.Database) !void {
+fn registerCategoryServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     // 创建仓储实例
-    const sqlite_repo = try createSqliteCategoryRepository(db);
-    const category_repo = try std.heap.page_allocator.create(CategoryRepository);
+    const sqlite_repo = try createSqliteCategoryRepository(func_allocator, db);
+    const category_repo = try func_allocator.create(CategoryRepository);
+    errdefer func_allocator.destroy(category_repo);
     category_repo.* = domain.repositories.category_repository.create(sqlite_repo, &SqliteCategoryRepository.vtable());
 
     // 注册到容器
@@ -423,17 +421,17 @@ fn registerCategoryServices(container: *@import("shared/di/container.zig").DICon
 }
 
 /// 创建会员仓储实现
-fn createSqliteMemberRepository(db: *sql_orm.Database) !*SqliteMemberRepository {
-    const allocator = std.heap.page_allocator;
+fn createSqliteMemberRepository(allocator: std.mem.Allocator, db: *sql_orm.Database) !*SqliteMemberRepository {
     const repo = try allocator.create(SqliteMemberRepository);
+    errdefer allocator.destroy(repo);
     repo.* = SqliteMemberRepository.init(allocator, db);
     return repo;
 }
 
 /// 注册分类服务实现
-fn createSqliteCategoryRepository(db: *sql_orm.Database) !*SqliteCategoryRepository {
-    const allocator = std.heap.page_allocator;
+fn createSqliteCategoryRepository(allocator: std.mem.Allocator, db: *sql_orm.Database) !*SqliteCategoryRepository {
     const repo = try allocator.create(SqliteCategoryRepository);
+    errdefer allocator.destroy(repo);
     repo.* = SqliteCategoryRepository.init(allocator, db);
     return repo;
 }

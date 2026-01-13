@@ -53,7 +53,7 @@ pub const ApiConfig = system_config.ApiConfig;
 pub const AppConfig = system_config.AppConfig;
 
 /// 领域层配置
-pub const DomainConfig = system_config.DomainConfig;
+pub const DomainConfig = @import("../../domain/mod.zig").DomainConfig;
 
 /// 基础设施层配置
 pub const InfraConfig = system_config.InfraConfig;

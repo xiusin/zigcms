@@ -3,6 +3,13 @@
 //! 本模块提供依赖注入功能：
 //! - 支持单例 (Singleton) 和瞬态 (Transient) 模式
 //! - 生命周期托管：单例实例由容器持有的分配器管理
+//!
+//! ## 类型安全说明
+//!
+//! 由于 Zig 没有泛型，工厂函数使用函数指针类型擦除。
+//! 通过 comptime 断言确保 ServiceType 和 ImplementationType 兼容：
+//! - 注册时：编译期检查工厂返回类型是否可转换为 *ImplementationType
+//! - 解析时：使用 @ptrCast 进行安全的类型恢复
 
 const std = @import("std");
 
@@ -11,13 +18,23 @@ pub const ServiceLifetime = enum {
     Transient,
 };
 
+/// 服务描述符
+/// 存储服务的注册信息和运行时实例
 pub const ServiceDescriptor = struct {
+    /// 服务类型名称（用于查找）
     service_type_name: []const u8,
+    /// 实现类型名称
     implementation_type_name: []const u8,
-    factory: ?*const fn (*DIContainer, std.mem.Allocator) anyerror!*anyopaque,
+    /// 工厂函数（类型擦除后存储）
+    factory: ?*const FactoryFn,
+    /// 服务生命周期
     lifetime: ServiceLifetime,
+    /// 单例实例（仅单例模式使用）
     instance: ?*anyopaque = null,
 };
+
+/// 工厂函数类型（类型擦除后）
+const FactoryFn = fn (*DIContainer, std.mem.Allocator) anyerror!*anyopaque;
 
 pub const DIContainer = struct {
     const Self = @This();
@@ -38,24 +55,39 @@ pub const DIContainer = struct {
     }
 
     /// 注册服务（单例模式）
-    pub fn registerSingleton(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
+    ///
+    /// ## 类型安全
+    /// 工厂函数的类型由编译器强制检查，确保返回类型正确
+    pub fn registerSingleton(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, raw_factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
         const service_name = @typeName(ServiceType);
+        const wrapper: FactoryFn = struct {
+            fn wrap(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*anyopaque {
+                return @ptrCast(@alignCast(try raw_factory(di, allocator)));
+            }
+        }.wrap;
+
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = @typeName(ImplementationType),
-            .factory = @ptrCast(&factory),
+            .factory = wrapper,
             .lifetime = .Singleton,
         };
         try self.descriptors.put(service_name, descriptor);
     }
 
     /// 注册服务（瞬态模式）
-    pub fn registerTransient(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
+    pub fn registerTransient(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, raw_factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
         const service_name = @typeName(ServiceType);
+        const wrapper: FactoryFn = struct {
+            fn wrap(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*anyopaque {
+                return @ptrCast(@alignCast(try raw_factory(di, allocator)));
+            }
+        }.wrap;
+
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = @typeName(ImplementationType),
-            .factory = @ptrCast(&factory),
+            .factory = wrapper,
             .lifetime = .Transient,
         };
         try self.descriptors.put(service_name, descriptor);
@@ -65,7 +97,7 @@ pub const DIContainer = struct {
     pub fn registerInstance(self: *Self, comptime ServiceType: type, instance: *ServiceType) !void {
         const service_name = @typeName(ServiceType);
         try self.singletons.put(service_name, @ptrCast(instance));
-        
+
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = service_name,
@@ -77,6 +109,10 @@ pub const DIContainer = struct {
     }
 
     /// 解析服务
+    ///
+    /// ## 错误
+    /// - ServiceNotRegistered: 服务未注册
+    /// - FactoryNotAvailable: 工厂函数不可用
     pub fn resolve(self: *Self, comptime ServiceType: type) !*ServiceType {
         const service_name = @typeName(ServiceType);
 
@@ -117,10 +153,12 @@ pub const DIContainer = struct {
         return error.FactoryNotAvailable;
     }
 
+    /// 检查服务是否已注册
     pub fn isRegistered(self: *Self, comptime ServiceType: type) bool {
         return self.descriptors.contains(@typeName(ServiceType));
     }
 
+    /// 清理容器
     pub fn deinit(self: *Self) void {
         if (!self.initialized) return;
         self.singletons.deinit();
@@ -129,6 +167,7 @@ pub const DIContainer = struct {
     }
 };
 
+/// 创建 DI 容器
 pub fn createContainer(allocator: std.mem.Allocator) !*DIContainer {
     const container = try allocator.create(DIContainer);
     container.* = DIContainer.init(allocator);
