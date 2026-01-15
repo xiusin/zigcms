@@ -109,6 +109,11 @@ pub const sql = @import("application/services/sql/mod.zig");
 /// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
 pub const redis = @import("application/services/redis/mod.zig");
 
+/// 缓存驱动模块 - 缓存实现
+///
+/// 提供内存缓存、Redis缓存等驱动实现。
+pub const cache_drivers = @import("application/services/cache_drivers.zig");
+
 // ============================================================================
 // 服务管理
 // ============================================================================
@@ -332,7 +337,7 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
         try registerAuthServices(container);
 
         // 5. 注册基础设施服务
-        try container.registerInstance(sql_orm.Database, db);
+        try container.registerInstance(sql_orm.Database, db, null);
 
         logger.info("应用服务注册到DI容器完成", .{});
     } else {
@@ -349,8 +354,8 @@ fn registerUserServices(container: *@import("shared/di/container.zig").DIContain
     user_repo.* = domain.repositories.user_repository.create(sqlite_repo, &SqliteUserRepository.vtable());
 
     // 注册到容器
-    try container.registerInstance(SqliteUserRepository, sqlite_repo);
-    try container.registerInstance(UserRepository, user_repo);
+    try container.registerInstance(SqliteUserRepository, sqlite_repo, null);
+    try container.registerInstance(UserRepository, user_repo, null);
 
     try container.registerSingleton(UserService, UserService, struct {
         fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*UserService {
@@ -361,7 +366,7 @@ fn registerUserServices(container: *@import("shared/di/container.zig").DIContain
             user_service.* = UserService.init(allocator, resolved_user_repo.*);
             return user_service;
         }
-    }.factory);
+    }.factory, null);
 }
 
 /// 创建用户仓储实现
@@ -381,8 +386,8 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
     member_repo.* = domain.repositories.member_repository.create(sqlite_repo, &SqliteMemberRepository.vtable());
 
     // 注册到容器
-    try container.registerInstance(SqliteMemberRepository, sqlite_repo);
-    try container.registerInstance(MemberRepository, member_repo);
+    try container.registerInstance(SqliteMemberRepository, sqlite_repo, null);
+    try container.registerInstance(MemberRepository, member_repo, null);
 
     try container.registerSingleton(MemberService, MemberService, struct {
         fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*MemberService {
@@ -393,7 +398,7 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
             member_service.* = MemberService.init(allocator, resolved_member_repo.*);
             return member_service;
         }
-    }.factory);
+    }.factory, null);
 }
 
 /// 注册分类服务
@@ -405,8 +410,8 @@ fn registerCategoryServices(container: *@import("shared/di/container.zig").DICon
     category_repo.* = domain.repositories.category_repository.create(sqlite_repo, &SqliteCategoryRepository.vtable());
 
     // 注册到容器
-    try container.registerInstance(SqliteCategoryRepository, sqlite_repo);
-    try container.registerInstance(CategoryRepository, category_repo);
+    try container.registerInstance(SqliteCategoryRepository, sqlite_repo, null);
+    try container.registerInstance(CategoryRepository, category_repo, null);
 
     try container.registerSingleton(CategoryService, CategoryService, struct {
         fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*CategoryService {
@@ -417,7 +422,7 @@ fn registerCategoryServices(container: *@import("shared/di/container.zig").DICon
             category_service.* = CategoryService.init(allocator, resolved_category_repo.*);
             return category_service;
         }
-    }.factory);
+    }.factory, null);
 }
 
 /// 创建会员仓储实现
@@ -445,7 +450,7 @@ fn registerAuthServices(container: *@import("shared/di/container.zig").DIContain
             auth_service.* = AuthService.init(allocator);
             return auth_service;
         }
-    }.factory);
+    }.factory, null);
 }
 
 /// 清理整个系统

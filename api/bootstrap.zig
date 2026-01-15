@@ -14,6 +14,7 @@ const controllers = @import("controllers/mod.zig");
 const models = @import("../domain/entities/models.zig");
 
 const DIContainer = @import("../shared/di/container.zig").DIContainer;
+const AppContext = @import("../shared/context/app_context.zig").AppContext;
 
 /// Bootstrap 模块 - 系统启动编排器
 pub const Bootstrap = struct {
@@ -23,14 +24,15 @@ pub const Bootstrap = struct {
     app: *App,
     global_logger: *logger.Logger,
     container: *DIContainer,
+    app_context: *AppContext,
     route_count: usize,
     crud_count: usize,
 
     /// 初始化 Bootstrap 模块
-    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer) !Self {
+    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext) !Self {
         // 注册日志服务实例
         if (!container.isRegistered(logger.Logger)) {
-            try container.registerInstance(logger.Logger, global_logger);
+            try container.registerInstance(logger.Logger, global_logger, null);
         }
 
         return .{
@@ -38,9 +40,15 @@ pub const Bootstrap = struct {
             .app = app,
             .global_logger = global_logger,
             .container = container,
+            .app_context = app_context,
             .route_count = 0,
             .crud_count = 0,
         };
+    }
+    
+    /// 获取应用上下文
+    pub fn getContext(self: *const Self) *AppContext {
+        return self.app_context;
     }
 
     /// 注册所有路由
@@ -114,7 +122,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const login = try self.container.resolve(controllers.auth.Login);
@@ -134,7 +142,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.common.Public.init(allocator, l);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const public = try self.container.resolve(controllers.common.Public);
@@ -155,7 +163,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.admin.Menu.init(allocator, l);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
         
         const menu = try self.container.resolve(controllers.admin.Menu);
@@ -171,7 +179,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.admin.Setting.init(allocator);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const setting = try self.container.resolve(controllers.admin.Setting);

@@ -7,9 +7,9 @@
 //! 所有驱动都实现 CacheInterface 接口，可以互相替换使用。
 
 const std = @import("std");
-const cache_contract = @import("cache_contract.zig");
-const cache_service = @import("cache.zig");
-const redis = @import("../../redis/mod.zig");
+const cache_contract = @import("cache/contract.zig");
+const cache_service = @import("cache/cache.zig");
+const redis = @import("redis/mod.zig");
 
 // ========================================
 // 内存缓存驱动
@@ -59,9 +59,12 @@ pub const MemoryCacheDriver = struct {
     }
 
     /// 实现：获取缓存
-    fn memoryGet(ptr: *anyopaque, key: []const u8) ?[]const u8 {
+    fn memoryGet(ptr: *anyopaque, key: []const u8, allocator: std.mem.Allocator) anyerror!?[]const u8 {
         const self: *MemoryCacheDriver = @ptrCast(@alignCast(ptr));
-        return self.cache_service.get(key);
+        if (self.cache_service.get(key)) |value| {
+            return try allocator.dupe(u8, value);
+        }
+        return null;
     }
 
     /// 实现：删除缓存

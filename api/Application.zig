@@ -5,6 +5,7 @@ const App = @import("App.zig").App;
 const Bootstrap = @import("bootstrap.zig").Bootstrap;
 const DIContainer = @import("../shared/di/container.zig").DIContainer;
 const SystemConfig = @import("../shared/config/system_config.zig").SystemConfig;
+const AppContext = @import("../shared/context/app_context.zig").AppContext;
 
 pub const Application = struct {
     const Self = @This();
@@ -15,6 +16,7 @@ pub const Application = struct {
     bootstrap: Bootstrap,
     global_logger: *logger.Logger,
     system_initialized: bool,
+    app_context: ?*AppContext,
 
     pub fn create(allocator: std.mem.Allocator) !*Self {
         const app_ptr = try allocator.create(Self);
@@ -31,7 +33,21 @@ pub const Application = struct {
         errdefer app.deinit();
 
         const container = zigcms.shared.di.getGlobalContainer() orelse return error.DIContainerNotInitialized;
-        const bootstrap = try Bootstrap.init(allocator, &app, global_logger, container);
+        
+        // 创建应用上下文（从 global 获取资源，使用借用模式保持向后兼容）
+        const db = zigcms.shared.global.get_db();
+        const app_context = try AppContext.init(allocator, &config, db, container);
+        errdefer app_context.deinit();
+        
+        // 设置日志器到上下文
+        app_context.setLogger(global_logger);
+        
+        // 如果服务管理器存在，设置到上下文
+        if (zigcms.shared.global.getServiceManager()) |sm| {
+            app_context.setServiceManager(sm);
+        }
+        
+        const bootstrap = try Bootstrap.init(allocator, &app, global_logger, container, app_context);
 
         app_ptr.* = .{
             .allocator = allocator,
@@ -40,6 +56,7 @@ pub const Application = struct {
             .bootstrap = bootstrap,
             .global_logger = global_logger,
             .system_initialized = true,
+            .app_context = app_context,
         };
 
         try app_ptr.bootstrap.registerRoutes();
@@ -49,6 +66,15 @@ pub const Application = struct {
 
     pub fn destroy(self: *Self) void {
         self.app.deinit();
+        
+        // 注意：AppContext 中的资源是从 global 借用的，不要重复释放
+        // 只需要释放 AppContext 结构体本身
+        if (self.app_context) |ctx| {
+            // 清除内部引用，避免在 deinit 中重复释放
+            const allocator = ctx.allocator;
+            allocator.destroy(ctx);
+            self.app_context = null;
+        }
         
         if (self.system_initialized) {
             logger.deinitDefault();
@@ -76,5 +102,9 @@ pub const Application = struct {
     pub fn getContainer(self: *const Self) *DIContainer {
         _ = self;
         return zigcms.shared.di.getGlobalContainer() orelse unreachable;
+    }
+    
+    pub fn getContext(self: *const Self) *AppContext {
+        return self.app_context orelse unreachable;
     }
 };
