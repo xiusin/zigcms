@@ -118,7 +118,6 @@ pub fn deinit() void {
 
     // 6. 重置初始化状态，允许重新初始化（用于测试）
     is_initialized = false;
-    init_once = std.once.Once{};
 
     std.debug.print("[INFO] global module cleanup completed\n", .{});
 }
