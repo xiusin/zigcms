@@ -3,6 +3,7 @@
 //! 本模块提供依赖注入功能：
 //! - 支持单例 (Singleton) 和瞬态 (Transient) 模式
 //! - 生命周期托管：单例实例由容器持有的分配器管理
+//! - 自动清理：在 deinit 时调用每个 singleton 的清理函数
 
 const std = @import("std");
 
@@ -15,6 +16,7 @@ pub const ServiceDescriptor = struct {
     service_type_name: []const u8,
     implementation_type_name: []const u8,
     factory: ?*const fn (*DIContainer, std.mem.Allocator) anyerror!*anyopaque,
+    deinit_fn: ?*const fn (*anyopaque, std.mem.Allocator) void,
     lifetime: ServiceLifetime,
     instance: ?*anyopaque = null,
 };
@@ -38,31 +40,49 @@ pub const DIContainer = struct {
     }
 
     /// 注册服务（单例模式）
-    pub fn registerSingleton(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
+    pub fn registerSingleton(
+        self: *Self, 
+        comptime ServiceType: type, 
+        comptime ImplementationType: type, 
+        factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType,
+        deinit_fn: ?fn (*ImplementationType, std.mem.Allocator) void,
+    ) !void {
         const service_name = @typeName(ServiceType);
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = @typeName(ImplementationType),
             .factory = @ptrCast(&factory),
+            .deinit_fn = if (deinit_fn) |df| @ptrCast(&df) else null,
             .lifetime = .Singleton,
         };
         try self.descriptors.put(service_name, descriptor);
     }
 
     /// 注册服务（瞬态模式）
-    pub fn registerTransient(self: *Self, comptime ServiceType: type, comptime ImplementationType: type, factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType) !void {
+    pub fn registerTransient(
+        self: *Self, 
+        comptime ServiceType: type, 
+        comptime ImplementationType: type, 
+        factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType,
+    ) !void {
         const service_name = @typeName(ServiceType);
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = @typeName(ImplementationType),
             .factory = @ptrCast(&factory),
+            .deinit_fn = null,
             .lifetime = .Transient,
         };
         try self.descriptors.put(service_name, descriptor);
     }
 
     /// 注册已存在的实例（单例）
-    pub fn registerInstance(self: *Self, comptime ServiceType: type, instance: *ServiceType) !void {
+    pub fn registerInstance(
+        self: *Self, 
+        comptime ServiceType: type, 
+        instance: *ServiceType,
+        deinit_fn: ?fn (*ServiceType, std.mem.Allocator) void,
+    ) !void {
         const service_name = @typeName(ServiceType);
         try self.singletons.put(service_name, @ptrCast(instance));
         
@@ -70,6 +90,7 @@ pub const DIContainer = struct {
             .service_type_name = service_name,
             .implementation_type_name = service_name,
             .factory = null,
+            .deinit_fn = if (deinit_fn) |df| @ptrCast(&df) else null,
             .lifetime = .Singleton,
             .instance = @ptrCast(instance),
         };
@@ -123,6 +144,25 @@ pub const DIContainer = struct {
 
     pub fn deinit(self: *Self) void {
         if (!self.initialized) return;
+        
+        // 清理所有 singleton 实例
+        var desc_it = self.descriptors.iterator();
+        while (desc_it.next()) |entry| {
+            const descriptor = entry.value_ptr.*;
+            
+            // 只清理 singleton 类型的服务
+            if (descriptor.lifetime == .Singleton) {
+                if (descriptor.instance) |instance| {
+                    // 如果有 deinit 函数，调用它
+                    if (descriptor.deinit_fn) |deinit_fn| {
+                        deinit_fn(instance, self.allocator);
+                    }
+                    // 释放实例内存
+                    self.allocator.destroy(instance);
+                }
+            }
+        }
+        
         self.singletons.deinit();
         self.descriptors.deinit();
         self.initialized = false;

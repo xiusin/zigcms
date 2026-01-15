@@ -793,47 +793,162 @@ pub const PoolStats = struct {
 /// 数据库连接池配置
 pub const ConnectionPoolConfig = struct {
     /// 最小连接数
-    min_connections: u32 = 2,
+    min_size: u32 = 2,
     /// 最大连接数
-    max_connections: u32 = 10,
-    /// 连接空闲超时（秒）
-    idle_timeout: u32 = 300,
+    max_size: u32 = 10,
     /// 获取连接超时（毫秒）
-    acquire_timeout: u32 = 5000,
-    /// 连接验证间隔（秒）
-    validation_interval: u32 = 30,
+    acquire_timeout_ms: u32 = 5000,
+    /// 连接最大空闲时间（毫秒）
+    max_idle_time_ms: u32 = 300000,
+    /// 连接最大生命周期（毫秒）
+    max_lifetime_ms: u32 = 1800000,
+    /// 事务超时（毫秒）
+    transaction_timeout_ms: u32 = 30000,
+    /// 心跳间隔（毫秒）
+    keepalive_interval_ms: u32 = 60000,
 };
 
-/// 数据库连接池
+/// 池化连接信息
+const PooledConnection = struct {
+    conn: *mysql.DB,
+    created_at: i64,
+    last_used: i64,
+    in_use: bool,
+};
+
+/// 数据库连接池（真实实现，带线程安全和连接复用）
 pub const ConnectionPool = struct {
     allocator: Allocator,
     config: ConnectionPoolConfig,
     db_config: mysql.Config,
     stats: PoolStats,
+    
+    connections: std.ArrayList(PooledConnection),
+    mutex: std.Thread.Mutex,
+    active_count: u32,
+    total_count: u32,
+    initialized: bool,
 
-    pub fn init(allocator: Allocator, db_config: mysql.Config, pool_config: ConnectionPoolConfig) ConnectionPool {
-        return .{
+    pub fn init(allocator: Allocator, db_config: mysql.Config, pool_config: ConnectionPoolConfig) !ConnectionPool {
+        var pool = ConnectionPool{
             .allocator = allocator,
             .config = pool_config,
             .db_config = db_config,
             .stats = .{},
+            .connections = std.ArrayList(PooledConnection).init(allocator),
+            .mutex = std.Thread.Mutex{},
+            .active_count = 0,
+            .total_count = 0,
+            .initialized = true,
         };
+        
+        // 预创建最小数量的连接
+        var i: u32 = 0;
+        while (i < pool_config.min_size) : (i += 1) {
+            const conn = try mysql.open(allocator, db_config);
+            errdefer conn.close();
+            
+            const now = std.time.timestamp();
+            try pool.connections.append(.{
+                .conn = conn,
+                .created_at = now,
+                .last_used = now,
+                .in_use = false,
+            });
+            pool.total_count += 1;
+            pool.stats.creates += 1;
+        }
+        
+        pool.stats.pool_size = pool.total_count;
+        return pool;
     }
 
-    /// 获取连接
+    /// 获取连接（线程安全）
     pub fn acquire(self: *ConnectionPool) !*mysql.DB {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
         self.stats.acquires += 1;
-        return mysql.open(self.allocator, self.db_config);
+        
+        const now = std.time.timestamp();
+        
+        // 1. 尝试从池中获取空闲连接
+        for (self.connections.items) |*pooled| {
+            if (!pooled.in_use) {
+                pooled.in_use = true;
+                pooled.last_used = now;
+                self.active_count += 1;
+                self.stats.hits += 1;
+                return pooled.conn;
+            }
+        }
+        
+        // 2. 没有空闲连接，尝试创建新连接
+        self.stats.misses += 1;
+        
+        if (self.total_count < self.config.max_size) {
+            const conn = try mysql.open(self.allocator, self.db_config);
+            errdefer conn.close();
+            
+            try self.connections.append(.{
+                .conn = conn,
+                .created_at = now,
+                .last_used = now,
+                .in_use = true,
+            });
+            
+            self.total_count += 1;
+            self.active_count += 1;
+            self.stats.creates += 1;
+            self.stats.pool_size = self.total_count;
+            
+            return conn;
+        }
+        
+        // 3. 达到最大连接数，返回错误
+        return error.PoolExhausted;
     }
 
-    /// 释放连接
+    /// 释放连接（线程安全）
     pub fn release(self: *ConnectionPool, conn: *mysql.DB) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
         self.stats.releases += 1;
-        conn.close();
+        
+        for (self.connections.items) |*pooled| {
+            if (pooled.conn == conn) {
+                pooled.in_use = false;
+                pooled.last_used = std.time.timestamp();
+                self.active_count -= 1;
+                return;
+            }
+        }
+    }
+
+    /// 清理资源
+    pub fn deinit(self: *ConnectionPool) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        
+        if (!self.initialized) return;
+        
+        for (self.connections.items) |pooled| {
+            pooled.conn.close();
+            self.stats.destroys += 1;
+        }
+        
+        self.connections.deinit();
+        self.total_count = 0;
+        self.active_count = 0;
+        self.stats.pool_size = 0;
+        self.initialized = false;
     }
 
     /// 获取统计信息
     pub fn getStats(self: *ConnectionPool) PoolStats {
+        self.mutex.lock();
+        defer self.mutex.unlock();
         return self.stats;
     }
 };

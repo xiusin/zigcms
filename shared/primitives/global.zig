@@ -36,13 +36,21 @@ const strings = @import("../../shared/utils/strings.zig");
 const base = @import("../../api/controllers/base.fn.zig");
 const services = @import("../../application/services/mod.zig");
 const sql = @import("../../application/services/sql/orm.zig");
-const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
+// const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
+const PluginSystemService = struct {};
 pub const logger = @import("../../application/services/logger/logger.zig");
 const root = @import("../../root.zig");
+
+// 资源所有权模式
+const ResourceOwnership = enum {
+    owned,
+    borrowed,
+};
 
 // 全局单例实例
 var _allocator: ?Allocator = null;
 var _db: ?*sql.Database = null;
+var _db_ownership: ResourceOwnership = .borrowed;
 var _service_manager: ?*services.ServiceManager = null;
 var _plugin_system: ?*PluginSystemService = null;
 var config: std.StringHashMap([]const u8) = undefined;
@@ -56,13 +64,18 @@ var is_initialized: bool = false;
 /// 清理顺序（与初始化相反）：
 /// 1. 插件系统（最后初始化，最先清理）
 /// 2. 服务管理器
-/// 3. 配置
+/// 3. 数据库（如果owned）
+/// 4. 配置
 ///
 /// 注意：
 /// - 此函数应在程序退出前调用
-/// - 数据库连接由 root.zig 管理，不在此处清理
+/// - 数据库连接是否清理取决于所有权（owned vs borrowed）
 /// - 日志器由 main.zig 管理，不在此处清理
+/// - 线程安全：使用 mutex 保护
 pub fn deinit() void {
+    mu.lock();
+    defer mu.unlock();
+    
     if (!is_initialized) return;
 
     std.debug.print("[INFO] global module deinit, cleaning up resources...\n", .{});
@@ -84,9 +97,17 @@ pub fn deinit() void {
         _service_manager = null;
     }
 
-    // 3. 注意：数据库连接由 root.zig 管理，不在此处清理
-    // 只清除引用，不调用 deinit
-    _db = null;
+    // 3. 根据所有权决定是否清理数据库
+    if (_db) |db| {
+        if (_db_ownership == .owned) {
+            std.debug.print("[INFO] global module deinit: cleaning owned database\n", .{});
+            db.deinit();
+            _allocator.?.destroy(db);
+        } else {
+            std.debug.print("[INFO] global module deinit: releasing borrowed database reference\n", .{});
+        }
+        _db = null;
+    }
 
     // 4. 注意：日志器由 main.zig 管理，不在此处清理
 
@@ -97,12 +118,14 @@ pub fn deinit() void {
 
     // 6. 重置初始化状态，允许重新初始化（用于测试）
     is_initialized = false;
+    init_once = std.once.Once{};
 
     std.debug.print("[INFO] global module cleanup completed\n", .{});
 }
 
 fn init_some() void {
     config = std.StringHashMap([]const u8).init(_allocator.?);
+    errdefer config.deinit();
 
     // 首先初始化日志器
     logger.initDefault(_allocator.?, .{
@@ -113,9 +136,9 @@ fn init_some() void {
         .sync_on_error = true,
     }) catch |e| {
         std.debug.print("[ERROR] 初始化日志器失败: {}\n", .{e});
-        config.deinit();
         @panic("无法初始化日志器");
     };
+    errdefer logger.deinitDefault();
 
     logger.info("[global] 开始初始化全局模块...", .{});
     logger.info("[global] 准备初始化 ORM 数据库连接...", .{});
@@ -123,42 +146,32 @@ fn init_some() void {
     // 初始化 SQL ORM 数据库连接（使用配置文件中的密码）
     initOrmDatabase() catch |e| {
         logger.err("[global] 初始化 ORM 数据库失败: {}", .{e});
-        logger.deinitDefault();
-        config.deinit();
         @panic("无法初始化数据库连接，请检查数据库配置和网络连接");
     };
-
-    // 初始化服务管理器
-    initServiceManager(_allocator.?) catch |e| {
-        logger.err("Failed to initialize Service Manager: {}", .{e});
-        // 清理已初始化的数据库
+    errdefer {
         if (_db) |db| {
             db.deinit();
             _allocator.?.destroy(db);
             _db = null;
         }
-        logger.deinitDefault();
-        config.deinit();
+    }
+
+    // 初始化服务管理器
+    initServiceManager(_allocator.?) catch |e| {
+        logger.err("Failed to initialize Service Manager: {}", .{e});
         @panic("无法初始化服务管理器");
     };
-
-    // 初始化插件系统
-    initPluginSystem(_allocator.?) catch |e| {
-        logger.err("Failed to initialize Plugin System: {}", .{e});
-        // 清理已初始化的服务管理器
+    errdefer {
         if (_service_manager) |sm| {
             sm.deinit();
             _allocator.?.destroy(sm);
             _service_manager = null;
         }
-        // 清理已初始化的数据库
-        if (_db) |db| {
-            db.deinit();
-            _allocator.?.destroy(db);
-            _db = null;
-        }
-        logger.deinitDefault();
-        config.deinit();
+    }
+
+    // 初始化插件系统
+    initPluginSystem(_allocator.?) catch |e| {
+        logger.err("Failed to initialize Plugin System: {}", .{e});
         @panic("无法初始化插件系统");
     };
 
@@ -171,6 +184,7 @@ fn init_some() void {
 ///
 /// 创建数据库连接并初始化 ORM 模型。
 /// 如果初始化失败，会自动清理已分配的资源。
+/// 设置所有权为 owned，表示由全局模块负责清理。
 fn initOrmDatabase() !void {
     logger.info("[global] 正在连接数据库...", .{});
 
@@ -200,8 +214,9 @@ fn initOrmDatabase() !void {
         return e;
     };
 
-    // 所有初始化成功后，保存数据库连接
+    // 所有初始化成功后，保存数据库连接，并标记为 owned
     _db = db;
+    _db_ownership = .owned;
 
     logger.info("[global] ORM 数据库连接成功!", .{});
 }
@@ -267,15 +282,22 @@ fn initPluginSystem(allocator: Allocator) !void {
 ///
 /// 设置全局分配器和数据库连接。
 /// 注意：此函数不再创建数据库连接，而是使用外部提供的连接。
+/// 数据库所有权为 borrowed，不会在 deinit 中清理。
 ///
 /// 参数：
 /// - allocator: 全局使用的内存分配器
 /// - db: 外部提供的数据库连接（由 root.zig 创建）
+///
+/// 线程安全：使用mutex保护
 pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
+    mu.lock();
+    defer mu.unlock();
+    
     if (is_initialized) return;
 
     _allocator = allocator;
     _db = db;
+    _db_ownership = .borrowed;
 
     // 初始化配置
     config = std.StringHashMap([]const u8).init(allocator);
@@ -292,10 +314,16 @@ pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
 ///
 /// 设置全局分配器并触发一次性初始化。
 /// 初始化顺序：日志器 → 数据库 → 服务管理器 → 插件系统
+/// 数据库所有权为 owned，会在 deinit 中清理。
 ///
 /// 参数：
 /// - allocator: 全局使用的内存分配器
+///
+/// 线程安全：使用mutex保护
 pub fn init(allocator: Allocator) void {
+    mu.lock();
+    defer mu.unlock();
+    
     if (is_initialized) return;
 
     _allocator = allocator;

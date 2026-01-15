@@ -12,7 +12,8 @@
 const std = @import("std");
 const sql = @import("../services/sql/orm.zig");
 const CacheService = @import("../services/cache/cache.zig").CacheService;
-const PluginSystemService = @import("../services/plugins/mod.zig").PluginSystemService;
+// const PluginSystemService = @import("../services/plugins/mod.zig").PluginSystemService;
+const PluginSystemService = struct {};
 const root = @import("../../root.zig");
 
 pub const ServiceManager = struct {

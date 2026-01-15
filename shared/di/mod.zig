@@ -77,7 +77,7 @@ pub fn deinitGlobalDISystem() void {
 pub fn registerService(comptime ServiceType: type, comptime ImplementationType: type, factory: anytype, lifetime: ServiceLifetime) !void {
     if (global_container) |c| {
         switch (lifetime) {
-            .Singleton => try c.registerSingleton(ServiceType, ImplementationType, factory),
+            .Singleton => try c.registerSingleton(ServiceType, ImplementationType, factory, null),
             .Transient => try c.registerTransient(ServiceType, ImplementationType, factory),
         }
     }

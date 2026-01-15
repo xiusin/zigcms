@@ -30,7 +30,7 @@ pub const Bootstrap = struct {
     pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer) !Self {
         // 注册日志服务实例
         if (!container.isRegistered(logger.Logger)) {
-            try container.registerInstance(logger.Logger, global_logger);
+            try container.registerInstance(logger.Logger, global_logger, null);
         }
 
         return .{
@@ -114,7 +114,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const login = try self.container.resolve(controllers.auth.Login);
@@ -134,7 +134,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.common.Public.init(allocator, l);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const public = try self.container.resolve(controllers.common.Public);
@@ -155,7 +155,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.admin.Menu.init(allocator, l);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
         
         const menu = try self.container.resolve(controllers.admin.Menu);
@@ -171,7 +171,7 @@ pub const Bootstrap = struct {
                     ctrl.* = controllers.admin.Setting.init(allocator);
                     return ctrl;
                 }
-            }.factory);
+            }.factory, null);
         }
 
         const setting = try self.container.resolve(controllers.admin.Setting);
