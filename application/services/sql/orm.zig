@@ -262,7 +262,8 @@ pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.Res
         }
     }
 
-    while (result.next()) |row| {
+    while (result.next()) {
+        const row = result.getCurrentRow() orelse continue;
         var model: T = undefined;
 
         inline for (fields, 0..) |field, f_idx| {
