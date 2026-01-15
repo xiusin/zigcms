@@ -124,6 +124,14 @@ pub const TypedCacheError = typed.TypedCacheError;
 pub const CacheInterface = contract.CacheInterface;
 pub const CacheStats = contract.CacheStats;
 
+// 带超时控制的缓存操作（需要 RequestContext）
+pub const getWithContext = @import("cache_with_context.zig").getWithContext;
+pub const setWithContext = @import("cache_with_context.zig").setWithContext;
+pub const deleteWithContext = @import("cache_with_context.zig").deleteWithContext;
+pub const getOrSetWithContext = @import("cache_with_context.zig").getOrSetWithContext;
+pub const multiGetWithContext = @import("cache_with_context.zig").multiGetWithContext;
+pub const multiSetWithContext = @import("cache_with_context.zig").multiSetWithContext;
+
 test {
     _ = base;
     _ = typed;
