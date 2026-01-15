@@ -109,6 +109,11 @@ pub const sql = @import("application/services/sql/mod.zig");
 /// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
 pub const redis = @import("application/services/redis/mod.zig");
 
+/// 缓存驱动模块 - 缓存实现
+///
+/// 提供内存缓存、Redis缓存等驱动实现。
+pub const cache_drivers = @import("application/services/cache_drivers.zig");
+
 // ============================================================================
 // 服务管理
 // ============================================================================

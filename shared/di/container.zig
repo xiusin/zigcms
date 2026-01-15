@@ -154,11 +154,12 @@ pub const DIContainer = struct {
             if (descriptor.lifetime == .Singleton) {
                 if (descriptor.instance) |instance| {
                     // 如果有 deinit 函数，调用它
+                    // 注意：deinit_fn 负责完整的清理，包括释放实例内存
+                    // 不能在这里调用 allocator.destroy(instance)，
+                    // 因为 instance 是 *anyopaque 类型，编译器无法确定其大小
                     if (descriptor.deinit_fn) |deinit_fn| {
                         deinit_fn(instance, self.allocator);
                     }
-                    // 释放实例内存
-                    self.allocator.destroy(instance);
                 }
             }
         }
