@@ -36,6 +36,10 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const jwt = @import("../../shared/utils/jwt.zig");
+
+/// JWT 密钥配置（实际项目中应从配置文件读取）
+const JWT_SECRET = "zigcms-jwt-secret-key-2024";
 
 // 条件导入 zap（测试时使用模拟类型）
 const zap = if (@import("builtin").is_test) struct {
@@ -246,11 +250,25 @@ pub fn authMiddleware(ctx: *Context) Result {
             token = authorization[7..];
         }
 
-        // TODO: 实际 JWT 解析
-        // 这里简化处理，实际应该解析 token
         if (token.len > 0) {
-            ctx.user_id = 1; // 模拟用户 ID
+            // 解析 JWT token
+            const payload = jwt.decode(ctx.allocator, token, .{
+                .secret = JWT_SECRET,
+                .verify_signature = true,
+            }) catch {
+                ctx.sendError("无效的登录凭证");
+                return .abort;
+            };
+            defer {
+                if (payload.username.len > 0) ctx.allocator.free(payload.username);
+                if (payload.email.len > 0) ctx.allocator.free(payload.email);
+            }
+
+            ctx.user_id = @intCast(payload.user_id);
             ctx.is_authenticated = true;
+            ctx.set("user_id", payload.user_id);
+            ctx.set("username", payload.username);
+            ctx.set("email", payload.email);
             ctx.set("token", token);
             return .next;
         }

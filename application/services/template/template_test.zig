@@ -368,7 +368,7 @@ test "Template - empty for loop" {
 
     const template_str = "{% for item in items %}{{ item }}{% endfor %}";
     var obj = std.json.ObjectMap.init(allocator);
-    var arr = std.json.Array.init(allocator);
+    const arr = std.json.Array.init(allocator);
     try obj.put("items", std.json.Value{ .array = arr });
     const context = std.json.Value{ .object = obj };
 
@@ -1126,7 +1126,7 @@ test "Template - navigation menu" {
         \\    <li><a href=\"{{ item.url }}\"{% if item.active %} class=\"active\"{% endif %}>{{ item.label }}</a></li>
         \\  {% endfor %}
         \\  </ul>
-        \</nav>
+        \\</nav>
     ;
 
     var obj = std.json.ObjectMap.init(allocator);
@@ -1171,10 +1171,10 @@ test "Template - form validation messages" {
     ;
 
     var obj = std.json.ObjectMap.init(allocator);
-    var errors = std.json.ObjectMap.init(allocator);
-    try errors.put("email", std.json.Value{ .string = "Invalid email format" });
-    try errors.put("password", std.json.Value{ .string = "Password too short" });
-    try obj.put("errors", std.json.Value{ .object = errors });
+    var validation_errors = std.json.ObjectMap.init(allocator);
+    try validation_errors.put("email", std.json.Value{ .string = "Invalid email format" });
+    try validation_errors.put("password", std.json.Value{ .string = "Password too short" });
+    try obj.put("errors", std.json.Value{ .object = validation_errors });
     const context = std.json.Value{ .object = obj };
 
     const result = try template.render(allocator, template_str, context);

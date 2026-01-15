@@ -307,6 +307,117 @@ pub const CategoryService = struct {
         return try self.category_repository.findAll();
     }
 
+    /// 分页查询分类
+    ///
+    /// ## 参数
+    /// - `page`: 页码（从1开始）
+    /// - `page_size`: 每页大小
+    /// - `filters`: 筛选条件（可选）
+    ///
+    /// ## 返回
+    /// 包含分页结果和数据的结构体
+    ///
+    /// ## 错误
+    /// - 仓储层错误
+    pub fn getCategoriesWithPagination(
+        self: *CategoryService,
+        page: u32,
+        page_size: u32,
+        filters: ?CategoryFilters,
+    ) !CategoryPageResult {
+        // 验证分页参数
+        if (page == 0 or page_size == 0 or page_size > 1000) {
+            return error.InvalidPaginationParams;
+        }
+
+        // 获取所有分类
+        const all_categories = try self.category_repository.findAll();
+        defer self.allocator.free(all_categories);
+
+        // 应用内存级别的筛选
+        var filtered_categories = std.ArrayList(Category).init(self.allocator);
+        defer filtered_categories.deinit();
+
+        for (all_categories) |category| {
+            if (self.applyFilters(self.allocator, category, filters)) {
+                try filtered_categories.append(category);
+            }
+        }
+
+        // 计算分页
+        const total_count = filtered_categories.items.len;
+        const total_pages = (total_count + page_size - 1) / page_size;
+        const start_index = (page - 1) * page_size;
+        const end_index = @min(start_index + page_size, total_count);
+
+        // 提取当前页数据
+        var page_data = std.ArrayList(Category).init(self.allocator);
+        defer page_data.deinit();
+
+        var i: usize = start_index;
+        while (i < end_index) : (i += 1) {
+            try page_data.append(filtered_categories.items[i]);
+        }
+
+        return CategoryPageResult{
+            .data = page_data.toOwnedSlice(),
+            .page = page,
+            .page_size = page_size,
+            .total_count = total_count,
+            .total_pages = total_pages,
+        };
+    }
+
+    /// 应用筛选条件
+    fn applyFilters(allocator: std.mem.Allocator, category: Category, filters: ?CategoryFilters) bool {
+        if (filters == null) {
+            return true;
+        }
+
+        const f = filters.?;
+
+        // 类型筛选
+        if (f.category_type) |category_type| {
+            if (!std.mem.eql(u8, category.category_type, category_type)) {
+                return false;
+            }
+        }
+
+        // 状态筛选
+        if (f.status) |status| {
+            if (category.status != status) {
+                return false;
+            }
+        }
+
+        // 父分类筛选
+        if (f.parent_id) |parent_id| {
+            if (category.parent_id != parent_id) {
+                return false;
+            }
+        }
+
+        // 关键词搜索
+        if (f.keyword.len > 0) {
+            const keyword_lower = std.ascii.allocLowerString(allocator, f.keyword) catch return true;
+            defer allocator.free(keyword_lower);
+
+            const name_lower = std.ascii.allocLowerString(allocator, category.name) catch return true;
+            defer allocator.free(name_lower);
+
+            const code_lower = std.ascii.allocLowerString(allocator, category.code) catch return true;
+            defer allocator.free(code_lower);
+
+            if (!std.mem.containsAtLeast(u8, name_lower, 1, keyword_lower) and
+                !std.mem.containsAtLeast(u8, code_lower, 1, keyword_lower))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// 获取顶级分类
     ///
     /// ## 返回
@@ -499,4 +610,21 @@ pub const CategoryOption = struct {
     pub fn deinit(self: *CategoryOption, allocator: std.mem.Allocator) void {
         allocator.free(self.label);
     }
+};
+
+/// 分类筛选条件
+pub const CategoryFilters = struct {
+    category_type: ?[]const u8 = null,
+    status: ?i32 = null,
+    parent_id: ?i32 = null,
+    keyword: []const u8 = "",
+};
+
+/// 分页结果
+pub const CategoryPageResult = struct {
+    data: []Category,
+    page: u32,
+    page_size: u32,
+    total_count: usize,
+    total_pages: usize,
 };

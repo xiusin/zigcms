@@ -266,6 +266,61 @@ pub const MemberService = struct {
         try self.member_repository.delete(member_id);
     }
 
+    /// 批量删除会员
+    ///
+    /// ## 参数
+    /// - `member_ids`: 会员ID数组
+    ///
+    /// ## 返回
+    /// 成功删除的数量
+    ///
+    /// ## 错误
+    /// - 仓储层错误
+    pub fn batchDelete(self: *MemberService, member_ids: []const i32) !i32 {
+        var success_count: i32 = 0;
+        for (member_ids) |member_id| {
+            // 验证会员存在
+            const exists = try self.member_repository.findById(member_id);
+            if (exists) |_| {
+                try self.member_repository.delete(member_id);
+                success_count += 1;
+            }
+        }
+        return success_count;
+    }
+
+    /// 调整会员等级
+    ///
+    /// ## 参数
+    /// - `member_id`: 会员ID
+    /// - `new_level`: 新等级
+    /// - `remark`: 调整说明
+    ///
+    /// ## 错误
+    /// - 会员不存在
+    /// - 等级无效
+    /// - 仓储层错误
+    pub fn adjustLevel(self: *MemberService, member_id: i32, new_level: i32, remark: []const u8) !void {
+        // 验证等级范围
+        if (new_level < 1 or new_level > 10) {
+            return error.InvalidLevel;
+        }
+
+        // 获取现有会员
+        const existing_member = try self.member_repository.findById(member_id) orelse {
+            return error.MemberNotFound;
+        };
+
+        var member = existing_member;
+        member.level = new_level;
+
+        // 记录等级调整日志（保留字段用于未来日志系统）
+        _ = remark;
+
+        // 保存更新
+        try self.member_repository.update(member);
+    }
+
     /// 获取会员统计信息
     ///
     /// ## 返回

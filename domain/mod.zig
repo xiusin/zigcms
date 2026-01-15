@@ -35,7 +35,6 @@
 //! - 仓储接口在此定义，实现在基础设施层
 
 const std = @import("std");
-const logger = @import("../application/services/logger/logger.zig");
 
 // ============================================================================
 // 公共 API 导出

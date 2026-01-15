@@ -54,13 +54,58 @@ pub const select = MW.requireAuth(selectImpl);
 // ============================================================================
 
 /// 分页列表实现
-fn listImpl(self: Self, _: zap.Request, response: zap.Response) !void {
-    // TODO: 实现使用CategoryService的分页查询
-    // 目前先返回所有分类，后续添加分页和筛选功能
-    const categories = try self.category_service.getAllCategories();
-    defer self.allocator.free(categories);
+fn listImpl(self: Self, r: zap.Request, response: zap.Response) !void {
+    // 解析查询参数
+    var query_params = std.StringHashMap([]const u8).init(self.allocator);
+    defer query_params.deinit();
 
-    try base.send_ok(response, .{ .categories = categories });
+    var it = r.queryParameters();
+    while (it.next()) |param| {
+        if (param.key) |key| {
+            if (param.value) |value| {
+                try query_params.put(key, value);
+            }
+        }
+    }
+
+    // 解析分页参数
+    const page = query_params.get("page") orelse "1";
+    const page_size = query_params.get("page_size") orelse "20";
+
+    const page_num = std.fmt.parseInt(u32, page, 10) catch 1;
+    const page_num_size = std.fmt.parseInt(u32, page_size, 10) catch 20;
+
+    // 构建筛选条件
+    var filters = CategoryService.CategoryFilters{};
+
+    if (query_params.get("category_type")) |category_type| {
+        filters.category_type = category_type;
+    }
+
+    if (query_params.get("status")) |status_str| {
+        if (std.fmt.parseInt(i32, status_str, 10)) |status| {
+            filters.status = status;
+        } else |_| {}
+    }
+
+    if (query_params.get("keyword")) |keyword| {
+        filters.keyword = keyword;
+    }
+
+    // 使用服务分页查询
+    const result = try self.category_service.getCategoriesWithPagination(page_num, page_num_size, filters);
+    defer {
+        for (result.data) |_| {}
+        self.allocator.free(result.data);
+    }
+
+    try base.send_ok(response, .{
+        .data = result.data,
+        .page = result.page,
+        .page_size = result.page_size,
+        .total_count = result.total_count,
+        .total_pages = result.total_pages,
+    });
 }
 
 /// 获取单条记录实现

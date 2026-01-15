@@ -9,6 +9,157 @@ const std = @import("std");
 const orm = @import("orm.zig");
 const CacheService = @import("../cache/cache.zig").CacheService;
 
+/// 序列化配置
+pub const SerializeOptions = struct {
+    /// 缓存过期时间（秒）
+    ttl: u64 = 300,
+    /// 是否压缩（预留）
+    compress: bool = false,
+};
+
+/// 序列化 T 为 JSON 字节数组
+fn serialize(allocator: std.mem.Allocator, value: anytype) ![]u8 {
+    var list = std.ArrayList(u8).initCapacity(allocator, 512);
+    errdefer list.deinit();
+    try std.json.stringify(list.writer(), value, .{});
+    return list.toOwnedSlice();
+}
+
+/// 反序列化 JSON 字节数组为 T
+fn deserialize(comptime T: type, allocator: std.mem.Allocator, data: []const u8) !T {
+    const parsed = try std.json.parseFromSlice(T, allocator, data, .{});
+    defer parsed.deinit();
+    return parsed.value;
+}
+
+/// 序列化数组为 JSON 字节数组
+fn serializeSlice(allocator: std.mem.Allocator, comptime T: type, slice: []const T) ![]u8 {
+    var list = std.ArrayList(u8).initCapacity(allocator, 1024);
+    errdefer list.deinit();
+    try list.append('[');
+    for (slice, 0..) |item, i| {
+        if (i > 0) try list.append(',');
+        try std.json.stringify(list.writer(), item, .{});
+    }
+    try list.append(']');
+    return list.toOwnedSlice();
+}
+
+/// 反序列化 JSON 字节数组为 T 数组
+fn deserializeSlice(comptime T: type, allocator: std.mem.Allocator, data: []const u8) ![]T {
+    const Value = std.json.Value;
+    const parsed = try std.json.parseFromSlice(Value, allocator, data, .{});
+    defer parsed.deinit();
+
+    if (parsed.value != .array) {
+        return error.InvalidJsonArray;
+    }
+
+    const json_array = parsed.value.array;
+    var result = std.ArrayList(T).init(allocator);
+    errdefer {
+        for (result.items) |item| {
+            freeValue(T, allocator, item);
+        }
+        result.deinit();
+    }
+
+    for (json_array.items) |json_value| {
+        const item = try jsonValueToType(T, allocator, json_value);
+        try result.append(item);
+    }
+
+    return result.toOwnedSlice();
+}
+
+/// 释放 JSON 值占用的内存
+fn freeValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    const info = @typeInfo(T);
+    switch (info) {
+        .Struct => |s| {
+            inline for (s.fields) |field| {
+                freeFieldValue(field.type, allocator, @field(value, field.name));
+            }
+        },
+        .Array => |a| {
+            for (value) |item| {
+                freeFieldValue(a.child, allocator, item);
+            }
+        },
+        .Pointer => |p| {
+            if (p.size == .Slice and p.child == u8) {
+                allocator.free(value);
+            }
+        },
+        else => {},
+    }
+}
+
+/// 释放字段值
+fn freeFieldValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    const info = @typeInfo(T);
+    switch (info) {
+        .Struct => |s| {
+            inline for (s.fields) |field| {
+                freeFieldValue(field.type, allocator, @field(value, field.name));
+            }
+        },
+        .Array => |a| {
+            for (value) |item| {
+                freeFieldValue(a.child, allocator, item);
+            }
+        },
+        .Pointer => |p| {
+            if (p.size == .Slice and p.child == u8) {
+                allocator.free(value);
+            }
+        },
+        else => {},
+    }
+}
+
+/// 将 JSON 值转换为指定类型
+fn jsonValueToType(comptime T: type, allocator: std.mem.Allocator, value: std.json.Value) !T {
+    const info = @typeInfo(T);
+    switch (info) {
+        .Struct => {
+            if (value != .object) return error.InvalidJsonType;
+            var result: T = undefined;
+            const fields = info.Struct.fields;
+            inline for (fields) |field| {
+                const field_value = value.object.get(field.name) orelse .null;
+                @field(result, field.name) = try jsonValueToType(field.type, allocator, field_value);
+            }
+            return result;
+        },
+        .Int, .Float => {
+            if (value == .integer) return @as(T, @intCast(value.integer));
+            if (value == .float) return @as(T, @floatCast(value.float));
+            if (value == .null) return 0;
+            return error.InvalidJsonType;
+        },
+        .Bool => {
+            if (value == .bool) return value.bool;
+            return false;
+        },
+        .Pointer => |p| {
+            if (p.size == .Slice and p.child == u8) {
+                if (value == .string) {
+                    return try allocator.dupe(u8, value.string);
+                }
+                if (value == .null) return "";
+                return error.InvalidJsonType;
+            }
+            return error.UnsupportedPointerType;
+        },
+        .Optional => |o| {
+            if (value == .null) return null;
+            return try jsonValueToType(o.child, allocator, value);
+        },
+        else => return error.UnsupportedType,
+    }
+}
+
 /// 带有缓存功能的模型定义
 pub fn defineCached(comptime T: type) type {
     const OrmModel = orm.define(T);
@@ -121,17 +272,26 @@ pub fn defineCached(comptime T: type) type {
 
             // 试图从缓存获取
             if (try global_cache.?.get(cache_key)) |cached_data| {
-                // 这里需要解析缓存的数据
-                // 实际实现中需要正确的序列化/反序列化逻辑
-                _ = cached_data;
-                return Self.AllWithDB(global_db.?);
+                // 反序列化缓存的数据
+                const results = deserializeSlice(T, std.heap.page_allocator, cached_data) catch {
+                    // 反序列化失败，重新查询数据库
+                    return Self.AllWithDB(global_db.?);
+                };
+                return results;
             }
 
             // 没有缓存，查询数据库
             const results = try Self.AllWithDB(global_db.?);
 
-            // TODO: 实现序列化并存入缓存
-            // _ = global_cache.?.set(cache_key, serialized_results, 300); // 5分钟缓存
+            // 序列化并存入缓存
+            const serialized = serializeSlice(std.heap.page_allocator, T, results) catch {
+                // 序列化失败，不缓存直接返回
+                return results;
+            };
+            defer std.heap.page_allocator.free(serialized);
+
+            // 异步设置缓存（忽略错误）
+            global_cache.?.set(cache_key, serialized, 300) catch {};
 
             return results;
         }
@@ -148,15 +308,26 @@ pub fn defineCached(comptime T: type) type {
 
             // 试图从缓存获取
             if (try global_cache.?.get(cache_key)) |cached_data| {
-                // 解析缓存的数据
-                _ = cached_data;
-                return Self.FindWithDB(global_db.?);
+                // 反序列化缓存的数据
+                const item = deserialize(T, std.heap.page_allocator, cached_data) catch {
+                    // 反序列化失败，重新查询数据库
+                    return Self.FindWithDB(global_db.?);
+                };
+                return item;
             }
 
             // 没有缓存，查询数据库
             if (try Self.FindWithDB(global_db.?)) |item| {
-                // TODO: 实现序列化并存入缓存
-                // _ = global_cache.?.set(cache_key, serialized_item, 300); // 5分钟缓存
+                // 序列化并存入缓存
+                const serialized = serialize(std.heap.page_allocator, item) catch {
+                    // 序列化失败，直接返回
+                    return item;
+                };
+                defer std.heap.page_allocator.free(serialized);
+
+                // 异步设置缓存（忽略错误）
+                global_cache.?.set(cache_key, serialized, 300) catch {};
+
                 return item;
             }
 
@@ -277,12 +448,25 @@ pub fn defineCached(comptime T: type) type {
             defer std.heap.page_allocator.free(cache_key);
 
             if (try global_cache.?.get(cache_key)) |cached_data| {
-                _ = cached_data;
-                return Self.FirstWithDB(global_db.?);
+                // 反序列化缓存的数据
+                const item = deserialize(T, std.heap.page_allocator, cached_data) catch {
+                    // 反序列化失败，重新查询数据库
+                    return Self.FirstWithDB(global_db.?);
+                };
+                return item;
             }
 
             if (try Self.FirstWithDB(global_db.?)) |item| {
-                // TODO: 实现序列化并存入缓存
+                // 序列化并存入缓存
+                const serialized = serialize(std.heap.page_allocator, item) catch {
+                    // 序列化失败，直接返回
+                    return item;
+                };
+                defer std.heap.page_allocator.free(serialized);
+
+                // 异步设置缓存（忽略错误）
+                global_cache.?.set(cache_key, serialized, 300) catch {};
+
                 return item;
             }
 

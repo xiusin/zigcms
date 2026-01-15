@@ -9,7 +9,25 @@ pub fn render(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), cont
 
 /// 使用宏上下文渲染模板
 pub fn renderWithMacros(allocator: std.mem.Allocator, nodes: std.ArrayList(ast.Node), context: std.json.Value, macros: ?*const std.StringHashMap(ast.Macro), fn_registry: ?*const functions.FunctionRegistry) ![]u8 {
-    return renderWithMacrosAndSet(allocator, nodes, context, macros, fn_registry, null);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    
+    // 创建 set 变量存储
+    var set_vars = std.StringHashMap(std.json.Value).init(alloc);
+    defer {
+        var it = set_vars.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* == .string) {
+                alloc.free(entry.value_ptr.*.string);
+            } else if (entry.value_ptr.* == .array) {
+                entry.value_ptr.*.array.deinit();
+            }
+        }
+        set_vars.deinit();
+    }
+    
+    return renderWithMacrosAndSet(allocator, nodes, context, macros, fn_registry, &set_vars);
 }
 
 /// 使用宏上下文和 set 变量支持渲染模板
@@ -151,7 +169,12 @@ fn renderWithMacrosAndSet(
                 // set 语句：设置变量
                 if (set_vars) |vars| {
                     const value = try evaluateWithMacros(s.value, context, alloc, macros, fn_registry, set_vars);
-                    try vars.put(s.var_name, value);
+                    // 复制值以确保内存安全
+                    const copied_value = switch (value) {
+                        .string => |str| std.json.Value{ .string = try allocator.dupe(u8, str) },
+                        else => value,
+                    };
+                    try vars.put(s.var_name, copied_value);
                 }
             },
             .extends => |_| {
@@ -167,6 +190,11 @@ fn evaluate(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Al
     switch (expr) {
         .literal => |lit| return lit,
         .variable => |path| return getValue(context, path),
+        .binary => |bin| {
+            const left_val = try evaluate(bin.left.*, context, allocator);
+            const right_val = try evaluate(bin.right.*, context, allocator);
+            return try evaluateBinaryOp(left_val, bin.op, right_val);
+        },
         .function_call => |fc| {
             if (std.mem.eql(u8, fc.name, "range")) {
                 if (fc.args.items.len != 2) return error.InvalidArgs;
@@ -189,11 +217,82 @@ fn evaluate(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Al
     }
 }
 
+/// 评估二元操作符
+fn evaluateBinaryOp(left: std.json.Value, op: []const u8, right: std.json.Value) !std.json.Value {
+    if (std.mem.eql(u8, op, "+")) {
+        if (left == .integer and right == .integer) {
+            return std.json.Value{ .integer = left.integer + right.integer };
+        }
+        if (left == .float and right == .float) {
+            return std.json.Value{ .float = left.float + right.float };
+        }
+        if (left == .integer and right == .float) {
+            return std.json.Value{ .float = @as(f64, @floatFromInt(left.integer)) + right.float };
+        }
+        if (left == .float and right == .integer) {
+            return std.json.Value{ .float = left.float + @as(f64, @floatFromInt(right.integer)) };
+        }
+        return error.InvalidType;
+    } else if (std.mem.eql(u8, op, "-")) {
+        if (left == .integer and right == .integer) {
+            return std.json.Value{ .integer = left.integer - right.integer };
+        }
+        if (left == .float and right == .float) {
+            return std.json.Value{ .float = left.float - right.float };
+        }
+        if (left == .integer and right == .float) {
+            return std.json.Value{ .float = @as(f64, @floatFromInt(left.integer)) - right.float };
+        }
+        if (left == .float and right == .integer) {
+            return std.json.Value{ .float = left.float - @as(f64, @floatFromInt(right.integer)) };
+        }
+        return error.InvalidType;
+    } else if (std.mem.eql(u8, op, "*")) {
+        if (left == .integer and right == .integer) {
+            return std.json.Value{ .integer = left.integer * right.integer };
+        }
+        if (left == .float and right == .float) {
+            return std.json.Value{ .float = left.float * right.float };
+        }
+        if (left == .integer and right == .float) {
+            return std.json.Value{ .float = @as(f64, @floatFromInt(left.integer)) * right.float };
+        }
+        if (left == .float and right == .integer) {
+            return std.json.Value{ .float = left.float * @as(f64, @floatFromInt(right.integer)) };
+        }
+        return error.InvalidType;
+    } else if (std.mem.eql(u8, op, "/")) {
+        if (left == .integer and right == .integer) {
+            if (right.integer == 0) return error.DivisionByZero;
+            return std.json.Value{ .integer = @divTrunc(left.integer, right.integer) };
+        }
+        if (left == .float and right == .float) {
+            if (right.float == 0.0) return error.DivisionByZero;
+            return std.json.Value{ .float = left.float / right.float };
+        }
+        if (left == .integer and right == .float) {
+            if (right.float == 0.0) return error.DivisionByZero;
+            return std.json.Value{ .float = @as(f64, @floatFromInt(left.integer)) / right.float };
+        }
+        if (left == .float and right == .integer) {
+            if (right.integer == 0) return error.DivisionByZero;
+            return std.json.Value{ .float = left.float / @as(f64, @floatFromInt(right.integer)) };
+        }
+        return error.InvalidType;
+    }
+    return error.UnsupportedOp;
+}
+
 /// 支持宏调用的表达式求值
 fn evaluateWithMacros(expr: ast.Expression, context: std.json.Value, allocator: std.mem.Allocator, macros: ?*const std.StringHashMap(ast.Macro), fn_registry: ?*const functions.FunctionRegistry, set_vars: ?*std.StringHashMap(std.json.Value)) anyerror!std.json.Value {
     switch (expr) {
         .literal => |lit| return lit,
         .variable => |path| return getValue(context, path, set_vars),
+        .binary => |bin| {
+            const left_val = try evaluateWithMacros(bin.left.*, context, allocator, macros, fn_registry, set_vars);
+            const right_val = try evaluateWithMacros(bin.right.*, context, allocator, macros, fn_registry, set_vars);
+            return try evaluateBinaryOp(left_val, bin.op, right_val);
+        },
         .function_call => |fc| {
             // 检查是否是宏调用
             if (macros != null) {
@@ -475,18 +574,34 @@ fn applyFilter(allocator: std.mem.Allocator, value: std.json.Value, filter: []co
             break :blk @max(0, p);
         } else 0;
         
-        return switch (value) {
-            .integer => value,
-            .float => |f| {
-                if (precision == 0) {
-                    return std.json.Value{ .integer = @intFromFloat(std.math.round(f)) };
-                }
-                const factor = std.math.pow(f64, 10.0, @floatFromInt(precision));
-                const rounded = std.math.round(f * factor) / factor;
-                return std.json.Value{ .float = rounded };
-            },
-            else => value,
-        };
+        if (value == .integer) {
+            const i = value.integer;
+            if (precision == 0) {
+                return std.json.Value{ .integer = i };
+            }
+            var buf: [64]u8 = undefined;
+            const formatted = try std.fmt.bufPrint(&buf, "{d:.0}", .{@as(f64, @floatFromInt(i))});
+            return std.json.Value{ .string = try allocator.dupe(u8, formatted) };
+        } else if (value == .float) {
+            const f = value.float;
+            if (precision == 0) {
+                return std.json.Value{ .integer = @intFromFloat(std.math.round(f)) };
+            }
+            const factor = std.math.pow(f64, 10.0, @floatFromInt(precision));
+            const rounded = std.math.round(f * factor) / factor;
+            var buf: [64]u8 = undefined;
+            // 手动格式化，避免使用动态精度
+            const formatted = switch (precision) {
+                1 => try std.fmt.bufPrint(&buf, "{d:.1}", .{rounded}),
+                2 => try std.fmt.bufPrint(&buf, "{d:.2}", .{rounded}),
+                3 => try std.fmt.bufPrint(&buf, "{d:.3}", .{rounded}),
+                4 => try std.fmt.bufPrint(&buf, "{d:.4}", .{rounded}),
+                else => try std.fmt.bufPrint(&buf, "{d}", .{rounded}),
+            };
+            return std.json.Value{ .string = try allocator.dupe(u8, formatted) };
+        } else {
+            return value;
+        }
     } else if (std.mem.eql(u8, filter_name, "number_format")) {
         // number_format 过滤器：数字格式化
         // 用法：{{ value | number_format:2:"," }}

@@ -236,9 +236,62 @@ pub fn send_mail(self: Self, req: zap.Request) !void {
     }
 
     const smtp_port = std.fmt.parseInt(u16, smtp_port_str, 10) catch 587;
-    _ = smtp_port;
 
-    // TODO: 实现发送测试邮件的逻辑
-    // 暂时返回成功，实际使用时需要集成smtp_client
-    return base.send_ok(req, .{ .status = "success", .message = "邮件配置测试成功" });
+    // 获取收件人地址
+    const body = req.body orelse {
+        return base.send_failed(req, "请求体为空");
+    };
+
+    const dto = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+        return base.send_failed(req, "JSON格式错误");
+    };
+    defer dto.deinit();
+
+    const to_email = if (dto.value.object.get("to_email")) |v|
+        if (v == .string) v.string else ""
+    else
+        "";
+
+    if (to_email.len == 0) {
+        return base.send_failed(req, "请提供收件人邮箱地址");
+    }
+
+    // 创建 SMTP 客户端
+    var client = try smtp.connect(.{
+        .allocator = self.allocator,
+        .host = smtp_host,
+        .port = smtp_port,
+        .username = smtp_user,
+        .password = smtp_pass,
+    });
+    defer client.deinit();
+
+    // 构建邮件消息
+    const timestamp = std.time.timestamp();
+    const message = smtp.Message{
+        .from = smtp.Message.Address{
+            .name = from_email,
+            .address = from_email,
+        },
+        .to = &.{
+            smtp.Message.Address{
+                .name = to_email,
+                .address = to_email,
+            },
+        },
+        .subject = "ZigCMS 邮件配置测试",
+        .text_body = try std.fmt.allocPrint(self.allocator, "这是一封测试邮件，发送时间: {d}\n\n如果收到此邮件，说明您的邮件配置正确。", .{timestamp}),
+        .timestamp = timestamp,
+    };
+    defer {
+        if (message.text_body) |tb| self.allocator.free(tb);
+    }
+
+    // 发送邮件
+    try client.hello();
+    try client.auth();
+    try client.sendMessage(message);
+    client.quit() catch {};
+
+    return base.send_ok(req, .{ .status = "success", .message = "邮件发送成功" });
 }

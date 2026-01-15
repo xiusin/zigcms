@@ -248,16 +248,8 @@ fn batchDeleteImpl(self: Self, r: zap.Request, response: zap.Response) !void {
         return;
     }
 
-    // TODO: 实现批量删除逻辑
-    // 目前逐个删除，后续可优化为批量操作
-    var success_count: i32 = 0;
-    for (dto.ids) |id| {
-        self.member_service.deleteMember(id) catch {
-            // 继续处理其他ID
-            continue;
-        };
-        success_count += 1;
-    }
+    // 使用服务批量删除
+    const success_count = try self.member_service.batchDelete(dto.ids);
 
     try base.send_ok(response, .{ .affected = success_count });
 }
@@ -306,9 +298,10 @@ fn adjustLevelImpl(self: Self, r: zap.Request, response: zap.Response) !void {
     };
     defer json_mod.free(self.allocator, dto);
 
-    // TODO: 实现使用MemberService调整等级
-    // 目前MemberService还没有调整等级的方法
-    try base.send_ok(response, .{ .message = "等级调整功能开发中" });
+    // 使用服务调整等级
+    try self.member_service.adjustLevel(dto.id, dto.level, dto.remark);
+
+    try base.send_ok(response, .{ .message = "等级调整成功" });
 }
 
 /// 启用/禁用实现

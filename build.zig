@@ -4,7 +4,7 @@
 //! - 主可执行文件 (zigcms)
 //! - 静态库 (libzigcms)
 //! - 动态库 (libzigcms.so/dylib)
-//! - 命令行工具 (codegen, migrate, plugin-gen, config-gen)
+//! - 命令行工具 (codegen, migrate, plugin-gen)
 //! - 测试套件
 //!
 //! ## 构建目标
@@ -330,86 +330,4 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     _ = createCommandTool(b, "plugin-gen", "commands/plugin_gen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
 
-    // ========================================================================
-    // Configuration Generator (from commands/)
-    // ========================================================================
-    _ = createCommandTool(b, "config-gen", "commands/config_gen/main.zig", "Generate configuration structure from .env file (--help for options)", target, optimize);
-
-    // // ========================================================================
-    // // MySQL 集成测试
-    // // ========================================================================
-    // const mysql_test_module = b.createModule(.{
-    //     .root_source_file = b.path("src/services/sql/integration_test.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // const mysql_test_exe = b.addExecutable(.{ .name = "mysql-test", .root_module = mysql_test_module });
-
-    // // 链接 MySQL C 库
-    // mysql_test_exe.linkLibC();
-    // mysql_test_exe.linkSystemLibrary("mysqlclient");
-
-    // // macOS: Homebrew 安装路径
-    // if (target.result.os.tag == .macos) {
-    //     // 通用路径（符号链接）
-    //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-    //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
-    //     // mysql-client@8.0 路径
-    //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/lib" });
-    //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Cellar/mysql-client@8.0/8.0.42/include" });
-    //     // Intel Mac
-    //     mysql_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/lib" });
-    //     mysql_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client@8.0/include" });
-    // }
-
-    // b.installArtifact(mysql_test_exe);
-
-    // const run_mysql_test = b.addRunArtifact(mysql_test_exe);
-    // run_mysql_test.step.dependOn(b.getInstallStep());
-
-    // const mysql_test_step = b.step("test-mysql", "Run MySQL integration tests");
-    // mysql_test_step.dependOn(&run_mysql_test.step);
-
-    // // ========================================================================
-    // // SQLite 集成测试
-    // // ========================================================================
-    // const sqlite_test_module = b.createModule(.{
-    //     .root_source_file = b.path("src/services/sql/sqlite_test.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // const sqlite_test_exe = b.addExecutable(.{ .name = "sqlite-test", .root_module = sqlite_test_module });
-
-    // // 链接 SQLite3 库
-    // sqlite_test_exe.linkLibC();
-    // sqlite_test_exe.linkSystemLibrary("sqlite3");
-
-    // b.installArtifact(sqlite_test_exe);
-
-    // const run_sqlite_test = b.addRunArtifact(sqlite_test_exe);
-    // run_sqlite_test.step.dependOn(b.getInstallStep());
-
-    // const sqlite_test_step = b.step("test-sqlite", "Run SQLite integration tests (no external DB needed)");
-    // sqlite_test_step.dependOn(&run_sqlite_test.step);
-
-    // // ========================================================================
-    // // ORM 集成测试（SQLite）
-    // // ========================================================================
-    // const orm_test_module = b.createModule(.{
-    //     .root_source_file = b.path("src/services/sql/orm_test.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // const orm_test_exe = b.addExecutable(.{ .name = "orm-test", .root_module = orm_test_module });
-
-    // orm_test_exe.linkLibC();
-    // orm_test_exe.linkSystemLibrary("sqlite3");
-
-    // b.installArtifact(orm_test_exe);
-
-    // const run_orm_test = b.addRunArtifact(orm_test_exe);
-    // run_orm_test.step.dependOn(b.getInstallStep());
-
-    // const orm_test_step = b.step("test-orm", "Run ORM + QueryBuilder integration tests");
-    // orm_test_step.dependOn(&run_orm_test.step);
 }

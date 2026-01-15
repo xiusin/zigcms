@@ -69,7 +69,7 @@ pub const ServiceManager = struct {
 
     /// 清理服务管理器
     ///
-    /// 清理顺序（与初始化相反）：plugin_system → dict_service → cache
+    /// 清理顺序（与初始化相反）：plugin_system → cache
     /// 注意：db 由调用者管理，不在此处清理
     pub fn deinit(self: *ServiceManager) void {
         if (!self.initialized) return;
@@ -79,6 +79,9 @@ pub const ServiceManager = struct {
             std.log.err("插件系统关闭失败: {}", .{err});
         };
         self.plugin_system.deinit();
+
+        // 步骤2：清理缓存服务
+        self.cache.deinit();
 
         self.initialized = false;
         // 注意：db 由调用者管理，不在此处清理
