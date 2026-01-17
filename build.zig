@@ -32,12 +32,24 @@ fn addCommonImports(module: *std.Build.Module, deps: anytype) void {
 fn setupMySQLPaths(artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget) void {
     artifact.linkSystemLibrary("mysqlclient");
     if (target.result.os.tag == .macos) {
-        // Intel Mac
-        artifact.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
-        artifact.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
-        // Apple Silicon
-        artifact.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
-        artifact.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+        // 根据 CPU 架构选择正确的 MySQL 路径
+        switch (target.result.cpu.arch) {
+            .x86_64 => {
+                // Intel Mac
+                artifact.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+                artifact.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+            },
+            .aarch64 => {
+                // Apple Silicon
+                artifact.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+                artifact.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+            },
+            else => {
+                // 未知架构，尝试 Homebrew 路径
+                artifact.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+                artifact.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+            },
+        }
     }
     if (target.result.os.tag == .linux) {
         artifact.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
