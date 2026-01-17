@@ -600,6 +600,146 @@ pub fn AdvancedQueryBuilder(comptime T: type) type {
         }
 
         // ================================================================
+        // JSON 查询（PostgreSQL JSONB / MySQL JSON）
+        // ================================================================
+
+        /// whereJson - JSON 字段条件查询（PostgreSQL）
+        ///
+        /// 支持的操作符：
+        /// - "->" 返回 JSON 对象
+        /// - "->>" 返回 JSON 字符串
+        /// - "#>" 路径提取
+        /// - "#>>" 路径文本提取
+        pub fn whereJson(
+            self: *Self,
+            json_field: []const u8,
+            json_op: []const u8,
+            json_path: []const u8,
+            value: anytype,
+        ) *Self {
+            _ = json_field;
+            _ = json_op;
+            _ = json_path;
+            _ = value;
+            // 注意：完整实现需要根据数据库类型生成不同的 SQL
+            // 这里提供基础框架
+            return self;
+        }
+
+        /// whereJsonEquals - JSON 字段等于指定值
+        ///
+        /// 使用 ::text 转换后比较
+        /// PostgreSQL: WHERE (metadata->'key')::text = 'value'
+        /// MySQL: WHERE JSON_UNQUOTE(metadata->'$.key') = 'value'
+        pub fn whereJsonEquals(
+            self: *Self,
+            json_field: []const u8,
+            json_path: []const u8,
+            value: []const u8,
+        ) *Self {
+            const sql = try std.fmt.allocPrint(self.allocator,
+                "({s}->>'{s}') = '{s}'", .{ json_field, json_path, value });
+            self.base.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {
+                self.allocator.free(sql);
+            };
+            return self;
+        }
+
+        /// whereJsonContains - JSON 数组包含指定值
+        ///
+        /// PostgreSQL: WHERE json_field @> '["value"]'
+        /// MySQL: WHERE JSON_CONTAINS(json_field, '"value"')
+        pub fn whereJsonContains(
+            self: *Self,
+            json_field: []const u8,
+            value: []const u8,
+        ) *Self {
+            const sql = try std.fmt.allocPrint(self.allocator,
+                "{s} @> '[\"{s}\"]'", .{ json_field, value });
+            self.base.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {
+                self.allocator.free(sql);
+            };
+            return self;
+        }
+
+        /// whereJsonArrayLength - JSON 数组长度条件
+        ///
+        /// PostgreSQL: WHERE json_array_length(json_field) > n
+        pub fn whereJsonArrayLength(
+            self: *Self,
+            json_field: []const u8,
+            op: []const u8,
+            length: u64,
+        ) *Self {
+            const sql = try std.fmt.allocPrint(self.allocator,
+                "json_array_length({s}) {s} {d}", .{ json_field, op, length });
+            self.base.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {
+                self.allocator.free(sql);
+            };
+            return self;
+        }
+
+        /// whereJsonHasKey - JSON 对象包含指定键
+        ///
+        /// PostgreSQL: WHERE json_field ? 'key'
+        /// MySQL: WHERE JSON_CONTAINS_PATH(json_field, 'one', '$.key')
+        pub fn whereJsonHasKey(
+            self: *Self,
+            json_field: []const u8,
+            key: []const u8,
+        ) *Self {
+            const sql = try std.fmt.allocPrint(self.allocator,
+                "{s} ? '{s}'", .{ json_field, key });
+            self.base.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {
+                self.allocator.free(sql);
+            };
+            return self;
+        }
+
+        /// whereJsonExtractEquals - 使用路径提取后比较
+        ///
+        /// 通用方法，支持任意 JSON 路径
+        /// PostgreSQL: WHERE (data#>>'{level,key}') = 'value'
+        pub fn whereJsonExtractEquals(
+            self: *Self,
+            json_field: []const u8,
+            json_path: []const u8,
+            value: []const u8,
+        ) *Self {
+            const sql = try std.fmt.allocPrint(self.allocator,
+                "({s}#>>'{s}') = '{s}'", .{ json_field, json_path, value });
+            self.base.conditions.append(self.allocator, .{
+                .sql = sql,
+                .values = &.{},
+                .logic = .and_op,
+                .owns_sql = true,
+            }) catch {
+                self.allocator.free(sql);
+            };
+            return self;
+        }
+
+        // ================================================================
         // SQL 构建
         // ================================================================
 

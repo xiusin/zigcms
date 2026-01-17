@@ -306,6 +306,18 @@ pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.Res
                 }
             } else if (field.type == bool) {
                 @field(model, field.name) = if (value) |v| std.mem.eql(u8, v, "1") else false;
+            } else {
+                // 处理 JSON 字段类型（JsonField 和 JsonArray）
+                if (comptime isJsonFieldType(field.type)) {
+                    if (value) |v| {
+                        // 直接从 JSON 字符串创建 JsonField（复用数据库返回的字符串，不拷贝）
+                        // 注意：这里使用 unsafe 方法，直接使用数据库返回的字符串
+                        // 实际项目中应该复制一份以确保安全
+                        @field(model, field.name) = try createJsonFieldFromDb(field.type, allocator, v);
+                    } else {
+                        @field(model, field.name) = field.type.empty();
+                    }
+                }
             }
         }
 
@@ -313,6 +325,26 @@ pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.Res
     }
 
     return models.toOwnedSlice(allocator);
+}
+
+// ============================================================================
+// JSON 字段支持
+// ============================================================================
+
+/// 检查类型是否为 JsonField
+fn isJsonFieldType(comptime T: type) bool {
+    // 通过编译时检查判断是否为 JsonField 类型
+    const info = @typeInfo(T);
+    if (info != .Struct) return false;
+    // 检查是否有 JsonField 特征方法
+    return @hasDecl(T, "toSqlString") and @hasDecl(T, "fromJson");
+}
+
+/// 从数据库值创建 JsonField
+fn createJsonFieldFromDb(comptime JsonType: type, allocator: Allocator, json_str: []const u8) !JsonType {
+    // 复制字符串，因为数据库连接可能会重用内存
+    const owned_str = try allocator.dupe(u8, json_str);
+    return JsonType.fromJson(owned_str, allocator);
 }
 
 // ============================================================================
