@@ -13,7 +13,22 @@ const std = @import("std");
 const sql = @import("../services/sql/orm.zig");
 const CacheService = @import("../services/cache/cache.zig").CacheService;
 // const PluginSystemService = @import("../services/plugins/mod.zig").PluginSystemService;
-const PluginSystemService = struct {};
+const PluginSystemService = struct {
+    /// 初始化插件系统
+    pub fn init(_: std.mem.Allocator) PluginSystemService {
+        return .{};
+    }
+
+    /// 关闭插件系统
+    pub fn shutdown(self: *PluginSystemService) !void {
+        _ = self;
+    }
+
+    /// 清理插件系统
+    pub fn deinit(self: *PluginSystemService) void {
+        _ = self;
+    }
+};
 const root = @import("../../root.zig");
 
 pub const ServiceManager = struct {

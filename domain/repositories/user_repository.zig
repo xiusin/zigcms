@@ -4,12 +4,12 @@
 //! 该接口遵循领域驱动设计原则，封装用户数据访问逻辑。
 
 const std = @import("std");
-const User = @import("../entities/user.model.zig").User;
+const UserData = @import("../entities/user.model.zig").UserData;
 
 /// 用户仓储接口类型
 ///
-/// 使用通用的Repository.Interface(User)来定义用户数据访问接口
-pub const UserRepository = @import("mod.zig").Repository.Interface(User);
+/// 使用通用的Repository.Interface(UserData)来定义用户数据访问接口
+pub const UserRepository = @import("mod.zig").Repository.Interface(UserData);
 
 /// 用户仓储接口的便捷类型别名
 pub const Interface = UserRepository;
@@ -29,7 +29,7 @@ pub const UserRepositoryImpl = struct {
     allocator: std.mem.Allocator,
 
     /// 实现findById方法
-    pub fn findById(ptr: *anyopaque, id: i32) !?User {
+    pub fn findById(ptr: *anyopaque, id: i32) !?UserData {
         const self: *UserRepositoryImpl = @ptrCast(@alignCast(ptr));
 
         // 这里是基础设施层的具体实现
@@ -38,7 +38,7 @@ pub const UserRepositoryImpl = struct {
 
         // 示例实现：模拟查找用户
         if (id == 1) {
-            return User{
+            return UserData{
                 .id = 1,
                 .username = "admin",
                 .email = "admin@example.com",
@@ -50,16 +50,16 @@ pub const UserRepositoryImpl = struct {
     }
 
     /// 实现findAll方法
-    pub fn findAll(ptr: *anyopaque) ![]User {
+    pub fn findAll(ptr: *anyopaque) ![]UserData {
         const self: *UserRepositoryImpl = @ptrCast(@alignCast(ptr));
 
         // 示例实现：返回空数组
         _ = self;
-        return &[_]User{};
+        return &[_]UserData{};
     }
 
     /// 实现save方法
-    pub fn save(ptr: *anyopaque, user: User) !User {
+    pub fn save(ptr: *anyopaque, user: UserData) !UserData {
         const self: *UserRepositoryImpl = @ptrCast(@alignCast(ptr));
 
         // 示例实现：简单返回用户（实际应保存到数据库）
@@ -73,7 +73,7 @@ pub const UserRepositoryImpl = struct {
     }
 
     /// 实现update方法
-    pub fn update(ptr: *anyopaque, user: User) !void {
+    pub fn update(ptr: *anyopaque, user: UserData) !void {
         const self: *UserRepositoryImpl = @ptrCast(@alignCast(ptr));
 
         // 示例实现：模拟更新

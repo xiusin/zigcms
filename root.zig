@@ -306,7 +306,7 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 将服务管理器注册到 DI 容器，实现更好的生命周期管理
     const di = @import("shared/di/mod.zig");
     if (di.getGlobalContainer()) |container| {
-        try container.registerInstance(ServiceManager, &service_manager.?);
+        try container.registerInstance(ServiceManager, &service_manager.?, null);
     }
 }
 

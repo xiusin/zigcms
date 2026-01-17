@@ -37,7 +37,13 @@ const base = @import("../../api/controllers/base.fn.zig");
 const services = @import("../../application/services/mod.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 // const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
-const PluginSystemService = struct {};
+const PluginSystemService = struct {
+    /// 关闭插件系统
+    pub fn shutdown(_: *PluginSystemService) !void {}
+
+    /// 清理插件系统
+    pub fn deinit(_: *PluginSystemService) void {}
+};
 pub const logger = @import("../../application/services/logger/logger.zig");
 const root = @import("../../root.zig");
 
@@ -349,7 +355,7 @@ pub fn get_db() *sql.Database {
 ///
 /// 返回：服务管理器指针
 /// 注意：如果服务管理器未初始化会 panic
-pub fn getServiceManager() *services.ServiceManager {
+pub fn getServiceManager() ?*services.ServiceManager {
     return _service_manager orelse @panic("Service manager not initialized");
 }
 

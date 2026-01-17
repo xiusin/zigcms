@@ -87,11 +87,6 @@ pub const DIContainer = struct {
         factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType,
     ) !void {
         const service_name = @typeName(ServiceType);
-        const wrapper: FactoryFn = struct {
-            fn wrap(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*anyopaque {
-                return @ptrCast(@alignCast(try raw_factory(di, allocator)));
-            }
-        }.wrap;
 
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
