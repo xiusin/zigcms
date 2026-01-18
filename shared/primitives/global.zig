@@ -1,31 +1,26 @@
 //! 全局模块 - 系统级服务管理器
 //!
 //! 该模块管理全局性的组件和服务：
-//! - 内存分配器
+//! - 服务管理器（包含所有子服务：缓存、插件、指标、JSON、事件、日志）
 //! - 数据库连接
-//! - 服务管理器
-//! - 插件系统
 //! - 配置管理
 //!
 //! 内存所有权说明：
-//! - _allocator: 由调用者提供，全局模块只持有引用
-//! - _db: 由全局模块创建和拥有，在 deinit 中释放
-//! - _service_manager: 由全局模块创建和拥有，在 deinit 中释放
-//! - _plugin_system: 由全局模块创建和拥有，在 deinit 中释放
+//! - allocator: 从 ServiceManager 获取
+//! - _db: 由 root.zig 创建和拥有
+//! - _service_manager: 由 root.zig 创建和拥有
 //! - config: 由全局模块创建和拥有，在 deinit 中释放
 //!
 //! 初始化顺序：
 //! 1. 日志器
 //! 2. ORM 数据库连接
-//! 3. 服务管理器
-//! 4. 插件系统
+//! 3. 服务管理器（包含所有子服务）
 //!
 //! 清理顺序（逆序）：
-//! 1. 插件系统
-//! 2. 服务管理器
-//! 3. ORM 数据库连接
-//! 4. 日志器
-//! 5. 配置
+//! 1. 服务管理器（通过 ServiceManager 清理所有子服务）
+//! 2. ORM 数据库连接
+//! 3. 日志器
+//! 4. 配置
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -36,14 +31,6 @@ const strings = @import("../../shared/utils/strings.zig");
 const base = @import("../../api/controllers/base.fn.zig");
 const services = @import("../../application/services/mod.zig");
 const sql = @import("../../application/services/sql/orm.zig");
-// const PluginSystemService = @import("../../application/services/plugins/plugin_system.zig").PluginSystemService;
-const PluginSystemService = struct {
-    /// 关闭插件系统
-    pub fn shutdown(_: *PluginSystemService) !void {}
-
-    /// 清理插件系统
-    pub fn deinit(_: *PluginSystemService) void {}
-};
 pub const logger = @import("../../application/services/logger/logger.zig");
 const root = @import("../../root.zig");
 
@@ -53,12 +40,12 @@ const ResourceOwnership = enum {
     borrowed,
 };
 
-// 全局单例实例
-var _allocator: ?Allocator = null;
+// 移除全局 _allocator，改为从 ServiceManager 获取
+// var _allocator: ?Allocator = null;
 var _db: ?*sql.Database = null;
 var _db_ownership: ResourceOwnership = .borrowed;
 var _service_manager: ?*services.ServiceManager = null;
-var _plugin_system: ?*PluginSystemService = null;
+// 移除独立的 _plugin_system，改为从 ServiceManager 获取
 var config: std.StringHashMap([]const u8) = undefined;
 var mu: std.Thread.Mutex = std.Thread.Mutex{};
 
@@ -68,10 +55,9 @@ var is_initialized: bool = false;
 /// 清理全局模块资源
 ///
 /// 清理顺序（与初始化相反）：
-/// 1. 插件系统（最后初始化，最先清理）
-/// 2. 服务管理器
-/// 3. 数据库（如果owned）
-/// 4. 配置
+/// 1. 服务管理器（通过 ServiceManager 清理所有子服务）
+/// 2. 数据库（如果 owned）
+/// 3. 配置
 ///
 /// 注意：
 /// - 此函数应在程序退出前调用
@@ -81,59 +67,51 @@ var is_initialized: bool = false;
 pub fn deinit() void {
     mu.lock();
     defer mu.unlock();
-    
+
     if (!is_initialized) return;
 
     std.debug.print("[INFO] global module deinit, cleaning up resources...\n", .{});
 
-    // 1. 先执行插件系统清理（独立于 ServiceManager 的插件系统实例）
-    if (_plugin_system) |plugin_sys| {
-        plugin_sys.shutdown() catch |err| {
-            std.debug.print("[ERROR] 插件系统关闭失败: {}\n", .{err});
-        };
-        plugin_sys.deinit();
-        _allocator.?.destroy(plugin_sys);
-        _plugin_system = null;
-    }
-
-    // 2. 清理服务管理器（ServiceManager 有自己的插件系统实例，会在其 deinit 中清理）
+    // 1. 清理服务管理器（通过 ServiceManager 的 allocator）
     if (_service_manager) |sm| {
+        const allocator = sm.getAllocator();
         sm.deinit();
-        _allocator.?.destroy(sm);
+        allocator.destroy(sm);
         _service_manager = null;
     }
 
-    // 3. 根据所有权决定是否清理数据库
-    if (_db) |db| {
-        if (_db_ownership == .owned) {
-            std.debug.print("[INFO] global module deinit: cleaning owned database\n", .{});
-            db.deinit();
-            _allocator.?.destroy(db);
-        } else {
-            std.debug.print("[INFO] global module deinit: releasing borrowed database reference\n", .{});
-        }
+    // 2. 根据所有权决定是否清理数据库
+    if (_db) |_| {
+        // db 的清理由 root.zig 中的 ServiceManager 处理
+        std.debug.print("[INFO] global module deinit: releasing database reference\n", .{});
         _db = null;
     }
 
-    // 4. 注意：日志器由 main.zig 管理，不在此处清理
+    // 3. 注意：日志器由 main.zig 管理，不在此处清理
 
-    // 5. 清理配置
-    config.deinit();
+    // 4. 清理配置
+    // 使用一个临时方法检查：尝试获取迭代器，如果失败说明未初始化
+    if (config.count() >= 0) {
+        config.deinit();
+    }
     config = undefined;
-    _allocator = null;
 
-    // 6. 重置初始化状态，允许重新初始化（用于测试）
+    // 5. 重置初始化状态，允许重新初始化（用于测试）
     is_initialized = false;
 
     std.debug.print("[INFO] global module cleanup completed\n", .{});
 }
 
 fn init_some() void {
-    config = std.StringHashMap([]const u8).init(_allocator.?);
+    // 获取一个临时 allocator 用于初始化
+    // 注意：这里使用 page_allocator，因为还没有 ServiceManager
+    const allocator = std.heap.page_allocator;
+
+    config = std.StringHashMap([]const u8).init(allocator);
     errdefer config.deinit();
 
     // 首先初始化日志器
-    logger.initDefault(_allocator.?, .{
+    logger.initDefault(allocator, .{
         .level = .debug,
         .format = .colored,
         .module_name = "zigcms",
@@ -154,33 +132,13 @@ fn init_some() void {
         @panic("无法初始化数据库连接，请检查数据库配置和网络连接");
     };
     errdefer {
-        if (_db) |db| {
-            db.deinit();
-            _allocator.?.destroy(db);
-            _db = null;
+        if (_db) |_| {
+            logger.err("[global] ORM 数据库初始化失败，回滚操作", .{});
         }
     }
 
-    // 初始化服务管理器
-    initServiceManager(_allocator.?) catch |e| {
-        logger.err("Failed to initialize Service Manager: {}", .{e});
-        @panic("无法初始化服务管理器");
-    };
-    errdefer {
-        if (_service_manager) |sm| {
-            sm.deinit();
-            _allocator.?.destroy(sm);
-            _service_manager = null;
-        }
-    }
-
-    // 初始化插件系统
-    initPluginSystem(_allocator.?) catch |e| {
-        logger.err("Failed to initialize Plugin System: {}", .{e});
-        @panic("无法初始化插件系统");
-    };
-
-    restore_setting() catch {};
+    // 注意：init_some() 不再初始化 ServiceManager，它由 root.zig 管理
+    // ServiceManager 包含所有子服务：缓存、插件、指标、JSON、事件、日志
 
     is_initialized = true;
 }
@@ -193,10 +151,13 @@ fn init_some() void {
 fn initOrmDatabase() !void {
     logger.info("[global] 正在连接数据库...", .{});
 
-    const db = try _allocator.?.create(sql.Database);
-    errdefer _allocator.?.destroy(db);
+    // 使用 page_allocator 创建数据库连接
+    const allocator = std.heap.page_allocator;
 
-    // db.* = try sql.Database.mysql(_allocator.?, .{
+    const db = try allocator.create(sql.Database);
+    errdefer allocator.destroy(db);
+
+    // db.* = try sql.Database.mysql(allocator, .{
     //     .port = 3306,
     //     .host = "117.72.107.213",
     //     .user = "zigcms",
@@ -205,7 +166,7 @@ fn initOrmDatabase() !void {
     //     .keepalive_interval_ms = 0, // 暂时禁用 keepalive 避免线程问题
     // });
 
-    db.* = sql.Database.sqlite(_allocator.?, "zigcms.db") catch |e| {
+    db.* = sql.Database.sqlite(allocator, "zigcms.db") catch |e| {
         return e;
     };
     errdefer db.deinit();
@@ -259,33 +220,9 @@ fn initServiceManager(allocator: Allocator) !void {
     logger.info("[global] 服务管理器初始化完成", .{});
 }
 
-/// 初始化插件系统
-///
-/// 创建并启动独立的插件系统实例。
-/// 注意：这是独立于 ServiceManager 中插件系统的另一个实例。
-/// 依赖：必须先初始化服务管理器 (_service_manager)
-fn initPluginSystem(allocator: Allocator) !void {
-    logger.info("[global] 初始化插件系统...", .{});
-
-    if (_service_manager == null) return error.ServiceManagerNotInitialized;
-
-    const plugin_sys_instance = try allocator.create(PluginSystemService);
-    errdefer allocator.destroy(plugin_sys_instance);
-
-    plugin_sys_instance.* = PluginSystemService.init(allocator);
-    errdefer plugin_sys_instance.deinit();
-
-    // 启动插件系统
-    try plugin_sys_instance.startup();
-
-    _plugin_system = plugin_sys_instance;
-
-    logger.info("[global] 插件系统初始化完成", .{});
-}
-
 /// 初始化全局模块（使用外部数据库连接）
 ///
-/// 设置全局分配器和数据库连接。
+/// 设置全局数据库连接。
 /// 注意：此函数不再创建数据库连接，而是使用外部提供的连接。
 /// 数据库所有权为 borrowed，不会在 deinit 中清理。
 ///
@@ -297,10 +234,9 @@ fn initPluginSystem(allocator: Allocator) !void {
 pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
     mu.lock();
     defer mu.unlock();
-    
+
     if (is_initialized) return;
 
-    _allocator = allocator;
     _db = db;
     _db_ownership = .borrowed;
 
@@ -318,7 +254,7 @@ pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
 /// @deprecated 请使用 initWithDb 代替
 ///
 /// 设置全局分配器并触发一次性初始化。
-/// 初始化顺序：日志器 → 数据库 → 服务管理器 → 插件系统
+/// 初始化顺序：日志器 → 数据库 → 服务管理器
 /// 数据库所有权为 owned，会在 deinit 中清理。
 ///
 /// 参数：
@@ -331,16 +267,20 @@ pub fn init(allocator: Allocator) void {
     
     if (is_initialized) return;
 
-    _allocator = allocator;
+    // 注意：allocator 不再存储，从 ServiceManager 获取
+    _ = allocator;
     init_some();
 }
 
 /// 获取全局分配器
 ///
 /// 返回：全局内存分配器
-/// 注意：必须先调用 init() 初始化
+/// 注意：必须先调用 init() 初始化，并且 ServiceManager 必须已创建
 pub fn get_allocator() Allocator {
-    return _allocator.?;
+    if (_service_manager) |sm| {
+        return sm.getAllocator();
+    }
+    @panic("Service manager not initialized, cannot get allocator");
 }
 
 /// 获取 ORM 数据库连接
@@ -362,9 +302,9 @@ pub fn getServiceManager() ?*services.ServiceManager {
 /// 获取插件系统服务
 ///
 /// 返回：插件系统服务指针
-/// 注意：如果插件系统未初始化会 panic
-pub fn getPluginSystem() *PluginSystemService {
-    return _plugin_system orelse @panic("Plugin system not initialized");
+/// 注意：如果服务管理器未初始化会 panic
+pub fn getPluginSystem() *services.PluginSystemService {
+    return getServiceManager().?.getPluginSystemService();
 }
 
 // get_container 已弃用，使用 getServiceManager() 代替

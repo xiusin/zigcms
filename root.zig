@@ -123,12 +123,10 @@ pub const ServiceManager = @import("application/services/mod.zig").ServiceManage
 
 // 全局服务实例
 var service_manager: ?ServiceManager = null;
-// 基础设施数据库连接（需要清理）
+// 基础设施数据库连接（由 ServiceManager 管理生命周期）
 var infrastructure_db: ?*sql_orm.Database = null;
 // 服务实例将通过DI容器管理，不再使用全局变量
 // 这些变量已被移除，服务生命周期由DI容器统一管理
-// 全局分配器（用于清理资源）
-var global_allocator: ?std.mem.Allocator = null;
 
 // ============================================================================
 // 配置
@@ -264,8 +262,7 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
 /// ## 错误
 /// 如果任何层初始化失败，返回相应的错误。
 pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
-    // 存储分配器以便后续清理
-    global_allocator = allocator;
+    // allocator 用于初始化各层，之后由 ServiceManager 管理
 
     // 初始化各层，遵照依赖关系
     try shared.init(allocator, config.shared);
@@ -458,26 +455,23 @@ pub fn deinitSystem() void {
     std.debug.print("[INFO] 开始系统清理...\n", .{});
 
     // 1. 清理服务管理器
-    if (service_manager) |*sm| sm.deinit();
+    if (service_manager) |*sm| {
+        const allocator = sm.getAllocator();
+        sm.deinit();
+        allocator.destroy(infrastructure_db.?);
+    }
     service_manager = null;
+    infrastructure_db = null;
 
     // 2. 清理全局模块
     shared.global.deinit();
 
-    // 3. 清理基础设施数据库
-    if (infrastructure_db) |db| {
-        db.deinit();
-        if (global_allocator) |allocator| allocator.destroy(db);
-    }
-    infrastructure_db = null;
-
-    // 4. 清理配置加载器
+    // 3. 清理配置加载器
     if (global_config_loader) |*loader| loader.deinit();
     global_config_loader = null;
 
-    // 5. 核心：由 DI 系统的 Arena 回收所有单例和服务资源
+    // 4. 核心：由 DI 系统的 Arena 回收所有单例和服务资源
     shared.deinit();
 
-    global_allocator = null;
     std.debug.print("[INFO] 系统清理完成\n", .{});
 }
