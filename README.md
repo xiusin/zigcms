@@ -165,6 +165,9 @@ zig version
 
 ## 📄 许可证
 
+## 核心
+> 当无法fetch数据的时候，请卸载代理变量
+
 本项目采用 MIT 许可证。
 
 
@@ -179,6 +182,8 @@ https://gitee.com/nbnat/layui-filemanage
 https://admin.demo.ulthon.com/admin/Index/index.html#/admin/system.auth/index.html
 
 https://dev.layuion.com/extend/selectplus/ 组件
+
+
 
 
 

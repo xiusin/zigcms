@@ -84,6 +84,12 @@ pub const BelongsTo = orm.BelongsTo;
 pub const Migrator = orm.Migrator; // 数据库迁移器
 pub const Dialect = orm.Dialect; // 数据库方言
 
+// 带超时控制的查询（需要 RequestContext）
+pub const queryWithContext = @import("query_with_context.zig").queryWithContext;
+pub const queryOneWithContext = @import("query_with_context.zig").queryOneWithContext;
+pub const execWithContext = @import("query_with_context.zig").execWithContext;
+pub const transactionWithContext = @import("query_with_context.zig").transactionWithContext;
+
 // SQL 错误处理
 pub const SqlError = sql_errors.SqlError;
 pub const SqlErrorCode = sql_errors.SqlErrorCode;

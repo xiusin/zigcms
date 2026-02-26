@@ -34,7 +34,7 @@ trigger: always_on
 ---
 
 ## 🗃️ 变更留痕规范
-- 所有改动需追加到 `docs/{{DATE}}/ai_modify.md`，使用以下模板：
+- 所有改动需追加到 `docs/{{DATE}}/{{MODULE}}.md`，使用以下模板：
   ```
   - 时间：YYYY-MM-DD HH:mm:ss
   - 操作类型：[新增|修改|删除|重构|注释|其他]

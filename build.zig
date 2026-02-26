@@ -225,11 +225,60 @@ pub fn build(b: *std.Build) void {
 
     // const run_integration_tests = b.addRunArtifact(integration_tests);
 
+    // ========================================================================
+    // 并发测试
+    // ========================================================================
+    const concurrent_tests_module = b.createModule(.{
+        .root_source_file = b.path("tests/concurrent_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addCommonImports(concurrent_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    concurrent_tests_module.addImport("zigcms", lib_module);
+
+    const concurrent_tests = b.addTest(.{
+        .name = "zigcms-concurrent-tests",
+        .root_module = concurrent_tests_module,
+    });
+    concurrent_tests.linkLibrary(sqlite.artifact("sqlite"));
+    concurrent_tests.linkLibC();
+    setupMySQLPaths(concurrent_tests, target);
+
+    const run_concurrent_tests = b.addRunArtifact(concurrent_tests);
+
+    const concurrent_test_step = b.step("test-concurrent", "Run concurrent/thread-safety tests");
+    concurrent_test_step.dependOn(&run_concurrent_tests.step);
+
+    // ========================================================================
+    // 内存泄漏检测测试
+    // ========================================================================
+    const memory_leak_tests_module = b.createModule(.{
+        .root_source_file = b.path("tests/memory_leak_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addCommonImports(memory_leak_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    memory_leak_tests_module.addImport("zigcms", lib_module);
+
+    const memory_leak_tests = b.addTest(.{
+        .name = "zigcms-memory-leak-tests",
+        .root_module = memory_leak_tests_module,
+    });
+    memory_leak_tests.linkLibrary(sqlite.artifact("sqlite"));
+    memory_leak_tests.linkLibC();
+    setupMySQLPaths(memory_leak_tests, target);
+
+    const run_memory_leak_tests = b.addRunArtifact(memory_leak_tests);
+
+    const memory_leak_test_step = b.step("test-memory", "Run memory leak detection tests");
+    memory_leak_test_step.dependOn(&run_memory_leak_tests.step);
+
     // 测试步骤
     const test_step = b.step("test", "Run all tests (unit + integration)");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
-    // test_step.dependOn(&run_integration_tests.step);
+    test_step.dependOn(&run_concurrent_tests.step);
+    test_step.dependOn(&run_memory_leak_tests.step);
 
     // 仅单元测试步骤
     const unit_test_step = b.step("test-unit", "Run unit tests only");

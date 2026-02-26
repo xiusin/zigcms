@@ -158,13 +158,15 @@ pub const CacheInterface = struct {
         /// 参数:
         /// - ptr: 缓存实现的上下文指针
         /// - key: 缓存键
+        /// - allocator: 内存分配器，用于复制返回值
         ///
         /// 返回:
-        /// - 缓存值（如果存在且未过期）
+        /// - 缓存值的副本（调用者拥有所有权，必须使用同一allocator释放）
         /// - null（如果不存在或已过期）
         ///
-        /// 注意: 返回的切片指向缓存内部存储，不应修改或释放
-        get: *const fn (ptr: *anyopaque, key: []const u8) ?[]const u8,
+        /// 内存所有权: 调用者必须使用 allocator.free() 释放返回的内存
+        /// 线程安全: 返回值是内部数据的副本，可以安全地跨线程使用
+        get: *const fn (ptr: *anyopaque, key: []const u8, allocator: std.mem.Allocator) anyerror!?[]const u8,
 
         /// 删除缓存项
         ///
@@ -258,21 +260,27 @@ pub const CacheInterface = struct {
     ///
     /// 参数:
     /// - key: 缓存键
+    /// - allocator: 内存分配器（用于复制返回值，调用者必须用此allocator释放）
     ///
     /// 返回:
-    /// - 缓存值切片（指向内部存储，不要修改或释放）
+    /// - 缓存值的副本（调用者拥有所有权）
     /// - null（如果不存在或已过期）
+    ///
+    /// 内存管理:
+    /// - 返回值由allocator分配，调用者必须使用 allocator.free() 释放
+    /// - 建议使用 defer allocator.free(value) 确保释放
     ///
     /// 示例:
     /// ```zig
-    /// if (cache.get("user:1:name")) |name| {
+    /// if (try cache.get("user:1:name", allocator)) |name| {
+    ///     defer allocator.free(name);
     ///     std.debug.print("用户名: {s}\n", .{name});
     /// } else {
     ///     std.debug.print("缓存未命中\n", .{});
     /// }
     /// ```
-    pub fn get(self: CacheInterface, key: []const u8) ?[]const u8 {
-        return self.vtable.get(self.ptr, key);
+    pub fn get(self: CacheInterface, key: []const u8, allocator: std.mem.Allocator) !?[]const u8 {
+        return self.vtable.get(self.ptr, key, allocator);
     }
 
     /// 删除缓存项
@@ -379,8 +387,9 @@ pub const CacheInterface = struct {
         comptime loader: fn () anyerror![]const u8,
         allocator: std.mem.Allocator,
     ) ![]const u8 {
-        if (self.get(key)) |value| {
-            return try allocator.dupe(u8, value);
+        if (try self.get(key, allocator)) |value| {
+            // get() 已经返回副本，直接返回
+            return value;
         }
 
         const value = try loader();
@@ -401,10 +410,10 @@ pub const CacheInterface = struct {
     /// - 缓存值（调用者拥有内存）
     /// - null（如果不存在）
     pub fn pull(self: CacheInterface, key: []const u8, allocator: std.mem.Allocator) !?[]u8 {
-        if (self.get(key)) |value| {
-            const result = try allocator.dupe(u8, value);
+        if (try self.get(key, allocator)) |value| {
+            // get() 已经返回副本，删除原始缓存后返回副本
             try self.del(key);
-            return result;
+            return value;
         }
         return null;
     }

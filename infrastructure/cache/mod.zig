@@ -94,8 +94,8 @@ const MemoryCache = struct {
         self.data.deinit();
     }
 
-    /// 获取缓存值
-    fn get(ptr: *anyopaque, key: []const u8) ?[]const u8 {
+    /// 获取缓存值（返回副本，线程安全）
+    fn get(ptr: *anyopaque, key: []const u8, allocator: std.mem.Allocator) anyerror!?[]const u8 {
         const self: *Self = @ptrCast(@alignCast(ptr));
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -104,7 +104,8 @@ const MemoryCache = struct {
             if (entry.isExpired()) {
                 return null;
             }
-            return entry.value;
+            // 返回副本，确保线程安全
+            return try allocator.dupe(u8, entry.value);
         }
         return null;
     }
@@ -259,7 +260,9 @@ const RedisCache = struct {
 
     /// 释放Redis缓存
     fn deinit(self: *Self) void {
-        self.connection.close();
+        _ = self;
+        // Redis not implemented
+        // self.connection.close();
     }
 
     /// 获取缓存值
@@ -402,24 +405,7 @@ pub const CacheFactory = struct {
                 };
             },
             .Redis => {
-                const redis_conn = try redis.connect(.{
-                    .host = config.redis_host,
-                    .port = config.redis_port,
-                    .password = config.redis_password,
-                }, allocator);
-                errdefer redis_conn.close();
-
-                const cache_ptr = try allocator.create(RedisCache);
-                errdefer allocator.destroy(cache_ptr);
-
-                cache_ptr.* = RedisCache.init(allocator, redis_conn, config.default_ttl);
-
-                return CacheHandle{
-                    .cache_iface = cache_ptr.asInterface(),
-                    .allocator = allocator,
-                    .backend_ptr = cache_ptr,
-                    .backend_type = .Redis,
-                };
+                return error.RedisNotImplemented;
             },
             .Memcached => {
                 return error.MemcachedNotImplemented;
@@ -480,15 +466,18 @@ test "MemoryCache - 基本操作" {
 
     try cache.set("key1", "value1", null);
 
-    const result = try cache.get("key1");
-    try std.testing.expect(result != null);
-    try std.testing.expectEqualStrings("value1", result.?);
+    if (try cache.get("key1", allocator)) |result| {
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("value1", result);
+    } else {
+        try std.testing.expect(false);
+    }
 
     const exists_result = try cache.exists("key1");
     try std.testing.expect(exists_result);
 
     try cache.delete("key1");
-    const deleted_result = try cache.get("key1");
+    const deleted_result = try cache.get("key1", allocator);
     try std.testing.expect(deleted_result == null);
 }
 
@@ -510,12 +499,16 @@ test "MemoryCache - TTL过期" {
 
     try cache.set("key_ttl", "value_ttl", 1);
 
-    const result1 = try cache.get("key_ttl");
-    try std.testing.expect(result1 != null);
+    if (try cache.get("key_ttl", allocator)) |result1| {
+        defer allocator.free(result1);
+        try std.testing.expectEqualStrings("value_ttl", result1);
+    } else {
+        try std.testing.expect(false);
+    }
 
     std.Thread.sleep(2 * std.time.ns_per_s);
 
-    const result2 = try cache.get("key_ttl");
+    const result2 = try cache.get("key_ttl", allocator);
     try std.testing.expect(result2 == null);
 }
 
@@ -541,9 +534,9 @@ test "MemoryCache - 清空缓存" {
 
     try cache.clear();
 
-    const result1 = try cache.get("key1");
-    const result2 = try cache.get("key2");
-    const result3 = try cache.get("key3");
+    const result1 = try cache.get("key1", allocator);
+    const result2 = try cache.get("key2", allocator);
+    const result3 = try cache.get("key3", allocator);
 
     try std.testing.expect(result1 == null);
     try std.testing.expect(result2 == null);
@@ -569,9 +562,12 @@ test "MemoryCache - 覆盖已存在的键" {
     try cache.set("key", "old_value", null);
     try cache.set("key", "new_value", null);
 
-    const result = try cache.get("key");
-    try std.testing.expect(result != null);
-    try std.testing.expectEqualStrings("new_value", result.?);
+    if (try cache.get("key", allocator)) |result| {
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("new_value", result);
+    } else {
+        try std.testing.expect(false);
+    }
 }
 
 test "MemoryCache - 不存在的键" {
@@ -590,7 +586,7 @@ test "MemoryCache - 不存在的键" {
 
     const cache = handle.interface();
 
-    const result = try cache.get("nonexistent");
+    const result = try cache.get("nonexistent", allocator);
     try std.testing.expect(result == null);
 
     const exists_result = try cache.exists("nonexistent");

@@ -13,7 +13,8 @@ test "CacheInterface - MemoryCacheDriver 契约测试" {
 
     try cache.set("test_key", "test_value", 300);
     
-    if (cache.get("test_key")) |value| {
+    if (try cache.get("test_key", allocator)) |value| {
+        defer allocator.free(value);
         try testing.expectEqualStrings("test_value", value);
     } else {
         try testing.expect(false);

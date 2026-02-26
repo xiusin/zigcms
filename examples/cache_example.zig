@@ -16,7 +16,8 @@ pub fn main() !void {
 
     std.debug.print("1. 测试 set/get:\n", .{});
     try cache.set("user:1:name", "Alice", 300);
-    if (cache.get("user:1:name")) |value| {
+    if (try cache.get("user:1:name", allocator)) |value| {
+        defer allocator.free(value);
         std.debug.print("   ✓ 成功获取缓存值: {s}\n", .{value});
     }
 
