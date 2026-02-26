@@ -45,6 +45,7 @@ const ResourceOwnership = enum {
 var _db: ?*sql.Database = null;
 var _db_ownership: ResourceOwnership = .borrowed;
 var _service_manager: ?*services.ServiceManager = null;
+var _service_manager_ownership: ResourceOwnership = .borrowed;
 // 移除独立的 _plugin_system，改为从 ServiceManager 获取
 var config: std.StringHashMap([]const u8) = undefined;
 var mu: std.Thread.Mutex = std.Thread.Mutex{};
@@ -72,12 +73,15 @@ pub fn deinit() void {
 
     std.debug.print("[INFO] global module deinit, cleaning up resources...\n", .{});
 
-    // 1. 清理服务管理器（通过 ServiceManager 的 allocator）
+    // 1. 根据所有权决定是否清理服务管理器
     if (_service_manager) |sm| {
-        const allocator = sm.getAllocator();
-        sm.deinit();
-        allocator.destroy(sm);
+        if (_service_manager_ownership == .owned) {
+            const allocator = sm.getAllocator();
+            sm.deinit();
+            allocator.destroy(sm);
+        }
         _service_manager = null;
+        _service_manager_ownership = .borrowed;
     }
 
     // 2. 根据所有权决定是否清理数据库
@@ -216,6 +220,7 @@ fn initServiceManager(allocator: Allocator) !void {
     service_mgr.* = try services.ServiceManager.init(allocator, _db.?, system_config);
 
     _service_manager = service_mgr;
+    _service_manager_ownership = .owned;
 
     logger.info("[global] 服务管理器初始化完成", .{});
 }
@@ -291,12 +296,27 @@ pub fn get_db() *sql.Database {
     return _db orelse @panic("ORM database not initialized");
 }
 
+/// 设置服务管理器引用
+///
+/// 参数：
+/// - sm: 由 root.zig 持有生命周期的服务管理器指针
+///
+/// 注意：
+/// - 仅保存借用引用，不接管所有权
+/// - 线程安全：使用 mutex 保护
+pub fn setServiceManager(sm: *services.ServiceManager) void {
+    mu.lock();
+    defer mu.unlock();
+    _service_manager = sm;
+    _service_manager_ownership = .borrowed;
+}
+
 /// 获取服务管理器
 ///
-/// 返回：服务管理器指针
-/// 注意：如果服务管理器未初始化会 panic
+/// 返回：服务管理器指针（可空）
+/// 注意：未初始化时返回 null，由调用方决定处理方式
 pub fn getServiceManager() ?*services.ServiceManager {
-    return _service_manager orelse @panic("Service manager not initialized");
+    return _service_manager;
 }
 
 /// 获取插件系统服务

@@ -300,6 +300,9 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     service_manager = try ServiceManager.init(allocator, db, config);
     logger.info("服务管理器初始化完成", .{});
 
+    // 同步服务管理器借用引用到 global 模块，供兼容路径读取
+    shared.global.setServiceManager(&service_manager.?);
+
     // 将服务管理器注册到 DI 容器，实现更好的生命周期管理
     const di = @import("shared/di/mod.zig");
     if (di.getGlobalContainer()) |container| {
@@ -344,10 +347,12 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
 
 /// 注册用户服务
 fn registerUserServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+    _ = func_allocator;
+
     // 创建仓储实例
-    const sqlite_repo = try createSqliteUserRepository(func_allocator, db);
-    const user_repo = try func_allocator.create(UserRepository);
-    errdefer func_allocator.destroy(user_repo);
+    const sqlite_repo = try createSqliteUserRepository(container.allocator, db);
+    const user_repo = try container.allocator.create(UserRepository);
+    errdefer container.allocator.destroy(user_repo);
     user_repo.* = domain.repositories.user_repository.create(sqlite_repo, &SqliteUserRepository.vtable());
 
     // 注册到容器
@@ -376,10 +381,12 @@ fn createSqliteUserRepository(allocator: std.mem.Allocator, db: *sql_orm.Databas
 
 /// 注册会员服务
 fn registerMemberServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+    _ = func_allocator;
+
     // 创建仓储实例
-    const sqlite_repo = try createSqliteMemberRepository(func_allocator, db);
-    const member_repo = try func_allocator.create(MemberRepository);
-    errdefer func_allocator.destroy(member_repo);
+    const sqlite_repo = try createSqliteMemberRepository(container.allocator, db);
+    const member_repo = try container.allocator.create(MemberRepository);
+    errdefer container.allocator.destroy(member_repo);
     member_repo.* = domain.repositories.member_repository.create(sqlite_repo, &SqliteMemberRepository.vtable());
 
     // 注册到容器
@@ -400,10 +407,12 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
 
 /// 注册分类服务
 fn registerCategoryServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+    _ = func_allocator;
+
     // 创建仓储实例
-    const sqlite_repo = try createSqliteCategoryRepository(func_allocator, db);
-    const category_repo = try func_allocator.create(CategoryRepository);
-    errdefer func_allocator.destroy(category_repo);
+    const sqlite_repo = try createSqliteCategoryRepository(container.allocator, db);
+    const category_repo = try container.allocator.create(CategoryRepository);
+    errdefer container.allocator.destroy(category_repo);
     category_repo.* = domain.repositories.category_repository.create(sqlite_repo, &SqliteCategoryRepository.vtable());
 
     // 注册到容器
@@ -428,6 +437,16 @@ fn createSqliteMemberRepository(allocator: std.mem.Allocator, db: *sql_orm.Datab
     errdefer allocator.destroy(repo);
     repo.* = SqliteMemberRepository.init(allocator, db);
     return repo;
+}
+
+/// 释放 SQLite 会员仓储实例
+fn deinitSqliteMemberRepository(repo: *SqliteMemberRepository, allocator: std.mem.Allocator) void {
+    allocator.destroy(repo);
+}
+
+/// 释放会员仓储接口实例，并级联释放底层 SQLite 实现
+fn deinitMemberRepository(repo: *MemberRepository, allocator: std.mem.Allocator) void {
+    allocator.destroy(repo);
 }
 
 /// 注册分类服务实现
@@ -458,6 +477,7 @@ pub fn deinitSystem() void {
     if (service_manager) |*sm| {
         const allocator = sm.getAllocator();
         sm.deinit();
+        infrastructure_db.?.deinit();
         allocator.destroy(infrastructure_db.?);
     }
     service_manager = null;

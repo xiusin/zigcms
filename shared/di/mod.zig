@@ -73,6 +73,10 @@ pub fn deinitGlobalDISystem() void {
     defer di_mutex.unlock();
 
     if (di_arena) |*arena| {
+        if (global_container) |container_ptr| {
+            container_ptr.deinit();
+        }
+
         // 这一步是核武器：直接释放 Arena 块。
         // 它会瞬间销毁容器、注册表以及所有在里面分配的服务实例。
         // 由于这些服务是单例且随程序结束而销毁，这是最安全的做法。

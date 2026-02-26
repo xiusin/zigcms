@@ -22,6 +22,8 @@ pub const Application = struct {
         const app_ptr = try allocator.create(Self);
         errdefer allocator.destroy(app_ptr);
 
+        app_ptr.* = undefined;
+
         const config = try zigcms.loadSystemConfig(allocator);
 
         try zigcms.initSystem(allocator, config);
@@ -47,17 +49,17 @@ pub const Application = struct {
             app_context.setServiceManager(sm);
         }
         
-        const bootstrap = try Bootstrap.init(allocator, &app, global_logger, container, app_context);
-
         app_ptr.* = .{
             .allocator = allocator,
             .config = config,
             .app = app,
-            .bootstrap = bootstrap,
+            .bootstrap = undefined,
             .global_logger = global_logger,
             .system_initialized = true,
             .app_context = app_context,
         };
+
+        app_ptr.bootstrap = try Bootstrap.init(allocator, &app_ptr.app, global_logger, container, app_context);
 
         try app_ptr.bootstrap.registerRoutes();
 
