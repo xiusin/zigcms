@@ -25,7 +25,6 @@ fn addCommonImports(module: *std.Build.Module, deps: anytype) void {
     module.addImport("regex", deps.regex.module("regex"));
     module.addImport("smtp_client", deps.smtp_client.module("smtp_client"));
     module.addImport("sqlite", deps.sqlite.module("sqlite"));
-    module.addImport("curl", deps.curl.module("curl"));
 }
 
 // 辅助函数：设置 MySQL 路径
@@ -97,7 +96,7 @@ pub fn build(b: *std.Build) void {
     const pg = b.dependency("pg", .{ .target = target, .optimize = optimize });
     const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
     const sqlite = b.dependency("sqlite", .{ .target = target, .optimize = optimize });
-    const curl = b.dependency("curl", .{ .target = target, .optimize = optimize });
+    // const curl = b.dependency("curl", .{ .target = target, .optimize = optimize });
     const smtp_client = b.dependency("smtp_client", .{ .target = target, .optimize = optimize });
 
     // ========================================================================
@@ -110,7 +109,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // 为库模块添加依赖
-    addCommonImports(lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     const static_lib = b.addLibrary(.{
         .name = "zigcms",
@@ -131,7 +130,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // 为动态库模块添加依赖
-    addCommonImports(shared_lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(shared_lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     const shared_lib = b.addLibrary(.{
         .name = "zigcms",
@@ -157,7 +156,7 @@ pub fn build(b: *std.Build) void {
     });
     const exe = b.addExecutable(.{ .name = "zigcms", .root_module = exe_module });
 
-    addCommonImports(exe_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(exe_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     exe.linkLibrary(sqlite.artifact("sqlite"));
     exe.linkLibC();
@@ -185,7 +184,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addCommonImports(lib_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(lib_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     const lib_unit_tests = b.addTest(.{
         .name = "zigcms-lib-tests",
@@ -202,7 +201,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addCommonImports(exe_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(exe_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     const exe_unit_tests = b.addTest(.{
         .name = "zigcms-exe-tests",
@@ -222,7 +221,7 @@ pub fn build(b: *std.Build) void {
     //     .target = target,
     //     .optimize = optimize,
     // });
-    // addCommonImports(integration_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    // addCommonImports(integration_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
 
     // // 添加项目内部模块引用
     // integration_tests_module.addImport("zigcms", lib_module);
@@ -245,7 +244,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addCommonImports(concurrent_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(concurrent_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
     concurrent_tests_module.addImport("zigcms", lib_module);
 
     const concurrent_tests = b.addTest(.{
@@ -269,7 +268,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addCommonImports(memory_leak_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(memory_leak_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
     memory_leak_tests_module.addImport("zigcms", lib_module);
 
     const memory_leak_tests = b.addTest(.{
@@ -309,7 +308,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addCommonImports(property_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite, .curl = curl });
+    addCommonImports(property_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .smtp_client = smtp_client, .sqlite = sqlite });
     // 添加 zigcms 库模块引用
     property_tests_module.addImport("zigcms", lib_module);
 
