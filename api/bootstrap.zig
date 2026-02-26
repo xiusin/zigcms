@@ -59,6 +59,9 @@ pub const Bootstrap = struct {
 
         // 注册自定义控制器路由
         try self.registerCustomRoutes();
+
+        // 打印所有已注册的路由
+        self.app.printRoutes();
     }
 
     /// 注册 CRUD 模块

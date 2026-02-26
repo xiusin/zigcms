@@ -20,10 +20,19 @@ pub const App = struct {
         deinit_fn: *const fn (*anyopaque, std.mem.Allocator) void,
     };
 
+    const RouteEntry = struct {
+        path: []const u8,
+        method: []const u8,
+        controller_type: []const u8,
+        handler_name: []const u8,
+    };
+
     allocator: std.mem.Allocator,
     router: zap.Router,
     /// 存储已创建的控制器指针，用于清理
     controllers: std.ArrayListUnmanaged(ControllerEntry),
+    /// 存储已注册的路由信息，用于打印
+    routes: std.ArrayListUnmanaged(RouteEntry),
 
     /// 初始化应用
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -34,6 +43,7 @@ pub const App = struct {
                 .not_found = notFoundHandler,
             }),
             .controllers = .{},
+            .routes = .{},
         };
     }
 
@@ -44,6 +54,7 @@ pub const App = struct {
             entry.deinit_fn(entry.ptr, self.allocator);
         }
         self.controllers.deinit(self.allocator);
+        self.routes.deinit(self.allocator);
         self.router.deinit();
     }
 
@@ -77,11 +88,47 @@ pub const App = struct {
         try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, Controller.delete);
         try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, Controller.modify);
         try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, Controller.select);
+
+        // 记录 CRUD 路由信息
+        const crud_paths = [_][]const u8{ "/list", "/get", "/save", "/delete", "/modify", "/select" };
+        const crud_handlers = [_][]const u8{ "list", "get", "save", "delete", "modify", "select" };
+        for (crud_paths, crud_handlers) |path, handler_name| {
+            var route_buf: [64]u8 = undefined;
+            const route_path = std.fmt.bufPrint(&route_buf, "/{s}{s}", .{ name, path }) catch "route-too-long";
+            try self.routes.append(self.allocator, .{
+                .path = try self.allocator.dupe(u8, route_path),
+                .method = "POST",
+                .controller_type = try self.allocator.dupe(u8, "CRUD(" ++ name ++ ")"),
+                .handler_name = handler_name,
+            });
+        }
     }
 
     /// 注册路由 - 适配新的控制器路径
     pub fn route(self: *Self, path: []const u8, ctrl: anytype, handler: anytype) !void {
         try self.router.handle_func(path, ctrl, handler);
+        
+        // 记录独立路由信息
+        const controller_type = @TypeOf(ctrl);
+        const type_name = @typeName(controller_type);
+        const module_name = if (std.mem.lastIndexOf(u8, type_name, ".")) |dot_idx|
+            type_name[dot_idx + 1 ..]
+        else
+            type_name;
+            
+        const handler_type = @TypeOf(handler);
+        const handler_name = @typeName(handler_type);
+        const handler_fn_name = if (std.mem.lastIndexOf(u8, handler_name, ".")) |dot_idx|
+            handler_name[dot_idx + 1 ..]
+        else
+            handler_name;
+        
+        try self.routes.append(self.allocator, .{
+            .path = try self.allocator.dupe(u8, path),
+            .method = "POST",
+            .controller_type = try self.allocator.dupe(u8, module_name),
+            .handler_name = try self.allocator.dupe(u8, handler_fn_name),
+        });
     }
 
     /// 注册动态 CRUD 路由
@@ -141,6 +188,27 @@ pub const App = struct {
         logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });
         try listener.listen();
         zap.start(.{ .threads = 4, .workers = 4 });
+    }
+
+    /// 打印所有已注册的路由（调试/运维用）
+    pub fn printRoutes(self: *const Self) void {
+        logger.info("🛣️  已注册的路由列表:", .{});
+        logger.info("┌─────────────────────────────────────────────────────────────────┐", .{});
+        logger.info("│ 路由路径                     │ HTTP 方法 │ 控制器类型        │ 处理器    │", .{});
+        logger.info("├─────────────────────────────────────────────────────────────────┤", .{});
+
+        // 遍历所有已注册的路由
+        for (self.routes.items) |route_entry| {
+            logger.info("│ {s:<27} │ {s:<8} │ {s:<16} │ {s:<8} │", .{ 
+                route_entry.path, 
+                route_entry.method, 
+                route_entry.controller_type, 
+                route_entry.handler_name 
+            });
+        }
+
+        logger.info("└─────────────────────────────────────────────────────────────────┘", .{});
+        logger.info("总计: {d} 条路由", .{self.routes.items.len});
     }
 
     fn notFoundHandler(req: zap.Request) !void {
