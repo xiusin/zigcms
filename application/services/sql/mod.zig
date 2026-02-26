@@ -123,6 +123,23 @@ pub const ConnectionPool = advanced.ConnectionPool;
 pub const ConnectionPoolConfig = advanced.ConnectionPoolConfig;
 pub const PoolStats = advanced.PoolStats;
 
+// JSON 字段支持
+pub const json = @import("json_field.zig");
+pub const JsonField = json.JsonField;
+pub const JsonArray = json.JsonArray;
+
+// 模型字段绑定解析
+pub const binding = @import("field_binding.zig");
+pub const FieldInfo = binding.FieldInfo;
+pub const FieldType = binding.FieldType;
+pub const ModelFields = binding.ModelFields;
+pub const extractModelFields = binding.extractModelFields;
+pub const serializeModel = binding.serializeModel;
+pub const freeSerializedResult = binding.freeSerializedResult;
+pub const buildInsertFields = binding.buildInsertFields;
+pub const InsertFields = binding.InsertFields;
+pub const loadModelFromResult = binding.loadModelFromResult;
+
 // 便捷函数
 pub const open = core.open;
 pub const format = core.format;

@@ -5,7 +5,7 @@
 
 const std = @import("std");
 const sql = @import("../../application/services/sql/orm.zig");
-const User = @import("../../domain/entities/user.model.zig").User;
+const UserData = @import("../../domain/entities/user.model.zig").UserData;
 const UserRepository = @import("../../domain/repositories/user_repository.zig").UserRepository;
 
 /// SQLite 用户仓储实现
@@ -25,7 +25,7 @@ pub const SqliteUserRepository = struct {
     }
 
     /// 实现findById方法
-    pub fn findById(ptr: *anyopaque, id: i32) !?User {
+    pub fn findById(ptr: *anyopaque, id: i32) !?UserData {
         const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
 
         // 使用Database.rawQuery查询用户
@@ -37,21 +37,21 @@ pub const SqliteUserRepository = struct {
             return null;
         }
 
-        // 构建User实体
-        return User{
+        // 构建UserData实体
+        return UserData{
             .id = try result_set.get(i32, 0),
             .username = try self.allocator.dupe(u8, try result_set.get([]const u8, 1)),
             .email = try self.allocator.dupe(u8, try result_set.get([]const u8, 2)),
             .nickname = try self.allocator.dupe(u8, try result_set.get([]const u8, 3)),
             .avatar = try self.allocator.dupe(u8, try result_set.get([]const u8, 4)),
-            .status = try result_set.get(i32, 5),
+            .status = @enumFromInt(try result_set.get(i32, 5)),
             .create_time = try result_set.get(?i64, 6),
             .update_time = try result_set.get(?i64, 7),
         };
     }
 
     /// 实现findAll方法
-    pub fn findAll(ptr: *anyopaque) ![]User {
+    pub fn findAll(ptr: *anyopaque) ![]UserData {
         const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
 
         // 查询所有未删除的用户
@@ -59,18 +59,18 @@ pub const SqliteUserRepository = struct {
         var result_set = try self.db.rawQuery(query, .{});
         defer result_set.deinit();
 
-        // 转换为User数组
-        var users = try std.ArrayList(User).initCapacity(self.allocator, 16);
+        // 转换为UserData数组
+        var users = try std.ArrayList(UserData).initCapacity(self.allocator, 16);
         defer users.deinit(self.allocator);
 
         while (result_set.next()) {
-            const user = User{
+            const user = UserData{
                 .id = try result_set.get(i32, 0),
                 .username = try self.allocator.dupe(u8, try result_set.get([]const u8, 1)),
                 .email = try self.allocator.dupe(u8, try result_set.get([]const u8, 2)),
                 .nickname = try self.allocator.dupe(u8, try result_set.get([]const u8, 3)),
                 .avatar = try self.allocator.dupe(u8, try result_set.get([]const u8, 4)),
-                .status = try result_set.get(i32, 5),
+                .status = @enumFromInt(try result_set.get(i32, 5)),
                 .create_time = try result_set.get(?i64, 6),
                 .update_time = try result_set.get(?i64, 7),
             };
@@ -81,7 +81,7 @@ pub const SqliteUserRepository = struct {
     }
 
     /// 实现save方法
-    pub fn save(ptr: *anyopaque, user: User) !User {
+    pub fn save(ptr: *anyopaque, user: UserData) !UserData {
         const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
 
         // 检查是否为新用户
@@ -105,7 +105,7 @@ pub const SqliteUserRepository = struct {
             const last_id = self.db.lastInsertId();
 
             // 返回包含ID的用户
-            return User{
+            return UserData{
                 .id = @as(i32, @intCast(last_id)),
                 .username = try self.allocator.dupe(u8, user.username),
                 .email = try self.allocator.dupe(u8, user.email),
@@ -130,7 +130,7 @@ pub const SqliteUserRepository = struct {
             });
 
             // 返回更新后的用户
-            return User{
+            return UserData{
                 .id = user.id,
                 .username = try self.allocator.dupe(u8, user.username),
                 .email = try self.allocator.dupe(u8, user.email),
@@ -144,7 +144,7 @@ pub const SqliteUserRepository = struct {
     }
 
     /// 实现update方法
-    pub fn update(ptr: *anyopaque, user: User) !void {
+    pub fn update(ptr: *anyopaque, user: UserData) !void {
         const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
 
         if (user.id == null) {

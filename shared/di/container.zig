@@ -3,6 +3,7 @@
 //! 本模块提供依赖注入功能：
 //! - 支持单例 (Singleton) 和瞬态 (Transient) 模式
 //! - 生命周期托管：单例实例由容器持有的分配器管理
+//! - 自动清理：在 deinit 时调用每个 singleton 的清理函数
 //!
 //! ## 类型安全说明
 //!
@@ -10,7 +11,6 @@
 //! 通过 comptime 断言确保 ServiceType 和 ImplementationType 兼容：
 //! - 注册时：编译期检查工厂返回类型是否可转换为 *ImplementationType
 //! - 解析时：使用 @ptrCast 进行安全的类型恢复
-//! - 自动清理：在 deinit 时调用每个 singleton 的清理函数
 
 const std = @import("std");
 
@@ -26,10 +26,8 @@ pub const ServiceDescriptor = struct {
     service_type_name: []const u8,
     /// 实现类型名称
     implementation_type_name: []const u8,
-    /// 工厂函数（类型擦除后存储）
     factory: ?*const fn (*DIContainer, std.mem.Allocator) anyerror!*anyopaque,
     deinit_fn: ?*const fn (*anyopaque, std.mem.Allocator) void,
-    /// 服务生命周期
     lifetime: ServiceLifetime,
     /// 单例实例（仅单例模式使用）
     instance: ?*anyopaque = null,
@@ -58,23 +56,23 @@ pub const DIContainer = struct {
 
     /// 注册服务（单例模式）
     pub fn registerSingleton(
-        self: *Self,
-        comptime ServiceType: type,
-        comptime ImplementationType: type,
+        self: *Self, 
+        comptime ServiceType: type, 
+        comptime ImplementationType: type, 
         factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType,
         deinit_fn: ?fn (*ImplementationType, std.mem.Allocator) void,
     ) !void {
         const service_name = @typeName(ServiceType);
         const wrapper: FactoryFn = struct {
             fn wrap(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*anyopaque {
-                return @ptrCast(@alignCast(try raw_factory(di, allocator)));
+                return @ptrCast(@alignCast(try factory(di, allocator)));
             }
         }.wrap;
 
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
             .implementation_type_name = @typeName(ImplementationType),
-            .factory = @ptrCast(&factory),
+            .factory = @ptrCast(&wrapper),
             .deinit_fn = if (deinit_fn) |df| @ptrCast(&df) else null,
             .lifetime = .Singleton,
         };
@@ -83,17 +81,12 @@ pub const DIContainer = struct {
 
     /// 注册服务（瞬态模式）
     pub fn registerTransient(
-        self: *Self,
-        comptime ServiceType: type,
-        comptime ImplementationType: type,
+        self: *Self, 
+        comptime ServiceType: type, 
+        comptime ImplementationType: type, 
         factory: fn (*DIContainer, std.mem.Allocator) anyerror!*ImplementationType,
     ) !void {
         const service_name = @typeName(ServiceType);
-        const wrapper: FactoryFn = struct {
-            fn wrap(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*anyopaque {
-                return @ptrCast(@alignCast(try raw_factory(di, allocator)));
-            }
-        }.wrap;
 
         const descriptor = ServiceDescriptor{
             .service_type_name = service_name,
@@ -107,8 +100,8 @@ pub const DIContainer = struct {
 
     /// 注册已存在的实例（单例）
     pub fn registerInstance(
-        self: *Self,
-        comptime ServiceType: type,
+        self: *Self, 
+        comptime ServiceType: type, 
         instance: *ServiceType,
         deinit_fn: ?fn (*ServiceType, std.mem.Allocator) void,
     ) !void {
@@ -179,12 +172,12 @@ pub const DIContainer = struct {
     /// 清理容器
     pub fn deinit(self: *Self) void {
         if (!self.initialized) return;
-
+        
         // 清理所有 singleton 实例
         var desc_it = self.descriptors.iterator();
         while (desc_it.next()) |entry| {
             const descriptor = entry.value_ptr.*;
-
+            
             // 只清理 singleton 类型的服务
             if (descriptor.lifetime == .Singleton) {
                 if (descriptor.instance) |instance| {
@@ -198,7 +191,7 @@ pub const DIContainer = struct {
                 }
             }
         }
-
+        
         self.singletons.deinit();
         self.descriptors.deinit();
         self.initialized = false;
