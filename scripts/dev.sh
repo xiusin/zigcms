@@ -83,7 +83,8 @@ start_file_watcher() {
     info "按 Ctrl+C 停止"
     printf "\n"
     
-    # 启动初始服务器
+    # 启动初始服务器前清理旧进程
+    kill_running_zigcms "$exe_path"
     "$exe_path" &
     server_pid=$!
     success "服务器已启动 (PID: $server_pid)"
@@ -113,6 +114,7 @@ start_file_watcher() {
         # 重新构建
         if zig build 2>&1; then
             # 启动新服务器
+            kill_running_zigcms "$exe_path"
             "$exe_path" &
             server_pid=$!
             printf "${GREEN}${CHECK_MARK} 服务器重启成功 (PID: %s)${NC}\n" "$server_pid"
@@ -209,6 +211,9 @@ main() {
         error_exit "未找到可执行文件: $exe_path\n请先运行构建"
     fi
     success "可执行文件就绪: $exe_path"
+
+    # 启动前清理当前仓库的 zigcms 进程（精准匹配路径，避免误杀其他程序）
+    kill_running_zigcms "$exe_path"
     
     # 设置环境变量
     export ZIGCMS_HOST="$host"
@@ -225,6 +230,9 @@ main() {
         subtitle "${ROCKET_ICON} 启动服务器"
         printf "${GREEN}服务器地址: http://%s:%s${NC}\n" "$host" "$port"
         printf "${YELLOW}按 Ctrl+C 停止服务器${NC}\n\n"
+        
+        # 在启动服务器前安全清理当前仓库的 zigcms 进程
+        kill_running_zigcms "$exe_path"
         
         # 直接执行服务器
         exec "$exe_path"

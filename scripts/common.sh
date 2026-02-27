@@ -96,6 +96,36 @@ debug() {
     fi
 }
 
+# =============================================================================
+# 进程管理工具
+# =============================================================================
+
+# 只关闭指定可执行路径的 zigcms 进程，避免误杀其他程序
+kill_running_zigcms() {
+    local exe_path="$1"
+    if [ -z "$exe_path" ] || [ ! -x "$exe_path" ]; then
+        return
+    fi
+
+    # pgrep -fl 会列出 PID 和完整命令行，精确匹配 exe_path
+    if ! command_exists pgrep; then
+        warning "pgrep 不可用，跳过进程清理"
+        return
+    fi
+
+    local pids
+    pids=$(pgrep -fl "$exe_path" | awk '{print $1}')
+    if [ -z "$pids" ]; then
+        return
+    fi
+
+    for pid in $pids; do
+        if [ "$pid" != "$$" ]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 # 打印标题
 title() {
     printf "\n${BLUE}${BOLD}"
