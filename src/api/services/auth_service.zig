@@ -58,12 +58,10 @@ pub const AuthService = struct {
 
         // 登录成功后回写最近登录时间（不影响登录主流程）
         if (user.id) |user_id| {
-            var ts_buf: [32]u8 = undefined;
-            const now_dt = datetime.DateTime.now();
-            const now_str = now_dt.formatGo(datetime.go_format_datetime, &ts_buf);
+            const now_fmt = datetime.nowGoDatetime();
             _ = Admin.Update(user_id, .{
-                .last_login = now_str,
-                .updated_at = now_str,
+                .last_login = now_fmt.str,
+                .updated_at = now_fmt.str,
             }) catch |err| blk: {
                 std.log.warn("[auth] update last_login failed, user_id={d}, err={s}", .{ user_id, @errorName(err) });
                 break :blk 0;

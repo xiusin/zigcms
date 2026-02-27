@@ -1671,10 +1671,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
         /// 软删除
         pub fn softDelete(db: *Database, id: anytype) !u64 {
-            var ts_buf: [32]u8 = undefined;
-            const now_dt = datetime.DateTime.now();
-            const now_str = now_dt.formatGo(datetime.go_format_datetime, &ts_buf);
-            return update(db, id, .{ .deleted_at = now_str });
+            const now_fmt = datetime.nowGoDatetime();
+            return update(db, id, .{ .deleted_at = now_fmt.str });
         }
 
         /// 恢复软删除

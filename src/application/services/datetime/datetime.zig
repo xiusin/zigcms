@@ -35,6 +35,32 @@ pub const go_format_date_only = "2006-01-02";
 /// 兼容旧常量命名
 pub const go_full_datetime_format = go_format_datetime;
 
+/// 返回当前时间的 Go 风格完整时间字符串。
+/// 返回结构体而非直接返回 `[]const u8` 的原因：
+/// 1) `str` 指向结构体内的 buffer，避免悬空指针；
+/// 2) 结构体随作用域回收，无需手动释放；
+/// 3) 若需跨作用域持有，请使用 `nowGoDatetimeOwned`。
+pub const FormattedNow = struct {
+    buf: [32]u8,
+    str: []const u8,
+};
+
+pub fn nowGoDatetime() FormattedNow {
+    var buf: [32]u8 = undefined;
+    const dt = DateTime.now();
+    const s = dt.formatGo(go_format_datetime, &buf);
+    return .{ .buf = buf, .str = s };
+}
+
+/// 返回当前时间的 Go 风格完整时间字符串，返回堆上副本，调用方负责释放。
+/// 适用于需跨作用域或长期持有字符串的场景。
+pub fn nowGoDatetimeOwned(allocator: Allocator) ![]u8 {
+    var buf: [32]u8 = undefined;
+    const dt = DateTime.now();
+    const s = dt.formatGo(go_format_datetime, &buf);
+    return try allocator.dupe(u8, s);
+}
+
 /// 时区偏移（秒）
 pub const Timezone = struct {
     offset_seconds: i32,
