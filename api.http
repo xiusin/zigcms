@@ -10,20 +10,39 @@ Content-Type: {{json}}
   "password": "123456"
 }
 
-### 用户信息（支持 query id，默认1）
-GET {{base}}/userInfo?id=1
+### 用户信息
+POST {{base}}/userInfo
+Content-Type: {{json}}
+
+{
+  "id": 1
+}
 
 ### 部门树
-GET {{base}}/system/dept/tree
+POST {{base}}/system/dept/tree
+Content-Type: {{json}}
+
+{}
 
 ### 部门列表
-GET {{base}}/system/dept/all
+POST {{base}}/system/dept/all
+Content-Type: {{json}}
+
+{}
 
 ### 菜单树
-GET {{base}}/system/menu/tree
+POST {{base}}/system/menu/tree
+Content-Type: {{json}}
+
+{}
 
 ### 菜单权限查询
-GET {{base}}/system/menu/permissions?menu_id=1
+POST {{base}}/system/menu/permissions
+Content-Type: {{json}}
+
+{
+  "menu_id": 1
+}
 
 ### 菜单权限保存
 POST {{base}}/system/menu/save-permissions
@@ -35,7 +54,12 @@ Content-Type: {{json}}
 }
 
 ### 角色按钮权限
-GET {{base}}/role/button-perms?role_id=1
+POST {{base}}/role/button-perms
+Content-Type: {{json}}
+
+{
+  "role_id": 1
+}
 
 ### 管理员重置密码
 POST {{base}}/system/admin/resetPassword

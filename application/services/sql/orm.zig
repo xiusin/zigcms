@@ -580,7 +580,7 @@ pub const Database = struct {
     }
 
     /// 执行原始命令（支持参数绑定）
-    pub fn rawExec(self: *Database, sql_query: []const u8, args: anytype) !u64 {
+    pub fn exec(self: *Database, sql_query: []const u8, args: anytype) !u64 {
         const start_time = std.time.nanoTimestamp();
 
         // 格式化 SQL，绑定参数
@@ -969,12 +969,12 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             };
             const sql_str = try createTableSql(db, dialect);
             defer db.allocator.free(sql_str);
-            _ = try db.rawExec(sql_str, .{});
+            _ = try db.exec(sql_str, .{});
         }
 
         /// 执行删表
         pub fn dropTable(db: *Database) !void {
-            _ = try db.rawExec(dropTableSql(), .{});
+            _ = try db.exec(dropTableSql(), .{});
         }
 
         /// 释放模型中的字符串内存
@@ -1505,7 +1505,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try buildInsertSql(db.allocator, tableName(), data);
             defer db.allocator.free(sql);
 
-            _ = try db.rawExec(sql, .{});
+            _ = try db.exec(sql, .{});
             const id = db.conn.lastInsertId();
 
             // 重新查询返回完整记录
@@ -1516,14 +1516,14 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn update(db: *Database, id: anytype, data: anytype) !u64 {
             const sql = try buildUpdateSql(db.allocator, tableName(), primaryKey(), id, data);
             defer db.allocator.free(sql);
-            return db.rawExec(sql, .{});
+            return db.exec(sql, .{});
         }
 
         /// 删除记录
         pub fn destroy(db: *Database, id: anytype) !u64 {
             var buf: [256]u8 = undefined;
             const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
-            return db.rawExec(sql, .{});
+            return db.exec(sql, .{});
         }
 
         /// 统计记录数
@@ -1647,7 +1647,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 primaryKey(),
                 id,
             });
-            return db.rawExec(sql, .{});
+            return db.exec(sql, .{});
         }
 
         /// 自减字段
@@ -1797,7 +1797,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try sql_buf.toOwnedSlice(db.allocator);
             defer db.allocator.free(sql);
 
-            return db.rawExec(sql, .{});
+            return db.exec(sql, .{});
         }
 
         /// 按条件更新多条记录
@@ -1830,7 +1830,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try sql_buf.toOwnedSlice(db.allocator);
             defer db.allocator.free(sql);
 
-            return db.rawExec(sql, .{});
+            return db.exec(sql, .{});
         }
 
         // ====================================================================
@@ -2811,7 +2811,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            return self.db.rawExec(sql_str, .{});
+            return self.db.exec(sql_str, .{});
         }
 
         fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), val: anytype) !void {
@@ -3062,7 +3062,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            return self.db.rawExec(sql_str, .{});
+            return self.db.exec(sql_str, .{});
         }
 
         /// 批量自减指定字段 (Laravel: decrement)
@@ -3105,7 +3105,7 @@ pub fn ModelQuery(comptime T: type) type {
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
             defer self.db.allocator.free(sql_str);
 
-            return self.db.rawExec(sql_str, .{});
+            return self.db.exec(sql_str, .{});
         }
 
         /// 生成 SQL

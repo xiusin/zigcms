@@ -127,7 +127,7 @@ pub const SqliteMemberRepository = struct {
             // 插入新会员
             const insert_query = "INSERT INTO members (username, email, mobile, nickname, avatar, gender, birthday, location, signature, group_id, points, experience, level, total_consume, last_login_time, last_login_ip, register_time, register_ip, status, email_verified, mobile_verified, remark, create_time, update_time, is_delete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
             const now = std.time.timestamp();
-            _ = try self.db.rawExec(insert_query, .{
+            _ = try self.db.exec(insert_query, .{
                 member.username,
                 member.email,
                 member.mobile,
@@ -190,7 +190,7 @@ pub const SqliteMemberRepository = struct {
             // 更新现有会员
             const update_query = "UPDATE members SET username = ?, email = ?, mobile = ?, nickname = ?, avatar = ?, gender = ?, birthday = ?, location = ?, signature = ?, group_id = ?, points = ?, experience = ?, level = ?, total_consume = ?, last_login_time = ?, last_login_ip = ?, status = ?, email_verified = ?, mobile_verified = ?, remark = ?, update_time = ? WHERE id = ? AND is_delete = 0";
             const now = std.time.timestamp();
-            _ = try self.db.rawExec(update_query, .{
+            _ = try self.db.exec(update_query, .{
                 member.username,
                 member.email,
                 member.mobile,
@@ -257,7 +257,7 @@ pub const SqliteMemberRepository = struct {
 
         const query = "UPDATE members SET username = ?, email = ?, mobile = ?, nickname = ?, avatar = ?, gender = ?, birthday = ?, location = ?, signature = ?, group_id = ?, points = ?, experience = ?, level = ?, total_consume = ?, last_login_time = ?, last_login_ip = ?, status = ?, email_verified = ?, mobile_verified = ?, remark = ?, update_time = ? WHERE id = ? AND is_delete = 0";
         const now = std.time.timestamp();
-        _ = try self.db.rawExec(query, .{
+        _ = try self.db.exec(query, .{
             member.username,
             member.email,
             member.mobile,
@@ -289,7 +289,7 @@ pub const SqliteMemberRepository = struct {
 
         const query = "UPDATE members SET is_delete = 1, update_time = ? WHERE id = ? AND is_delete = 0";
         const now = std.time.timestamp();
-        _ = try self.db.rawExec(query, .{ now, id });
+        _ = try self.db.exec(query, .{ now, id });
     }
 
     /// 实现count方法

@@ -182,7 +182,7 @@ test "内存泄漏: ORM QueryResult Arena Allocator" {
     });
     defer db.deinit();
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE IF NOT EXISTS users (
         \\    id INTEGER PRIMARY KEY AUTOINCREMENT,
         \\    name TEXT NOT NULL,
@@ -191,7 +191,7 @@ test "内存泄漏: ORM QueryResult Arena Allocator" {
         \\)
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\INSERT INTO users (name, email, created_at) VALUES 
         \\('Alice', 'alice@example.com', 1640000000),
         \\('Bob', 'bob@example.com', 1640000001),
@@ -234,7 +234,7 @@ test "内存泄漏: ORM QueryResult 包装器" {
     });
     defer db.deinit();
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE IF NOT EXISTS users (
         \\    id INTEGER PRIMARY KEY AUTOINCREMENT,
         \\    name TEXT NOT NULL,
@@ -243,7 +243,7 @@ test "内存泄漏: ORM QueryResult 包装器" {
         \\)
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\INSERT INTO users (name, email, created_at) VALUES 
         \\('Alice', 'alice@example.com', 1640000000),
         \\('Bob', 'bob@example.com', 1640000001),

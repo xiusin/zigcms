@@ -8,7 +8,7 @@
 //! var ctx = try RequestContext.withTimeout(allocator, app_ctx, 5000);
 //! defer ctx.deinit();
 //!
-//! const users = try queryWithContext(User, &ctx, "SELECT * FROM users") 
+//! const users = try queryWithContext(User, &ctx, "SELECT * FROM users")
 //!     orelse return error.QueryTimeout;
 //! defer User.freeModels(allocator, users);
 //! ```
@@ -53,10 +53,10 @@ pub fn queryWithContext(
     if (ctx.isDone()) {
         return null;
     }
-    
+
     const db = ctx.getDatabase();
     const Model = @import("model.zig").Model(T);
-    
+
     // 执行查询
     var result = db.rawQuery(query_sql, .{}) catch |err| {
         // 查询失败，检查是否是超时导致
@@ -66,20 +66,20 @@ pub fn queryWithContext(
         return err;
     };
     defer result.deinit();
-    
+
     // 映射结果时检查超时
     if (ctx.isDone()) {
         return null;
     }
-    
+
     const models = try @import("orm.zig").mapResults(T, db.allocator, &result);
-    
+
     // 检查是否在映射过程中超时
     if (ctx.isDone()) {
         Model.freeModels(db.allocator, models);
         return null;
     }
-    
+
     return models;
 }
 
@@ -104,9 +104,9 @@ pub fn queryOneWithContext(
         const Model = @import("model.zig").Model(T);
         Model.freeModels(db.allocator, results);
     }
-    
+
     if (results.len == 0) return null;
-    
+
     // 复制第一条记录（因为要释放整个数组）
     return results[0];
 }
@@ -127,20 +127,20 @@ pub fn execWithContext(
     if (ctx.isDone()) {
         return null;
     }
-    
+
     const db = ctx.getDatabase();
-    
-    const result = db.rawExec(exec_sql, .{}) catch |err| {
+
+    const result = db.exec(exec_sql, .{}) catch |err| {
         if (ctx.isDone()) {
             return null;
         }
         return err;
     };
-    
+
     if (ctx.isDone()) {
         return null;
     }
-    
+
     return result;
 }
 
@@ -170,33 +170,33 @@ pub fn transactionWithContext(
     if (ctx.isDone()) {
         return false;
     }
-    
+
     const db = ctx.getDatabase();
-    
+
     // 开始事务
-    _ = try db.rawExec("BEGIN TRANSACTION", .{});
+    _ = try db.exec("BEGIN TRANSACTION", .{});
     errdefer {
-        _ = db.rawExec("ROLLBACK", .{}) catch {};
+        _ = db.exec("ROLLBACK", .{}) catch {};
     }
-    
+
     // 执行操作
     operation(ctx) catch |err| {
-        _ = db.rawExec("ROLLBACK", .{}) catch {};
-        
+        _ = db.exec("ROLLBACK", .{}) catch {};
+
         if (ctx.isDone()) {
             return false;
         }
         return err;
     };
-    
+
     // 检查超时
     if (ctx.isDone()) {
-        _ = db.rawExec("ROLLBACK", .{}) catch {};
+        _ = db.exec("ROLLBACK", .{}) catch {};
         return false;
     }
-    
+
     // 提交事务
-    _ = try db.rawExec("COMMIT", .{});
+    _ = try db.exec("COMMIT", .{});
     return true;
 }
 
@@ -218,26 +218,26 @@ pub fn batchInsertWithContext(
     if (ctx.isDone()) {
         return null;
     }
-    
+
     _ = ctx.getDatabase();
     var inserted: usize = 0;
-    
+
     for (records) |record| {
         // 定期检查超时
         if (ctx.isDone()) {
             return null;
         }
-        
+
         // 插入记录（需要实现 insertOne 方法）
         _ = record;
         // TODO: 实现批量插入
         // const db = ctx.getDatabase();
         // const sql = try buildInsertSQL(T, db.allocator, record);
         // defer db.allocator.free(sql);
-        // _ = try db.rawExec(sql, .{});
-        
+        // _ = try db.exec(sql, .{});
+
         inserted += 1;
     }
-    
+
     return inserted;
 }

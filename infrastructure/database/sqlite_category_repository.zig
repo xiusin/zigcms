@@ -111,7 +111,7 @@ pub const SqliteCategoryRepository = struct {
             // 插入新分类
             const insert_query = "INSERT INTO categories (name, code, parent_id, category_type, description, cover_image, icon, sort, status, seo_title, seo_keywords, seo_description, views, remark, create_time, update_time, is_delete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
             const now = std.time.timestamp();
-            _ = try self.db.rawExec(insert_query, .{
+            _ = try self.db.exec(insert_query, .{
                 category.name,
                 category.code,
                 category.parent_id,
@@ -158,7 +158,7 @@ pub const SqliteCategoryRepository = struct {
             // 更新现有分类
             const update_query = "UPDATE categories SET name = ?, code = ?, parent_id = ?, category_type = ?, description = ?, cover_image = ?, icon = ?, sort = ?, status = ?, seo_title = ?, seo_keywords = ?, seo_description = ?, views = ?, remark = ?, update_time = ? WHERE id = ? AND is_delete = 0";
             const now = std.time.timestamp();
-            _ = try self.db.rawExec(update_query, .{
+            _ = try self.db.exec(update_query, .{
                 category.name,
                 category.code,
                 category.parent_id,
@@ -211,7 +211,7 @@ pub const SqliteCategoryRepository = struct {
 
         const query = "UPDATE categories SET name = ?, code = ?, parent_id = ?, category_type = ?, description = ?, cover_image = ?, icon = ?, sort = ?, status = ?, seo_title = ?, seo_keywords = ?, seo_description = ?, views = ?, remark = ?, update_time = ? WHERE id = ? AND is_delete = 0";
         const now = std.time.timestamp();
-        _ = try self.db.rawExec(query, .{
+        _ = try self.db.exec(query, .{
             category.name,
             category.code,
             category.parent_id,
@@ -237,7 +237,7 @@ pub const SqliteCategoryRepository = struct {
 
         const query = "UPDATE categories SET is_delete = 1, update_time = ? WHERE id = ? AND is_delete = 0";
         const now = std.time.timestamp();
-        _ = try self.db.rawExec(query, .{ now, id });
+        _ = try self.db.exec(query, .{ now, id });
     }
 
     /// 实现count方法

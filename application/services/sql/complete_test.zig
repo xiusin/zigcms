@@ -105,11 +105,11 @@ fn setupTables(db: *sql.Database) !void {
     std.debug.print("准备测试环境...\n", .{});
 
     // 创建 users 表
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS users
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE users (
         \\    id INTEGER PRIMARY KEY AUTOINCREMENT,
         \\    name TEXT NOT NULL,
@@ -121,11 +121,11 @@ fn setupTables(db: *sql.Database) !void {
     );
 
     // 创建 posts 表
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS posts
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE posts (
         \\    id INTEGER PRIMARY KEY AUTOINCREMENT,
         \\    user_id INTEGER NOT NULL,
@@ -137,11 +137,11 @@ fn setupTables(db: *sql.Database) !void {
     );
 
     // 创建 comments 表
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS comments
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE comments (
         \\    id INTEGER PRIMARY KEY AUTOINCREMENT,
         \\    post_id INTEGER NOT NULL,
@@ -165,7 +165,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("2.1 创建记录\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\INSERT INTO users (name, email, age, city) 
             \\VALUES ('张三', 'zhangsan@example.com', 25, '北京')
         );
@@ -193,7 +193,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *sql.Database) !void {
             );
             defer allocator.free(sql_query);
 
-            _ = try db.rawExec(sql_query);
+            _ = try db.exec(sql_query);
         }
 
         std.debug.print("  ✓ 批量插入 {d} 条记录\n\n", .{users.len});
@@ -221,7 +221,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("2.4 更新记录\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\UPDATE users SET age = age + 1 WHERE city = '北京'
         );
 
@@ -232,7 +232,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("2.5 删除记录\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\DELETE FROM users WHERE age > 40
         );
 
@@ -444,7 +444,7 @@ fn testORM(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("4.1 准备测试数据\n", .{});
 
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO posts (user_id, title, content, views, published) VALUES
             \\(1, 'Zig 编程入门', 'Zig 是一门现代系统编程语言...', 100, 1),
             \\(1, '如何使用 ORM', '本文介绍 ORM 的使用方法...', 50, 1),
@@ -496,7 +496,7 @@ fn testORM(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("4.4 更新文章浏览量\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\UPDATE posts SET views = views + 10 WHERE published = 1
         );
 
@@ -507,7 +507,7 @@ fn testORM(allocator: std.mem.Allocator, db: *sql.Database) !void {
     {
         std.debug.print("4.5 删除草稿文章\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\DELETE FROM posts WHERE published = 0
         );
 
@@ -532,10 +532,10 @@ fn testTransactions(allocator: std.mem.Allocator, db: *sql.Database) !void {
 
         try db.beginTransaction();
 
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO users (name, email, age) VALUES ('测试用户1', 'test1@example.com', 20)
         );
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO users (name, email, age) VALUES ('测试用户2', 'test2@example.com', 21)
         );
 
@@ -550,7 +550,7 @@ fn testTransactions(allocator: std.mem.Allocator, db: *sql.Database) !void {
 
         try db.beginTransaction();
 
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO users (name, email, age) VALUES ('将被回滚', 'rollback@example.com', 99)
         );
 
@@ -576,7 +576,7 @@ fn testTransactions(allocator: std.mem.Allocator, db: *sql.Database) !void {
 
         try db.transaction(struct {
             fn run(db_ref: anytype) !void {
-                _ = try db_ref.rawExec(
+                _ = try db_ref.exec(
                     \\INSERT INTO users (name, email, age) VALUES ('自动事务', 'auto@example.com', 25)
                 );
             }
@@ -591,7 +591,7 @@ fn testTransactions(allocator: std.mem.Allocator, db: *sql.Database) !void {
 
         const result = db.transaction(struct {
             fn run(db_ref: anytype) !void {
-                _ = try db_ref.rawExec(
+                _ = try db_ref.exec(
                     \\INSERT INTO users (name, email, age) VALUES ('将失败', 'fail@example.com', 30)
                 );
 
@@ -619,7 +619,7 @@ fn testAdvancedQueries(allocator: std.mem.Allocator, db: *sql.Database) !void {
     std.debug.print("═══════════════════════════════════════════════════\n\n", .{});
 
     // 准备测试数据
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\INSERT INTO comments (post_id, content) VALUES
         \\(1, '很好的文章！'),
         \\(1, '学到了很多'),

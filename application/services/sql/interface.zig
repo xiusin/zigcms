@@ -543,6 +543,7 @@ fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet
     defer driver_result.deinit();
 
     var result = ResultSet.init(allocator, .mysql);
+    errdefer result.deinit();
     result.affected_rows = driver_result.affected_rows;
     result.last_insert_id = driver_result.insert_id;
 
@@ -550,29 +551,60 @@ fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet
     const field_count = driver_result.field_names.len;
     if (field_count > 0) {
         var field_names_copy = try allocator.alloc([]const u8, field_count);
+        var copied_names: usize = 0;
+        errdefer {
+            var i = copied_names;
+            while (i > 0) {
+                i -= 1;
+                allocator.free(field_names_copy[i]);
+            }
+            allocator.free(field_names_copy);
+        }
         for (driver_result.field_names, 0..) |name, i| {
             field_names_copy[i] = try allocator.dupe(u8, name);
+            copied_names += 1;
         }
         result.field_names = field_names_copy;
     }
 
     // 复制行数据
-    while (try driver_result.next()) |*row| {
-        defer row.deinit(); // 释放 driver.Row 的 HashMap
+    while (try driver_result.next()) |driver_row| {
+        var row = driver_row;
+        errdefer row.deinit();
 
         // 为每一行复制 columns
         var row_columns = try allocator.alloc([]const u8, field_count);
+        var copied_columns: usize = 0;
+        errdefer {
+            var i = copied_columns;
+            while (i > 0) {
+                i -= 1;
+                allocator.free(row_columns[i]);
+            }
+            allocator.free(row_columns);
+        }
         for (0..field_count) |i| {
             row_columns[i] = try allocator.dupe(u8, result.field_names[i]);
+            copied_columns += 1;
         }
 
         var values = try allocator.alloc(?[]const u8, field_count);
+        var copied_values: usize = 0;
+        errdefer {
+            var i = copied_values;
+            while (i > 0) {
+                i -= 1;
+                if (values[i]) |v| allocator.free(v);
+            }
+            allocator.free(values);
+        }
 
         // 使用原始字段名查询
         for (0..field_count) |i| {
             const col = driver_result.field_names[i];
             if (row.getString(col)) |val| {
                 values[i] = try allocator.dupe(u8, val);
+                copied_values += 1;
             } else {
                 values[i] = null;
             }
@@ -583,6 +615,8 @@ fn mysqlQuery(ptr: *anyopaque, allocator: Allocator, sql: []const u8) !ResultSet
             .columns = row_columns,
             .values = values,
         });
+
+        row.deinit();
     }
 
     return result;

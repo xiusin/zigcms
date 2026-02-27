@@ -92,19 +92,19 @@ fn setupTables(db: *Database) !void {
     std.debug.print("准备测试环境...\n", .{});
 
     // 创建 users 表（使用 SERIAL）
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS comments CASCADE
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS posts CASCADE
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\DROP TABLE IF EXISTS users CASCADE
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE users (
         \\    id SERIAL PRIMARY KEY,
         \\    name VARCHAR(100) NOT NULL,
@@ -118,7 +118,7 @@ fn setupTables(db: *Database) !void {
     );
 
     // 创建 posts 表
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE posts (
         \\    id SERIAL PRIMARY KEY,
         \\    user_id INTEGER NOT NULL REFERENCES users(id),
@@ -132,7 +132,7 @@ fn setupTables(db: *Database) !void {
     );
 
     // 创建 comments 表
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE comments (
         \\    id SERIAL PRIMARY KEY,
         \\    post_id INTEGER NOT NULL REFERENCES posts(id),
@@ -142,15 +142,15 @@ fn setupTables(db: *Database) !void {
     );
 
     // 创建索引
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE INDEX idx_posts_user_id ON posts(user_id)
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE INDEX idx_posts_published ON posts(published)
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE INDEX idx_comments_post_id ON comments(post_id)
     );
 
@@ -189,7 +189,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *Database) !void {
     {
         std.debug.print("2.2 批量插入\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\INSERT INTO users (name, email, age, city) VALUES
             \\('李四', 'lisi@example.com', 30, '上海'),
             \\('王五', 'wangwu@example.com', 22, '广州'),
@@ -224,7 +224,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *Database) !void {
     {
         std.debug.print("2.4 更新记录\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\UPDATE users SET age = age + 1 WHERE city = '北京'
         );
 
@@ -235,7 +235,7 @@ fn testCRUD(allocator: std.mem.Allocator, db: *Database) !void {
     {
         std.debug.print("2.5 删除记录\n", .{});
 
-        const affected = try db.rawExec(
+        const affected = try db.exec(
             \\DELETE FROM users WHERE age > 40
         );
 
@@ -357,7 +357,7 @@ fn testTransactions(db: *Database) !void {
         std.debug.print("4.1 手动事务（提交）\n", .{});
 
         try db.beginTransaction();
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO users (name, email, age) VALUES ('事务1', 'tx1@example.com', 20)
         );
         try db.commit();
@@ -370,7 +370,7 @@ fn testTransactions(db: *Database) !void {
         std.debug.print("4.2 手动事务（回滚）\n", .{});
 
         try db.beginTransaction();
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\INSERT INTO users (name, email, age) VALUES ('回滚', 'rollback@example.com', 99)
         );
         try db.rollback();
@@ -384,7 +384,7 @@ fn testTransactions(db: *Database) !void {
 
         try db.transaction(struct {
             fn run(db_ref: anytype) !void {
-                _ = try db_ref.rawExec(
+                _ = try db_ref.exec(
                     \\INSERT INTO users (name, email, age) VALUES ('自动', 'auto@example.com', 25)
                 );
             }
@@ -404,7 +404,7 @@ fn testAdvancedQueries(allocator: std.mem.Allocator, db: *Database) !void {
     std.debug.print("═══════════════════════════════════════════════════════════\n\n", .{});
 
     // 准备测试数据
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\INSERT INTO posts (user_id, title, content, views, published, tags) VALUES
         \\(1, 'Zig 编程入门', 'Zig 是一门现代系统编程语言...', 100, true, ARRAY['zig', '编程']),
         \\(1, '如何使用 ORM', '本文介绍 ORM 的使用方法...', 50, true, ARRAY['orm', '数据库']),
@@ -412,7 +412,7 @@ fn testAdvancedQueries(allocator: std.mem.Allocator, db: *Database) !void {
         \\(3, '草稿文章', '这是一篇草稿...', 0, false, ARRAY['草稿'])
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\INSERT INTO comments (post_id, content) VALUES
         \\(1, '很好的文章！'),
         \\(1, '学到了很多'),
@@ -584,10 +584,10 @@ fn testORM(allocator: std.mem.Allocator, db: *Database) !void {
     std.debug.print("═══════════════════════════════════════════════════════════\n\n", .{});
 
     // 创建 ORM 测试表
-    _ = try db.rawExec("DROP TABLE IF EXISTS orders CASCADE");
-    _ = try db.rawExec("DROP TABLE IF EXISTS products CASCADE");
+    _ = try db.exec("DROP TABLE IF EXISTS orders CASCADE");
+    _ = try db.exec("DROP TABLE IF EXISTS products CASCADE");
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE products (
         \\    id SERIAL PRIMARY KEY,
         \\    name VARCHAR(200) NOT NULL,
@@ -600,7 +600,7 @@ fn testORM(allocator: std.mem.Allocator, db: *Database) !void {
         \\)
     );
 
-    _ = try db.rawExec(
+    _ = try db.exec(
         \\CREATE TABLE orders (
         \\    id SERIAL PRIMARY KEY,
         \\    user_id INTEGER NOT NULL,
@@ -1200,7 +1200,7 @@ fn testPostgreSQLFeatures(allocator: std.mem.Allocator, db: *Database) !void {
     {
         std.debug.print("8.3 JSONB 类型（元数据）\n", .{});
 
-        _ = try db.rawExec(
+        _ = try db.exec(
             \\UPDATE users SET metadata = '{"level": "VIP", "points": 100}'::jsonb
             \\WHERE name = '张三'
         );

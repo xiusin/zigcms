@@ -313,3 +313,4 @@ pub fn build(b: *std.Build) void {
 
 > Zig开发箴言：**"如果编译器不能证明它是安全的，那它就是不安全的"**  
 > 所有代码必须通过`zig build test`验证，性能关键路径必须包含基准测试数据。
+> 所有的sql执行都要使用`orm`/`querybuilder`，禁止使用`rawExec`。

@@ -55,6 +55,17 @@ pub const AuthService = struct {
             return error.InvalidPassword;
         }
 
+        // 登录成功后回写最近登录时间（不影响登录主流程）
+        if (user.id) |user_id| {
+            _ = Admin.Update(user_id, .{
+                .last_login = "NOW()",
+                .updated_at = "NOW()",
+            }) catch |err| blk: {
+                std.log.warn("[auth] update last_login failed, user_id={d}, err={s}", .{ user_id, @errorName(err) });
+                break :blk 0;
+            };
+        }
+
         // 生成 JWT token
         const payload = .{
             .sub = user.id.?,
