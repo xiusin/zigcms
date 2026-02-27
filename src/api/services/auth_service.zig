@@ -60,7 +60,7 @@ pub const AuthService = struct {
         if (user.id) |user_id| {
             var ts_buf: [32]u8 = undefined;
             const now_dt = datetime.DateTime.now();
-            const now_str = now_dt.formatGo("2006-01-02 15:04:05", &ts_buf);
+            const now_str = now_dt.formatGo(datetime.go_format_datetime, &ts_buf);
             _ = Admin.Update(user_id, .{
                 .last_login = now_str,
                 .updated_at = now_str,

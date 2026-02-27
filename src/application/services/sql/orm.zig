@@ -45,6 +45,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const datetime = @import("../datetime/datetime.zig");
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
 const logger_mod = @import("../logger/logger.zig");
@@ -1670,7 +1671,10 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
         /// 软删除
         pub fn softDelete(db: *Database, id: anytype) !u64 {
-            return update(db, id, .{ .deleted_at = "NOW()" });
+            var ts_buf: [32]u8 = undefined;
+            const now_dt = datetime.DateTime.now();
+            const now_str = now_dt.formatGo(datetime.go_format_datetime, &ts_buf);
+            return update(db, id, .{ .deleted_at = now_str });
         }
 
         /// 恢复软删除

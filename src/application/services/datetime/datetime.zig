@@ -15,7 +15,8 @@
 //! const str = now.formatPhp("Y-m-d H:i:s", &buf);  // "2025-12-06 09:00:00"
 //!
 //! // 格式化（Go 风格）
-//! const str2 = now.formatGo("2006-01-02 15:04:05", &buf);
+//! const str2 = now.formatGo(go_format_datetime, &buf);
+//! const date_only = now.formatGo(go_format_date_only, &buf);
 //!
 //! // 解析时间
 //! const dt = try datetime.DateTime.parsePhp("2025-12-06 09:00:00", "Y-m-d H:i:s");
@@ -26,6 +27,13 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+
+/// Go 风格日期时间格式常量
+pub const go_format_datetime = "2006-01-02 15:04:05";
+/// Go 风格仅日期格式常量
+pub const go_format_date_only = "2006-01-02";
+/// 兼容旧常量命名
+pub const go_full_datetime_format = go_format_datetime;
 
 /// 时区偏移（秒）
 pub const Timezone = struct {
@@ -1302,7 +1310,7 @@ test "DateTime: formatGo" {
     const dt = DateTime.create(2025, 12, 6, 9, 5, 3);
     var buf: [64]u8 = undefined;
 
-    const s1 = dt.formatGo("2006-01-02 15:04:05", &buf);
+    const s1 = dt.formatGo(go_format_datetime, &buf);
     try std.testing.expectEqualStrings("2025-12-06 09:05:03", s1);
 
     const s2 = dt.formatGo("2006/1/2", &buf);
