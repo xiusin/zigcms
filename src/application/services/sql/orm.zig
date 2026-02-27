@@ -1443,10 +1443,51 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             _ = q.where(pk, "=", id).limit(1);
 
             const results = try q.get();
-            if (results.len == 0) return null;
-            defer db.allocator.free(results);
+            if (results.len == 0) {
+                db.allocator.free(results);
+                return null;
+            }
 
-            return results[0];
+            // 深拷贝第一条的字符串字段
+            var out = results[0];
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const v = @field(out, field.name);
+                    @field(out, field.name) = try db.allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(out, field.name)) |s| {
+                            @field(out, field.name) = try db.allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+
+            const FreeStrings = struct {
+                fn apply(allocator: Allocator, model: *T) void {
+                    inline for (std.meta.fields(T)) |field| {
+                        if (field.type == []const u8) {
+                            const s = @field(model.*, field.name);
+                            if (s.len > 0) allocator.free(s);
+                            @field(model.*, field.name) = "";
+                        } else if (@typeInfo(field.type) == .optional) {
+                            const child = @typeInfo(field.type).optional.child;
+                            if (child == []const u8) {
+                                if (@field(model.*, field.name)) |s| {
+                                    if (s.len > 0) allocator.free(s);
+                                    @field(model.*, field.name) = null;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            for (results) |*m| FreeStrings.apply(db.allocator, m);
+            db.allocator.free(results);
+
+            return out;
         }
 
         /// 查找或抛出错误
@@ -3026,8 +3067,49 @@ pub fn ModelQuery(comptime T: type) type {
             self.limit_val = 1;
             const results = try self.get();
             if (results.len == 0) return null;
-            defer self.db.allocator.free(results);
-            return results[0];
+
+            // 深拷贝第一个元素的字符串字段，确保在释放结果集后数据仍然有效
+            var out = results[0];
+
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const v = @field(out, field.name);
+                    @field(out, field.name) = try self.db.allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(out, field.name)) |s| {
+                            @field(out, field.name) = try self.db.allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+
+            const FreeStrings = struct {
+                fn apply(allocator: Allocator, model: *T) void {
+                    inline for (std.meta.fields(T)) |field| {
+                        if (field.type == []const u8) {
+                            const s = @field(model.*, field.name);
+                            if (s.len > 0) allocator.free(s);
+                            @field(model.*, field.name) = "";
+                        } else if (@typeInfo(field.type) == .optional) {
+                            const child = @typeInfo(field.type).optional.child;
+                            if (child == []const u8) {
+                                if (@field(model.*, field.name)) |s| {
+                                    if (s.len > 0) allocator.free(s);
+                                    @field(model.*, field.name) = null;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // 释放原结果集中字符串与数组本身，避免泄漏
+            for (results) |*m| FreeStrings.apply(self.db.allocator, m);
+            self.db.allocator.free(results);
+
+            return out;
         }
 
         /// 获取第一条，如果不存在则报错 (Laravel: firstOrFail)

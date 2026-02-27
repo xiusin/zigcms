@@ -314,3 +314,194 @@ pub fn build(b: *std.Build) void {
 > Zig开发箴言：**"如果编译器不能证明它是安全的，那它就是不安全的"**  
 > 所有代码必须通过`zig build test`验证，性能关键路径必须包含基准测试数据。
 > 所有的sql执行都要使用`orm`/`querybuilder`，禁止使用`rawExec`。
+
+---
+
+## ZigCMS 当前架构下的模块生成标准（强制）
+
+> 适用范围：本仓库当前结构（`src/api`、`src/application`、`src/domain`、`src/infrastructure`、`src/core`、`src/plugins`、`cmd`）
+
+### 1. 模块职责与目录归属
+
+#### 1.1 `src/domain`（领域层）
+- 放置内容：实体、值对象、领域事件、仓储接口、领域服务接口。
+- 禁止内容：HTTP协议细节、数据库驱动细节、缓存驱动细节。
+- 约束：只表达业务规则，不依赖 `api` 与具体 `infrastructure` 实现。
+
+#### 1.2 `src/application`（应用层）
+- 放置内容：用例编排、应用服务、ServiceManager、事务边界、跨聚合流程。
+- 约束：
+  - 依赖 `domain` 抽象（接口），不直接耦合基础设施驱动细节。
+  - 允许通过 `core.di` 获取依赖并协调调用。
+  - 数据库查询统一走 ORM/QueryBuilder，不允许裸 SQL 执行入口。
+
+#### 1.3 `src/infrastructure`（基础设施层）
+- 放置内容：数据库实现、仓储实现、缓存实现、外部客户端实现。
+- 约束：
+  - 实现 `domain`/`application` 约定的接口。
+  - 屏蔽第三方组件细节，向上提供稳定抽象。
+
+#### 1.4 `src/api`（接口层）
+- 放置内容：控制器、DTO、路由注册、中间件、请求响应适配。
+- 约束：
+  - 控制器只做参数校验与调用应用层服务。
+  - 不在控制器中写业务核心逻辑和复杂数据库逻辑。
+
+#### 1.5 `src/core`（核心层）
+- 放置内容：DI、配置、日志、通用上下文、错误、工具与基础模式。
+- 约束：
+  - 不包含业务模块特有逻辑。
+  - 作为全局基础设施被其他层复用。
+
+#### 1.6 `src/plugins`（插件层）
+- 放置内容：插件协议、插件适配、插件运行时注册。
+- 约束：
+  - 不允许绕过应用层直接修改核心业务流程。
+
+#### 1.7 `cmd`（命令行入口）
+- 放置内容：迁移、代码生成、插件生成等工具入口。
+- 约束：
+  - 命令层只负责参数与流程编排，业务能力复用 `src` 模块。
+
+---
+
+### 2. 新增一个完整业务模块时，必须创建的内容
+
+以“订单 order 模块”为例（可替换为任何业务名）：
+
+1) `src/domain/entities/order.model.zig`
+- 定义实体字段、状态流转、业务不变量。
+
+2) `src/domain/repositories/order_repository.zig`
+- 定义仓储接口（例如 `findById`、`save`、`delete`）。
+
+3) `src/application/services/order_service.zig`
+- 编排业务流程，依赖仓储接口、缓存接口、事件接口。
+
+4) `src/infrastructure/database/sqlite_order_repository.zig`（或 mysql 实现）
+- 实现仓储接口，内部使用 ORM/QueryBuilder。
+
+5) `src/api/dto/order_*.dto.zig`
+- 定义请求/响应 DTO，做字段映射。
+
+6) `src/api/controllers/order.controller.zig`
+- 控制器注入 `OrderService`，只做入参处理与返回组装。
+
+7) 在路由注册处接入（`src/api/bootstrap.zig`）
+- 通过容器解析控制器并注册 endpoint。
+
+---
+
+### 3. DI 使用标准（`src/core/di`）
+
+1) 初始化与销毁
+- 系统启动时调用 `core.di.initGlobalDISystem(allocator)`。
+- 系统停止时调用 `core.di.deinitGlobalDISystem()`。
+
+2) 注册规则
+- 长生命周期共享服务：`registerSingleton`。
+- 短生命周期服务：`registerTransient`。
+- 已创建实例（如数据库连接）：`registerInstance`。
+
+3) 工厂函数规则
+- 统一签名：`fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*T`。
+- 在 factory 中仅做依赖解析与实例构造，不写业务流程。
+
+4) 解析规则
+- 在启动阶段集中注册。
+- 在控制器/bootstrap 内按需 `resolve`。
+- 先 `isRegistered` 再注册，避免重复覆盖。
+
+---
+
+### 4. 数据库封装标准（ORM / QueryBuilder）
+
+1) 强制约束
+- 所有 SQL 执行必须通过 ORM/QueryBuilder。
+- 禁止 `rawExec` 或拼接字符串执行 SQL。
+
+2) 分层要求
+- `domain`：只定义仓储接口。
+- `infrastructure/database`：实现仓储接口，落地 ORM 查询。
+- `application`：依赖仓储接口，不关心数据库引擎。
+
+3) 生命周期
+- 数据库连接由系统级初始化创建，由系统级 deinit 统一释放。
+- 应用服务不得擅自销毁全局数据库连接。
+
+4) 查询规范
+- 查询条件使用 QueryBuilder 链式 API。
+- 参数化优先，避免注入风险。
+
+---
+
+### 5. 缓存封装标准
+
+1) 统一入口
+- 使用 `src/infrastructure/cache/mod.zig` 导出的能力。
+- 业务层通过抽象能力访问缓存，不直接依赖具体后端。
+
+2) 键设计
+- 必须使用业务前缀（如 `order:{id}`）避免冲突。
+- 明确 TTL 策略：短期缓存/永久缓存要在代码中显式表达。
+
+3) 回源策略
+- 统一使用“先查缓存 -> 未命中回源 -> 回填缓存”模式。
+- 回填失败不影响主流程，但必须记录日志。
+
+4) 一致性策略
+- 写操作后必须同步失效或更新相关 key。
+- 跨实体写入要定义失效清单，避免脏读。
+
+---
+
+### 6. 业务封装标准（应用层）
+
+1) Service 只做业务编排
+- `application/services/*` 聚合多个仓储和基础设施能力。
+- 不在 Service 内直接操作 HTTP 请求对象。
+
+2) 控制器职责最小化
+- 控制器 = 参数解析 + 调用服务 + 响应映射。
+- 参数校验失败尽早返回，不进入业务层。
+
+3) 错误处理
+- 使用 Zig 显式错误返回。
+- 业务错误与基础设施错误分层表达。
+
+4) 资源释放
+- 所有 `create` 后的对象必须有对应 `deinit/destroy`。
+- 用 `errdefer` 保证中途失败时资源正确释放。
+
+---
+
+### 7. 模块生成检查清单（提交前必过）
+
+- [ ] 文件放置目录符合职责划分。
+- [ ] 控制器未包含核心业务逻辑。
+- [ ] 仓储实现位于 `infrastructure`，接口位于 `domain`。
+- [ ] DI 注册/解析路径正确，无重复注册问题。
+- [ ] 数据访问仅使用 ORM/QueryBuilder。
+- [ ] 缓存键命名、TTL、失效策略已定义。
+- [ ] 所有新增对象有明确生命周期与释放路径。
+- [ ] `zig build` 通过。
+
+---
+
+### 8. 建议的最小模板（目录骨架）
+
+```text
+src/
+  api/
+    controllers/{module}.controller.zig
+    dto/{module}_create.dto.zig
+  application/
+    services/{module}_service.zig
+  domain/
+    entities/{module}.model.zig
+    repositories/{module}_repository.zig
+  infrastructure/
+    database/sqlite_{module}_repository.zig
+```
+
+按此模板生成，能保证模块职责清晰、可测试、可替换实现，并与当前 ZigCMS 架构保持一致。
