@@ -504,23 +504,34 @@ pub fn deinitSystem() void {
 
     // 1. 清理服务管理器
     if (service_manager) |*sm| {
+        std.debug.print("[INFO] 清理阶段 1.1: ServiceManager.deinit 开始\n", .{});
         const allocator = sm.getAllocator();
         sm.deinit();
+        std.debug.print("[INFO] 清理阶段 1.1: ServiceManager.deinit 完成\n", .{});
+
+        std.debug.print("[INFO] 清理阶段 1.2: Database.deinit 开始\n", .{});
         infrastructure_db.?.deinit();
         allocator.destroy(infrastructure_db.?);
+        std.debug.print("[INFO] 清理阶段 1.2: Database.deinit 完成\n", .{});
     }
     service_manager = null;
     infrastructure_db = null;
 
     // 2. 清理全局模块
+    std.debug.print("[INFO] 清理阶段 2: global.deinit 开始\n", .{});
     shared.global.deinit();
+    std.debug.print("[INFO] 清理阶段 2: global.deinit 完成\n", .{});
 
     // 3. 清理配置加载器
+    std.debug.print("[INFO] 清理阶段 3: config_loader.deinit 开始\n", .{});
     if (global_config_loader) |*loader| loader.deinit();
     global_config_loader = null;
+    std.debug.print("[INFO] 清理阶段 3: config_loader.deinit 完成\n", .{});
 
     // 4. 核心：由 DI 系统的 Arena 回收所有单例和服务资源
+    std.debug.print("[INFO] 清理阶段 4: shared.deinit 开始\n", .{});
     shared.deinit();
+    std.debug.print("[INFO] 清理阶段 4: shared.deinit 完成\n", .{});
 
     std.debug.print("[INFO] 系统清理完成\n", .{});
 }

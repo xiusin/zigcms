@@ -78,7 +78,7 @@ pub const InfraConfig = struct {
     pub const DatabaseEngine = enum { sqlite, mysql };
 
     // 数据库连接配置
-    db_engine: DatabaseEngine = .mysql,
+    db_engine: DatabaseEngine = .sqlite,
     db_host: []const u8 = "localhost",
     db_port: u16 = 5432,
     db_name: []const u8 = "zigcms",
@@ -136,6 +136,7 @@ pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
                 .database = config.db_name,
                 .min_connections = 2,
                 .max_connections = @max(2, config.db_pool_size),
+                .keepalive_interval_ms = 0,
             };
 
             db.* = sql.Database.mysql(allocator, mysql_cfg) catch |e| {
