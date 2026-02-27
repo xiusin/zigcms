@@ -112,7 +112,7 @@ pub const Application = struct {
 
     pub fn getContainer(self: *const Self) *DIContainer {
         _ = self;
-        return zigcms.shared.di.getGlobalContainer() orelse unreachable;
+        return zigcms.core.di.getGlobalContainer() orelse unreachable;
     }
 
     pub fn getContext(self: *const Self) *AppContext {

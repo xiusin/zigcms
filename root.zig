@@ -365,8 +365,7 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     shared.global.setServiceManager(&service_manager.?);
 
     // 将服务管理器注册到 DI 容器，实现更好的生命周期管理
-    const di = @import("shared/di/mod.zig");
-    if (di.getGlobalContainer()) |container| {
+    if (core.di.getGlobalContainer()) |container| {
         try container.registerInstance(ServiceManager, &service_manager.?, null);
     }
 }
@@ -382,9 +381,7 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
 /// ## 错误
 /// 如果服务注册失败，返回相应的错误。
 fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
-    const di_module = @import("shared/di/mod.zig");
-
-    if (di_module.getGlobalContainer()) |container| {
+    if (core.di.getGlobalContainer()) |container| {
         // 1. 注册用户服务相关
         try registerUserServices(container, allocator, db);
 
@@ -407,7 +404,7 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
 }
 
 /// 注册用户服务
-fn registerUserServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+fn registerUserServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     _ = func_allocator;
 
     // 创建仓储实例
@@ -421,7 +418,7 @@ fn registerUserServices(container: *@import("shared/di/container.zig").DIContain
     try container.registerInstance(UserRepository, user_repo, null);
 
     try container.registerSingleton(UserService, UserService, struct {
-        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*UserService {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*UserService {
             const resolved_user_repo = try di.resolve(UserRepository);
 
             const user_service = try allocator.create(UserService);
@@ -441,7 +438,7 @@ fn createSqliteUserRepository(allocator: std.mem.Allocator, db: *sql_orm.Databas
 }
 
 /// 注册会员服务
-fn registerMemberServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+fn registerMemberServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     _ = func_allocator;
 
     // 创建仓储实例
@@ -455,7 +452,7 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
     try container.registerInstance(MemberRepository, member_repo, null);
 
     try container.registerSingleton(MemberService, MemberService, struct {
-        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*MemberService {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*MemberService {
             const resolved_member_repo = try di.resolve(MemberRepository);
 
             const member_service = try allocator.create(MemberService);
@@ -467,7 +464,7 @@ fn registerMemberServices(container: *@import("shared/di/container.zig").DIConta
 }
 
 /// 注册分类服务
-fn registerCategoryServices(container: *@import("shared/di/container.zig").DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+fn registerCategoryServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
     _ = func_allocator;
 
     // 创建仓储实例
@@ -481,7 +478,7 @@ fn registerCategoryServices(container: *@import("shared/di/container.zig").DICon
     try container.registerInstance(CategoryRepository, category_repo, null);
 
     try container.registerSingleton(CategoryService, CategoryService, struct {
-        fn factory(di: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*CategoryService {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*CategoryService {
             const resolved_category_repo = try di.resolve(CategoryRepository);
 
             const category_service = try allocator.create(CategoryService);
@@ -519,9 +516,9 @@ fn createSqliteCategoryRepository(allocator: std.mem.Allocator, db: *sql_orm.Dat
 }
 
 /// 注册认证服务
-fn registerAuthServices(container: *@import("shared/di/container.zig").DIContainer) !void {
+fn registerAuthServices(container: *core.di.DIContainer) !void {
     try container.registerSingleton(AuthService, AuthService, struct {
-        fn factory(_: *@import("shared/di/container.zig").DIContainer, allocator: std.mem.Allocator) anyerror!*AuthService {
+        fn factory(_: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*AuthService {
             const auth_service = try allocator.create(AuthService);
             errdefer allocator.destroy(auth_service);
             auth_service.* = AuthService.init(allocator);
