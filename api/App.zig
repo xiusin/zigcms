@@ -54,6 +54,14 @@ pub const App = struct {
             entry.deinit_fn(entry.ptr, self.allocator);
         }
         self.controllers.deinit(self.allocator);
+
+        // 清理路由记录分配的字符串
+        for (self.routes.items) |route_entry| {
+            self.allocator.free(route_entry.path);
+            self.allocator.free(route_entry.method);
+            self.allocator.free(route_entry.controller_type);
+            self.allocator.free(route_entry.handler_name);
+        }
         self.routes.deinit(self.allocator);
         self.router.deinit();
     }
@@ -95,12 +103,7 @@ pub const App = struct {
         for (crud_paths, crud_handlers) |path, handler_name| {
             var route_buf: [64]u8 = undefined;
             const route_path = std.fmt.bufPrint(&route_buf, "/{s}{s}", .{ name, path }) catch "route-too-long";
-            try self.routes.append(self.allocator, .{
-                .path = try self.allocator.dupe(u8, route_path),
-                .method = "POST",
-                .controller_type = try self.allocator.dupe(u8, "CRUD(" ++ name ++ ")"),
-                .handler_name = handler_name,
-            });
+            try self.addRouteRecord(route_path, "POST", "CRUD(" ++ name ++ ")", handler_name);
         }
     }
 
@@ -122,12 +125,35 @@ pub const App = struct {
             handler_name[dot_idx + 1 ..]
         else
             handler_name;
-        
+
+        try self.addRouteRecord(path, "POST", module_name, handler_fn_name);
+    }
+
+    /// 记录路由并托管字符串所有权，保证失败路径不会泄漏
+    fn addRouteRecord(
+        self: *Self,
+        path: []const u8,
+        method: []const u8,
+        controller_type: []const u8,
+        handler_name: []const u8,
+    ) !void {
+        const owned_path = try self.allocator.dupe(u8, path);
+        errdefer self.allocator.free(owned_path);
+
+        const owned_method = try self.allocator.dupe(u8, method);
+        errdefer self.allocator.free(owned_method);
+
+        const owned_controller = try self.allocator.dupe(u8, controller_type);
+        errdefer self.allocator.free(owned_controller);
+
+        const owned_handler = try self.allocator.dupe(u8, handler_name);
+        errdefer self.allocator.free(owned_handler);
+
         try self.routes.append(self.allocator, .{
-            .path = try self.allocator.dupe(u8, path),
-            .method = "POST",
-            .controller_type = try self.allocator.dupe(u8, module_name),
-            .handler_name = try self.allocator.dupe(u8, handler_fn_name),
+            .path = owned_path,
+            .method = owned_method,
+            .controller_type = owned_controller,
+            .handler_name = owned_handler,
         });
     }
 
