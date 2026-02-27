@@ -133,7 +133,7 @@ pub const Bootstrap = struct {
         // 管理后台路由
         try self.registerAdminRoutes();
 
-        // 系统扩展路由（非标准 CRUD）
+        // 系统扩展路由（独立控制器）
         try self.registerSystemExtRoutes();
 
         // 实时通信路由
@@ -186,22 +186,6 @@ pub const Bootstrap = struct {
 
     /// 注册管理后台路由
     fn registerAdminRoutes(self: *Self) !void {
-        // 注册 Menu 控制器
-        if (!self.container.isRegistered(controllers.admin.Menu)) {
-            try self.container.registerSingleton(controllers.admin.Menu, controllers.admin.Menu, struct {
-                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.admin.Menu {
-                    const l = try di.resolve(logger.Logger);
-                    const ctrl = try allocator.create(controllers.admin.Menu);
-                    ctrl.* = controllers.admin.Menu.init(allocator, l);
-                    return ctrl;
-                }
-            }.factory, null);
-        }
-
-        const menu = try self.container.resolve(controllers.admin.Menu);
-        try self.app.route("/menu/list", menu, &controllers.admin.Menu.list);
-        self.route_count += 1;
-
         // 注册 Setting 控制器
         if (!self.container.isRegistered(controllers.admin.Setting)) {
             try self.container.registerSingleton(controllers.admin.Setting, controllers.admin.Setting, struct {
@@ -229,41 +213,108 @@ pub const Bootstrap = struct {
 
     /// 注册系统扩展路由
     fn registerSystemExtRoutes(self: *Self) !void {
-        if (!self.container.isRegistered(controllers.system_ext)) {
-            try self.container.registerSingleton(controllers.system_ext, controllers.system_ext, struct {
-                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext {
+        if (!self.container.isRegistered(controllers.system_ext.Dept)) {
+            try self.container.registerSingleton(controllers.system_ext.Dept, controllers.system_ext.Dept, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Dept {
                     _ = di;
-                    const ctrl = try allocator.create(controllers.system_ext);
-                    ctrl.* = controllers.system_ext.init(allocator);
+                    const ctrl = try allocator.create(controllers.system_ext.Dept);
+                    ctrl.* = controllers.system_ext.Dept.init(allocator);
                     return ctrl;
                 }
             }.factory, null);
         }
 
-        const ext = try self.container.resolve(controllers.system_ext);
+        if (!self.container.isRegistered(controllers.system_ext.Admin)) {
+            try self.container.registerSingleton(controllers.system_ext.Admin, controllers.system_ext.Admin, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Admin {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Admin);
+                    ctrl.* = controllers.system_ext.Admin.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
 
-        // 组织/管理员扩展
-        try self.app.route("/system/dept/tree", ext, controllers.system_ext.dept_tree);
-        try self.app.route("/system/dept/all", ext, controllers.system_ext.dept_all);
-        try self.app.route("/system/admin/resetPassword", ext, controllers.system_ext.admin_reset_password);
-        try self.app.route("/system/admin/assignRoles", ext, controllers.system_ext.admin_assign_roles);
+        if (!self.container.isRegistered(controllers.system_ext.Menu)) {
+            try self.container.registerSingleton(controllers.system_ext.Menu, controllers.system_ext.Menu, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Menu {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Menu);
+                    ctrl.* = controllers.system_ext.Menu.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
 
-        // 菜单扩展
-        try self.app.route("/system/menu/tree", ext, controllers.system_ext.menu_tree);
-        try self.app.route("/system/menu/permissions", ext, controllers.system_ext.menu_permissions);
-        try self.app.route("/system/menu/save-permissions", ext, controllers.system_ext.menu_save_permissions);
-        try self.app.route("/system/menu/export", ext, controllers.system_ext.menu_export);
+        if (!self.container.isRegistered(controllers.system_ext.DictItem)) {
+            try self.container.registerSingleton(controllers.system_ext.DictItem, controllers.system_ext.DictItem, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.DictItem {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.DictItem);
+                    ctrl.* = controllers.system_ext.DictItem.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
 
-        // 字典项扩展
-        try self.app.route("/system/dict/items", ext, controllers.system_ext.dict_items);
-        try self.app.route("/system/dict/item/save", ext, controllers.system_ext.dict_item_save);
-        try self.app.route("/system/dict/item/delete", ext, controllers.system_ext.dict_item_delete);
-        try self.app.route("/system/dict/item/set", ext, controllers.system_ext.dict_item_set);
+        if (!self.container.isRegistered(controllers.system_ext.Role)) {
+            try self.container.registerSingleton(controllers.system_ext.Role, controllers.system_ext.Role, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Role {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Role);
+                    ctrl.* = controllers.system_ext.Role.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
 
-        // 角色扩展
-        try self.app.route("/role/button-perms", ext, controllers.system_ext.role_button_perms);
+        const dept = try self.container.resolve(controllers.system_ext.Dept);
+        const admin = try self.container.resolve(controllers.system_ext.Admin);
+        const menu = try self.container.resolve(controllers.system_ext.Menu);
+        const dict_item = try self.container.resolve(controllers.system_ext.DictItem);
+        const role = try self.container.resolve(controllers.system_ext.Role);
+        const payment = try self.container.resolve(controllers.system_ext.Payment);
+        const version = try self.container.resolve(controllers.system_ext.Version);
+        const log_ctrl = try self.container.resolve(controllers.system_ext.Log);
 
-        self.route_count += 13;
+        try self.app.route("/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
+        try self.app.route("/system/dept/all", dept, &controllers.system_ext.Dept.dept_all);
+
+        try self.app.route("/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
+        try self.app.route("/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
+        try self.app.route("/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
+        try self.app.route("/userInfo", admin, &controllers.system_ext.Admin.user_info);
+
+        try self.app.route("/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
+        try self.app.route("/system/menu/permissions", menu, &controllers.system_ext.Menu.permissions);
+        try self.app.route("/system/menu/save-permissions", menu, &controllers.system_ext.Menu.save_permissions);
+        try self.app.route("/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
+
+        try self.app.route("/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
+        try self.app.route("/system/dict/item/save", dict_item, &controllers.system_ext.DictItem.save);
+        try self.app.route("/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
+        try self.app.route("/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
+
+        try self.app.route("/role/button-perms", role, &controllers.system_ext.Role.button_perms);
+
+        try self.app.route("/system/payment/list", payment, &controllers.system_ext.Payment.list);
+        try self.app.route("/system/payment/save", payment, &controllers.system_ext.Payment.save);
+        try self.app.route("/system/payment/delete", payment, &controllers.system_ext.Payment.delete);
+        try self.app.route("/system/payment/set", payment, &controllers.system_ext.Payment.set);
+        try self.app.route("/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
+
+        try self.app.route("/system/version/list", version, &controllers.system_ext.Version.list);
+        try self.app.route("/system/version/save", version, &controllers.system_ext.Version.save);
+        try self.app.route("/system/version/delete", version, &controllers.system_ext.Version.delete);
+        try self.app.route("/system/version/set", version, &controllers.system_ext.Version.set);
+
+        try self.app.route("/log/list", log_ctrl, &controllers.system_ext.Log.list);
+        try self.app.route("/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
+        try self.app.route("/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
+        try self.app.route("/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
+        try self.app.route("/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
+
+        self.route_count += 29;
     }
 
     /// 注册实时通信路由

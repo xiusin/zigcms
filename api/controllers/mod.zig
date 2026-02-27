@@ -34,7 +34,6 @@ pub const auth = struct {
 
 // 管理相关控制器
 pub const admin = struct {
-    pub const Menu = @import("menu.controller.zig");
     pub const Setting = @import("setting.controller.zig");
 };
 
@@ -46,42 +45,17 @@ pub const common = struct {
     pub const Dynamic = @import("dynamic.controller.zig");
 };
 
-// 组织管理控制器
-pub const org = struct {
-    pub const Department = @import("department.controller.zig");
-    pub const Employee = @import("employee.controller.zig");
-    pub const Position = @import("position.controller.zig");
-    pub const Role = @import("role.controller.zig");
+// 系统扩展控制器（逐模块拆分）
+pub const system_ext = struct {
+    pub const Dept = @import("system_dept.controller.zig");
+    pub const Admin = @import("system_admin.controller.zig");
+    pub const Menu = @import("system_menu.controller.zig");
+    pub const DictItem = @import("system_dict_item.controller.zig");
+    pub const Role = @import("system_role.controller.zig");
+    pub const Payment = @import("system_payment.controller.zig");
+    pub const Version = @import("system_version.controller.zig");
+    pub const Log = @import("log.controller.zig");
 };
-
-// CMS 内容管理控制器
-pub const cms = struct {
-    pub const Model = @import("cms_model.controller.zig");
-    pub const Field = @import("cms_field.controller.zig");
-    pub const Document = @import("document.controller.zig");
-    pub const Category = @import("category.controller.zig");
-    pub const Material = @import("material.controller.zig");
-    pub const MaterialCategory = @import("material_category.controller.zig");
-};
-
-// 会员管理控制器
-pub const member = struct {
-    pub const Member = @import("member.controller.zig");
-    pub const MemberGroup = @import("member_group.controller.zig");
-};
-
-// 友链管理控制器
-pub const friendlink = struct {
-    pub const FriendLink = @import("friend_link.controller.zig");
-};
-
-// 第三方服务控制器
-pub const external = struct {
-    pub const Github = @import("github.controller.zig");
-};
-
-// 系统扩展控制器（非标准 CRUD）
-pub const system_ext = @import("system_ext.controller.zig");
 
 // 实时通信控制器
 pub const realtime = struct {
@@ -95,12 +69,8 @@ pub const ControllerType = enum {
     crud,
     generic,
     login,
-    menu,
     public,
     setting,
+    system_ext,
     task,
-    department,
-    employee,
-    position,
-    role,
 };

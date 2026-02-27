@@ -90,13 +90,13 @@ pub const App = struct {
         });
         owned = true;
 
-        try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, Controller.list);
-        try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, Controller.get);
-        try self.router.handle_func("/" ++ name ++ "/save", ctrl_ptr, Controller.save);
-        try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, Controller.delete);
-        try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, Controller.modify);
-        try self.router.handle_func("/" ++ name ++ "/set", ctrl_ptr, Controller.modify);
-        try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, Controller.select);
+        try self.router.handle_func("/" ++ name ++ "/list", ctrl_ptr, &Controller.list);
+        try self.router.handle_func("/" ++ name ++ "/get", ctrl_ptr, &Controller.get);
+        try self.router.handle_func("/" ++ name ++ "/save", ctrl_ptr, &Controller.save);
+        try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, &Controller.delete);
+        try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, &Controller.modify);
+        try self.router.handle_func("/" ++ name ++ "/set", ctrl_ptr, &Controller.modify);
+        try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, &Controller.select);
 
         // 记录 CRUD 路由信息
         const crud_paths = [_][]const u8{ "/list", "/get", "/save", "/delete", "/modify", "/set", "/select" };
