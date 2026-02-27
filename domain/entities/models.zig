@@ -26,6 +26,19 @@ pub const FriendLink = @import("friend_link.model.zig").FriendLink;
 pub const MemberGroup = @import("member_group.model.zig").MemberGroup;
 pub const Member = @import("member.model.zig").Member;
 
+// ecom-admin-dashboard 对接模型（sys/biz/op 新表）
+pub const integration = @import("integration_models.zig");
+pub const SysDept = integration.SysDept;
+pub const SysPosition = integration.SysPosition;
+pub const SysRole = integration.SysRole;
+pub const SysMenu = integration.SysMenu;
+pub const SysAdmin = integration.SysAdmin;
+pub const SysConfig = integration.SysConfig;
+pub const SysDict = integration.SysDict;
+pub const SysDictItem = integration.SysDictItem;
+pub const BizMember = integration.BizMember;
+pub const OpTask = integration.OpTask;
+
 /// 实体类型枚举，用于泛型操作
 pub const EntityType = enum {
     admin,

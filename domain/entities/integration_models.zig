@@ -1,0 +1,163 @@
+//! ecom-admin-dashboard 对接模型
+//!
+//! 用于承载 sys/biz/op 新表结构，供通用 CRUD 控制器直接复用。
+
+/// 系统部门模型
+pub const SysDept = struct {
+    id: ?i32 = null,
+    parent_id: i32 = 0,
+    dept_name: []const u8 = "",
+    dept_code: []const u8 = "",
+    leader: []const u8 = "",
+    phone: []const u8 = "",
+    email: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    remark: []const u8 = "",
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统职位模型
+pub const SysPosition = struct {
+    id: ?i32 = null,
+    dept_id: i32 = 0,
+    position_name: []const u8 = "",
+    position_code: []const u8 = "",
+    description: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统角色模型
+pub const SysRole = struct {
+    id: ?i32 = null,
+    role_name: []const u8 = "",
+    role_key: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    remark: []const u8 = "",
+    data_scope: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统菜单模型
+pub const SysMenu = struct {
+    id: ?i32 = null,
+    pid: i32 = 0,
+    menu_name: []const u8 = "",
+    menu_type: i32 = 2,
+    icon: []const u8 = "",
+    path: []const u8 = "",
+    component: []const u8 = "",
+    perms: []const u8 = "",
+    sort: i32 = 0,
+    is_hide: i32 = 0,
+    is_cache: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统管理员模型
+pub const SysAdmin = struct {
+    id: ?i32 = null,
+    username: []const u8 = "",
+    nickname: []const u8 = "",
+    password_hash: []const u8 = "",
+    mobile: []const u8 = "",
+    email: []const u8 = "",
+    avatar: []const u8 = "",
+    gender: i32 = 0,
+    dept_id: ?i32 = null,
+    position_id: ?i32 = null,
+    status: i32 = 1,
+    remark: []const u8 = "",
+    last_login: ?i64 = null,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统配置模型
+pub const SysConfig = struct {
+    id: ?i32 = null,
+    config_name: []const u8 = "",
+    config_key: []const u8 = "",
+    config_group: []const u8 = "basic",
+    config_type: []const u8 = "text",
+    config_value: []const u8 = "",
+    description: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统字典模型
+pub const SysDict = struct {
+    id: ?i32 = null,
+    category_code: []const u8 = "",
+    dict_name: []const u8 = "",
+    dict_code: []const u8 = "",
+    remark: []const u8 = "",
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 系统字典项模型
+pub const SysDictItem = struct {
+    id: ?i32 = null,
+    dict_id: i32 = 0,
+    item_name: []const u8 = "",
+    item_value: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 业务会员模型
+pub const BizMember = struct {
+    id: ?i32 = null,
+    user_id: ?i32 = null,
+    username: []const u8 = "",
+    nickname: []const u8 = "",
+    mobile: []const u8 = "",
+    email: []const u8 = "",
+    avatar: []const u8 = "",
+    gender: i32 = 0,
+    level: i32 = 1,
+    balance: f64 = 0,
+    total_consume: f64 = 0,
+    total_order: i32 = 0,
+    points: i32 = 0,
+    status: i32 = 1,
+    source: []const u8 = "PC",
+    last_login: ?i64 = null,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+/// 任务模型
+pub const OpTask = struct {
+    id: ?i32 = null,
+    task_name: []const u8 = "",
+    task_type: i32 = 1,
+    group_name: []const u8 = "default",
+    target: []const u8 = "",
+    params_json: []const u8 = "{}",
+    cron: []const u8 = "",
+    delay_seconds: i32 = 0,
+    timeout_seconds: i32 = 300,
+    retry: i32 = 0,
+    description: []const u8 = "",
+    status: i32 = 1,
+    last_run_time: ?i64 = null,
+    next_run_time: ?i64 = null,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};

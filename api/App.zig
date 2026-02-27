@@ -95,11 +95,12 @@ pub const App = struct {
         try self.router.handle_func("/" ++ name ++ "/save", ctrl_ptr, Controller.save);
         try self.router.handle_func("/" ++ name ++ "/delete", ctrl_ptr, Controller.delete);
         try self.router.handle_func("/" ++ name ++ "/modify", ctrl_ptr, Controller.modify);
+        try self.router.handle_func("/" ++ name ++ "/set", ctrl_ptr, Controller.modify);
         try self.router.handle_func("/" ++ name ++ "/select", ctrl_ptr, Controller.select);
 
         // 记录 CRUD 路由信息
-        const crud_paths = [_][]const u8{ "/list", "/get", "/save", "/delete", "/modify", "/select" };
-        const crud_handlers = [_][]const u8{ "list", "get", "save", "delete", "modify", "select" };
+        const crud_paths = [_][]const u8{ "/list", "/get", "/save", "/delete", "/modify", "/set", "/select" };
+        const crud_handlers = [_][]const u8{ "list", "get", "save", "delete", "modify", "modify", "select" };
         for (crud_paths, crud_handlers) |path, handler_name| {
             var route_buf: [64]u8 = undefined;
             const route_path = std.fmt.bufPrint(&route_buf, "/{s}{s}", .{ name, path }) catch "route-too-long";
@@ -110,7 +111,7 @@ pub const App = struct {
     /// 注册路由 - 适配新的控制器路径
     pub fn route(self: *Self, path: []const u8, ctrl: anytype, handler: anytype) !void {
         try self.router.handle_func(path, ctrl, handler);
-        
+
         // 记录独立路由信息
         const controller_type = @TypeOf(ctrl);
         const type_name = @typeName(controller_type);
@@ -118,7 +119,7 @@ pub const App = struct {
             type_name[dot_idx + 1 ..]
         else
             type_name;
-            
+
         const handler_type = @TypeOf(handler);
         const handler_name = @typeName(handler_type);
         const handler_fn_name = if (std.mem.lastIndexOf(u8, handler_name, ".")) |dot_idx|
@@ -189,7 +190,7 @@ pub const App = struct {
         try self.router.handle_func("/dynamic/delete", ctrl_ptr, DynamicController.delete);
         try self.router.handle_func("/dynamic/schema", ctrl_ptr, DynamicController.schema);
 
-        // 扩展操作 
+        // 扩展操作
         try self.router.handle_func("/dynamic/query", ctrl_ptr, DynamicController.query);
         try self.router.handle_func("/dynamic/count", ctrl_ptr, DynamicController.count);
         try self.router.handle_func("/dynamic/exists", ctrl_ptr, DynamicController.exists);
@@ -225,12 +226,7 @@ pub const App = struct {
 
         // 遍历所有已注册的路由
         for (self.routes.items) |route_entry| {
-            logger.info("│ {s:<27} │ {s:<8} │ {s:<16} │ {s:<8} │", .{ 
-                route_entry.path, 
-                route_entry.method, 
-                route_entry.controller_type, 
-                route_entry.handler_name 
-            });
+            logger.info("│ {s:<27} │ {s:<8} │ {s:<16} │ {s:<8} │", .{ route_entry.path, route_entry.method, route_entry.controller_type, route_entry.handler_name });
         }
 
         logger.info("└─────────────────────────────────────────────────────────────────┘", .{});

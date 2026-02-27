@@ -100,8 +100,8 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
 /// 响应成功消息
 pub fn send_ok(req: zap.Request, v: anytype) void {
     const ser = json_mod.JSON.encode(global.get_allocator(), .{
-        .code = 0,
-        .msg = "操作成功",
+        .code = 200,
+        .msg = "success",
         .data = v,
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
@@ -111,14 +111,31 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
 /// 响应前端table结构（标准格式）
 pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
     const ser = json_mod.JSON.encode(global.get_allocator(), .{
-        .code = 0,
+        .code = 200,
+        .msg = "success",
         .count = count,
-        .msg = "获取列表成功",
-        .data = v,
+        .data = .{
+            .list = v,
+            .items = v,
+            .total = count,
+            .pagination = .{
+                .total = count,
+            },
+        },
         .extra = extra,
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
     req.sendJson(ser) catch return;
+}
+
+/// 统一成功响应（兼容别名）
+pub fn send_ok_compat(req: zap.Request, v: anytype) void {
+    send_ok(req, v);
+}
+
+/// 统一分页响应（兼容别名）
+pub fn send_page_compat(req: zap.Request, v: anytype, count: u64, extra: anytype) void {
+    send_layui_table_response(req, v, count, extra);
 }
 
 /// 响应前端table结构（自定义数据格式）

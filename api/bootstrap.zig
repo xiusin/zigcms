@@ -45,7 +45,7 @@ pub const Bootstrap = struct {
             .crud_count = 0,
         };
     }
-    
+
     /// 获取应用上下文
     pub fn getContext(self: *const Self) *AppContext {
         return self.app_context;
@@ -92,8 +92,34 @@ pub const Bootstrap = struct {
         try self.app.crud("friend_link", models.FriendLink);
         self.crud_count += 1;
 
-        // 每个 CRUD 模块生成 6 个路由
-        self.route_count += self.crud_count * 6;
+        // =====================================================
+        // ecom-admin-dashboard 对接模块 (sys/biz/op 新表)
+        // =====================================================
+
+        // Phase 1: 组织/管理员/职位/角色
+        try self.app.crud("system/dept", models.SysDept);
+        try self.app.crud("system/admin", models.SysAdmin);
+        try self.app.crud("system/position", models.SysPosition);
+        try self.app.crud("system/role", models.SysRole);
+        self.crud_count += 4;
+
+        // Phase 2: 菜单/字典
+        try self.app.crud("system/menu", models.SysMenu);
+        try self.app.crud("system/dict", models.SysDict);
+        try self.app.crud("system/dict_item", models.SysDictItem);
+        self.crud_count += 3;
+
+        // Phase 3: 配置/会员
+        try self.app.crud("system/config", models.SysConfig);
+        try self.app.crud("business/member", models.BizMember);
+        self.crud_count += 2;
+
+        // Phase 4: 任务
+        try self.app.crud("operation/task", models.OpTask);
+        self.crud_count += 1;
+
+        // 每个 CRUD 模块生成 7 个路由 (list/get/save/delete/modify/set/select)
+        self.route_count += self.crud_count * 7;
     }
 
     /// 注册自定义控制器路由
@@ -120,7 +146,7 @@ pub const Bootstrap = struct {
                     const l = try di.resolve(logger.Logger);
                     // 从容器中解析 AuthService
                     const auth_service = try di.resolve(@import("../application/services/auth_service.zig").AuthService);
-                    
+
                     const ctrl = try allocator.create(controllers.auth.Login);
                     ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);
                     return ctrl;
@@ -168,7 +194,7 @@ pub const Bootstrap = struct {
                 }
             }.factory, null);
         }
-        
+
         const menu = try self.container.resolve(controllers.admin.Menu);
         try self.app.route("/menu/list", menu, &controllers.admin.Menu.list);
         self.route_count += 1;

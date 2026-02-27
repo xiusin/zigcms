@@ -124,14 +124,14 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
 
             var dto = dtos.common.Page{};
             var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
-        return base.send_error(req, err);
-    };
+                return base.send_error(req, err);
+            };
             defer params.deinit();
 
             for (params.items) |value| {
                 if (strings.eql(value.key, "page")) {
                     dto.page = @intCast(strings.to_int(value.value) catch 1);
-                } else if (strings.eql(value.key, "limit")) {
+                } else if (strings.eql(value.key, "limit") or strings.eql(value.key, "page_size") or strings.eql(value.key, "pageSize")) {
                     dto.limit = @intCast(strings.to_int(value.value) catch 10);
                 } else if (strings.starts_with(value.key, "sort[")) {
                     dto.field = base.get_sort_field(value.key) orelse "id";
@@ -295,9 +295,11 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             if (!field_valid) return base.send_failed(req, "字段不存在");
 
             // 使用原生 SQL 更新单字段
+            const has_updated_at = comptime @hasField(T, "updated_at");
+            const touch_field = if (has_updated_at) "updated_at" else "update_time";
             const sql_str = strings.sprinf(
-                "UPDATE " ++ TABLE_NAME ++ " SET {s} = '{s}', update_time = {d} WHERE id = {d}",
-                .{ field, value, std.time.microTimestamp(), id },
+                "UPDATE " ++ TABLE_NAME ++ " SET {s} = '{s}', {s} = {d} WHERE id = {d}",
+                .{ field, value, touch_field, std.time.microTimestamp(), id },
             ) catch return base.send_failed(req, "SQL 构建失败");
             defer self.allocator.free(sql_str);
 
