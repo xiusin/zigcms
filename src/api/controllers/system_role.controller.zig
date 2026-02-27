@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const sql = @import("../../application/services/sql/orm.zig");
+const models = @import("../../domain/entities/mod.zig");
 const global = @import("../../core/primitives/global.zig");
 
 const Self = @This();
@@ -26,16 +27,35 @@ const OrmPermission = sql.defineWithConfig(SysPermission, .{
     .primary_key = "id",
 });
 
+const OrmRoleMenu = sql.defineWithConfig(models.SysRoleMenu, .{
+    .table_name = "sys_role_menu",
+    .primary_key = "id",
+});
+
+const OrmRolePermission = sql.defineWithConfig(models.SysRolePermission, .{
+    .table_name = "sys_role_permission",
+    .primary_key = "id",
+});
+
 /// 初始化角色扩展控制器。
 pub fn init(allocator: Allocator) Self {
     if (!OrmPermission.hasDb()) {
         OrmPermission.use(global.get_db());
+    }
+    if (!OrmRoleMenu.hasDb()) {
+        OrmRoleMenu.use(global.get_db());
+    }
+    if (!OrmRolePermission.hasDb()) {
+        OrmRolePermission.use(global.get_db());
     }
     return .{ .allocator = allocator };
 }
 
 /// 获取按钮权限选项接口。
 pub const button_perms = buttonPermsImpl;
+
+/// 角色权限保存接口。
+pub const role_permissions_save = rolePermissionsSaveImpl;
 
 /// 返回按钮权限候选列表。
 fn buttonPermsImpl(self: *Self, req: zap.Request) !void {
@@ -62,6 +82,74 @@ fn buttonPermsImpl(self: *Self, req: zap.Request) !void {
     }
 
     base.send_ok(req, options.items);
+}
+
+/// 保存角色菜单和按钮权限。
+fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
+    req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+    const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+    var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+        return base.send_failed(req, "请求体格式错误");
+    };
+    defer parsed.deinit();
+
+    if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
+
+    const role_id_val = parsed.value.object.get("role_id") orelse return base.send_failed(req, "缺少 role_id 参数");
+    const menu_ids_val = parsed.value.object.get("menu_ids") orelse return base.send_failed(req, "缺少 menu_ids 参数");
+    const button_perms_val = parsed.value.object.get("button_perms") orelse return base.send_failed(req, "缺少 button_perms 参数");
+
+    if (role_id_val != .integer or menu_ids_val != .array or button_perms_val != .array) {
+        return base.send_failed(req, "参数格式错误");
+    }
+
+    const role_id: i32 = @intCast(role_id_val.integer);
+
+    var delete_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
+    defer delete_menu_q.deinit();
+    _ = delete_menu_q.delete() catch |err| return base.send_error(req, err);
+
+    var delete_perm_q = OrmRolePermission.WhereEq("role_id", role_id);
+    defer delete_perm_q.deinit();
+    _ = delete_perm_q.delete() catch |err| return base.send_error(req, err);
+
+    for (menu_ids_val.array.items) |menu_id_val| {
+        if (menu_id_val != .integer) continue;
+        _ = OrmRoleMenu.Create(.{
+            .role_id = role_id,
+            .menu_id = @as(i32, @intCast(menu_id_val.integer)),
+        }) catch |err| return base.send_error(req, err);
+    }
+
+    for (button_perms_val.array.items, 0..) |perm_val, idx| {
+        if (perm_val != .string) continue;
+
+        var perm_q = OrmPermission.WhereEq("perm_code", perm_val.string);
+        defer perm_q.deinit();
+        const existed = perm_q.first() catch null;
+
+        const permission_id: i32 = if (existed) |perm| blk: {
+            break :blk perm.id orelse 0;
+        } else blk: {
+            var created = OrmPermission.Create(.{
+                .perm_name = perm_val.string,
+                .perm_code = perm_val.string,
+                .menu_id = 0,
+                .sort = @as(i32, @intCast(idx + 1)),
+                .status = 1,
+            }) catch |err| return base.send_error(req, err);
+            defer OrmPermission.freeModel(self.allocator, &created);
+            break :blk created.id orelse 0;
+        };
+
+        _ = OrmRolePermission.Create(.{
+            .role_id = role_id,
+            .permission_id = permission_id,
+        }) catch |err| return base.send_error(req, err);
+    }
+
+    base.send_ok(req, "权限保存成功");
 }
 
 /// 默认按钮权限列表。

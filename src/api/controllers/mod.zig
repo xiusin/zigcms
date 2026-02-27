@@ -51,10 +51,14 @@ pub const system_ext = struct {
     pub const Admin = @import("system_admin.controller.zig");
     pub const Menu = @import("system_menu.controller.zig");
     pub const DictItem = @import("system_dict_item.controller.zig");
+    pub const Config = @import("system_config.controller.zig");
     pub const Role = @import("system_role.controller.zig");
+    pub const Member = @import("business_member.controller.zig");
+    pub const Task = @import("operation_task.controller.zig");
     pub const Payment = @import("system_payment.controller.zig");
     pub const Version = @import("system_version.controller.zig");
     pub const Log = @import("log.controller.zig");
+    pub const IntegrationOps = @import("integration_ops.controller.zig"); // 已拆分，保留兼容
 };
 
 // 实时通信控制器

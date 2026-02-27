@@ -67,34 +67,42 @@ pub const Bootstrap = struct {
     /// 注册 CRUD 模块
     /// 自动生成 list/get/save/delete/modify/select 路由
     fn registerCrudModules(self: *Self) !void {
+        const registerCrudWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, comptime Model: type) !void {
+                try app.crud(path, Model);
+                try app.crud("api/" ++ path, Model);
+            }
+        }.exec;
+
         // =====================================================
         // ecom-admin-dashboard 对接模块 (sys/biz/op 新表)
         // =====================================================
 
         // Phase 1: 组织/管理员/职位/角色
-        try self.app.crud("system/dept", models.SysDept);
-        try self.app.crud("system/admin", models.SysAdmin);
-        try self.app.crud("system/position", models.SysPosition);
-        try self.app.crud("system/role", models.SysRole);
+        try registerCrudWithAlias(self.app, "system/dept", models.SysDept);
+        try registerCrudWithAlias(self.app, "system/admin", models.SysAdmin);
+        try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
+        try registerCrudWithAlias(self.app, "system/role", models.SysRole);
         self.crud_count += 4;
 
         // Phase 2: 菜单/字典
-        try self.app.crud("system/menu", models.SysMenu);
-        try self.app.crud("system/dict", models.SysDict);
-        try self.app.crud("system/dict_item", models.SysDictItem);
+        try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
+        try registerCrudWithAlias(self.app, "system/dict", models.SysDict);
+        try registerCrudWithAlias(self.app, "system/dict_item", models.SysDictItem);
+        try registerCrudWithAlias(self.app, "system/dict/category", models.SysDictCategory);
         self.crud_count += 3;
 
         // Phase 3: 配置/会员
-        try self.app.crud("system/config", models.SysConfig);
-        try self.app.crud("business/member", models.BizMember);
+        try registerCrudWithAlias(self.app, "system/config", models.SysConfig);
+        try registerCrudWithAlias(self.app, "business/member", models.BizMember);
         self.crud_count += 2;
 
         // Phase 4: 任务
-        try self.app.crud("operation/task", models.OpTask);
+        try registerCrudWithAlias(self.app, "operation/task", models.OpTask);
         self.crud_count += 1;
 
-        // 每个 CRUD 模块生成 7 个路由 (list/get/save/delete/modify/set/select)
-        self.route_count += self.crud_count * 7;
+        // 每个 CRUD 模块生成 14 个路由（原路径 7 条 + /api 前缀别名 7 条）
+        self.route_count += self.crud_count * 14;
     }
 
     /// 注册自定义控制器路由
@@ -188,6 +196,13 @@ pub const Bootstrap = struct {
 
     /// 注册系统扩展路由
     fn registerSystemExtRoutes(self: *Self) !void {
+        const registerWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, ctrl: anytype, handler: anytype) !void {
+                try app.route(path, ctrl, handler);
+                try app.route("/api" ++ path, ctrl, handler);
+            }
+        }.exec;
+
         if (!self.container.isRegistered(controllers.system_ext.Dept)) {
             try self.container.registerSingleton(controllers.system_ext.Dept, controllers.system_ext.Dept, struct {
                 fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Dept {
@@ -243,6 +258,39 @@ pub const Bootstrap = struct {
             }.factory, null);
         }
 
+        if (!self.container.isRegistered(controllers.system_ext.Config)) {
+            try self.container.registerSingleton(controllers.system_ext.Config, controllers.system_ext.Config, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Config {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Config);
+                    ctrl.* = controllers.system_ext.Config.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Member)) {
+            try self.container.registerSingleton(controllers.system_ext.Member, controllers.system_ext.Member, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Member {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Member);
+                    ctrl.* = controllers.system_ext.Member.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Task)) {
+            try self.container.registerSingleton(controllers.system_ext.Task, controllers.system_ext.Task, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Task {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Task);
+                    ctrl.* = controllers.system_ext.Task.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
         if (!self.container.isRegistered(controllers.system_ext.Payment)) {
             try self.container.registerSingleton(controllers.system_ext.Payment, controllers.system_ext.Payment, struct {
                 fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Payment {
@@ -281,48 +329,69 @@ pub const Bootstrap = struct {
         const menu = try self.container.resolve(controllers.system_ext.Menu);
         const dict_item = try self.container.resolve(controllers.system_ext.DictItem);
         const role = try self.container.resolve(controllers.system_ext.Role);
+        const config_ctrl = try self.container.resolve(controllers.system_ext.Config);
+        const member_ctrl = try self.container.resolve(controllers.system_ext.Member);
+        const task_ctrl = try self.container.resolve(controllers.system_ext.Task);
         const payment = try self.container.resolve(controllers.system_ext.Payment);
         const version = try self.container.resolve(controllers.system_ext.Version);
         const log_ctrl = try self.container.resolve(controllers.system_ext.Log);
 
-        try self.app.route("/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
-        try self.app.route("/system/dept/all", dept, &controllers.system_ext.Dept.dept_all);
+        try registerWithAlias(self.app, "/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
+        try registerWithAlias(self.app, "/system/dept/all", dept, &controllers.system_ext.Dept.dept_all);
 
-        try self.app.route("/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
-        try self.app.route("/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
+        try registerWithAlias(self.app, "/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
+        try registerWithAlias(self.app, "/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
         try self.app.route("/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
-        try self.app.route("/userInfo", admin, &controllers.system_ext.Admin.user_info);
+        try registerWithAlias(self.app, "/userInfo", admin, &controllers.system_ext.Admin.user_info);
 
-        try self.app.route("/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
-        try self.app.route("/system/menu/permissions", menu, &controllers.system_ext.Menu.permissions);
-        try self.app.route("/system/menu/save-permissions", menu, &controllers.system_ext.Menu.save_permissions);
-        try self.app.route("/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
+        try registerWithAlias(self.app, "/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
+        try registerWithAlias(self.app, "/system/menu/permissions", menu, &controllers.system_ext.Menu.permissions);
+        try registerWithAlias(self.app, "/system/menu/save-permissions", menu, &controllers.system_ext.Menu.save_permissions);
+        try registerWithAlias(self.app, "/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
 
-        try self.app.route("/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
-        try self.app.route("/system/dict/item/save", dict_item, &controllers.system_ext.DictItem.save);
-        try self.app.route("/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
-        try self.app.route("/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
+        try registerWithAlias(self.app, "/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
+        try registerWithAlias(self.app, "/system/dict/item/save", dict_item, &controllers.system_ext.DictItem.save);
+        try registerWithAlias(self.app, "/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
+        try registerWithAlias(self.app, "/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
 
-        try self.app.route("/role/button-perms", role, &controllers.system_ext.Role.button_perms);
+        try registerWithAlias(self.app, "/role/button-perms", role, &controllers.system_ext.Role.button_perms);
+        try registerWithAlias(self.app, "/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);
 
-        try self.app.route("/system/payment/list", payment, &controllers.system_ext.Payment.list);
-        try self.app.route("/system/payment/save", payment, &controllers.system_ext.Payment.save);
-        try self.app.route("/system/payment/delete", payment, &controllers.system_ext.Payment.delete);
-        try self.app.route("/system/payment/set", payment, &controllers.system_ext.Payment.set);
-        try self.app.route("/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
+        try registerWithAlias(self.app, "/system/config/refresh-cache", config_ctrl, &controllers.system_ext.Config.refresh_cache);
+        try registerWithAlias(self.app, "/system/config/export", config_ctrl, &controllers.system_ext.Config.config_export);
+        try registerWithAlias(self.app, "/system/config/import", config_ctrl, &controllers.system_ext.Config.config_import);
+        try registerWithAlias(self.app, "/system/config/backup", config_ctrl, &controllers.system_ext.Config.config_backup);
 
-        try self.app.route("/system/version/list", version, &controllers.system_ext.Version.list);
-        try self.app.route("/system/version/save", version, &controllers.system_ext.Version.save);
-        try self.app.route("/system/version/delete", version, &controllers.system_ext.Version.delete);
-        try self.app.route("/system/version/set", version, &controllers.system_ext.Version.set);
+        try registerWithAlias(self.app, "/business/member/export", member_ctrl, &controllers.system_ext.Member.member_export);
+        try registerWithAlias(self.app, "/business/member/batchEnable", member_ctrl, &controllers.system_ext.Member.batch_enable);
+        try registerWithAlias(self.app, "/business/member/batchDisable", member_ctrl, &controllers.system_ext.Member.batch_disable);
+        try registerWithAlias(self.app, "/business/member/batchDelete", member_ctrl, &controllers.system_ext.Member.batch_delete);
+        try registerWithAlias(self.app, "/business/member/tag/add", member_ctrl, &controllers.system_ext.Member.tag_add);
+        try registerWithAlias(self.app, "/business/member/pointRecharge", member_ctrl, &controllers.system_ext.Member.point_recharge);
+        try registerWithAlias(self.app, "/business/member/balanceRecharge", member_ctrl, &controllers.system_ext.Member.balance_recharge);
 
-        try self.app.route("/log/list", log_ctrl, &controllers.system_ext.Log.list);
-        try self.app.route("/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
-        try self.app.route("/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
-        try self.app.route("/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
-        try self.app.route("/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
+        try registerWithAlias(self.app, "/operation/task/run", task_ctrl, &controllers.system_ext.Task.run);
+        try registerWithAlias(self.app, "/operation/task/logs", task_ctrl, &controllers.system_ext.Task.logs);
+        try registerWithAlias(self.app, "/operation/task/schedule-logs", task_ctrl, &controllers.system_ext.Task.schedule_logs);
 
-        self.route_count += 29;
+        try registerWithAlias(self.app, "/system/payment/list", payment, &controllers.system_ext.Payment.list);
+        try registerWithAlias(self.app, "/system/payment/save", payment, &controllers.system_ext.Payment.save);
+        try registerWithAlias(self.app, "/system/payment/delete", payment, &controllers.system_ext.Payment.delete);
+        try registerWithAlias(self.app, "/system/payment/set", payment, &controllers.system_ext.Payment.set);
+        try registerWithAlias(self.app, "/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
+
+        try registerWithAlias(self.app, "/system/version/list", version, &controllers.system_ext.Version.list);
+        try registerWithAlias(self.app, "/system/version/save", version, &controllers.system_ext.Version.save);
+        try registerWithAlias(self.app, "/system/version/delete", version, &controllers.system_ext.Version.delete);
+        try registerWithAlias(self.app, "/system/version/set", version, &controllers.system_ext.Version.set);
+
+        try registerWithAlias(self.app, "/log/list", log_ctrl, &controllers.system_ext.Log.list);
+        try registerWithAlias(self.app, "/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
+        try registerWithAlias(self.app, "/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
+        try registerWithAlias(self.app, "/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
+        try registerWithAlias(self.app, "/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
+
+        self.route_count += 90;
     }
 
     /// 注册实时通信路由

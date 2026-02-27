@@ -18,6 +18,73 @@ pub const SysDept = struct {
     updated_at: ?i64 = null,
 };
 
+/// 会员标签模型
+pub const BizMemberTag = struct {
+    id: ?i32 = null,
+    tag_name: []const u8 = "",
+    color: []const u8 = "blue",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+};
+
+/// 会员标签关联模型
+pub const BizMemberTagRel = struct {
+    id: ?i32 = null,
+    member_id: i32 = 0,
+    tag_id: i32 = 0,
+    created_at: ?i64 = null,
+};
+
+/// 会员余额变更日志模型
+pub const BizMemberBalanceLog = struct {
+    id: ?i32 = null,
+    member_id: i32 = 0,
+    change_type: []const u8 = "add",
+    amount: f64 = 0,
+    payment_method: []const u8 = "",
+    remark: []const u8 = "",
+    operator_id: ?i32 = null,
+    created_at: ?i64 = null,
+};
+
+/// 会员积分变更日志模型
+pub const BizMemberPointLog = struct {
+    id: ?i32 = null,
+    member_id: i32 = 0,
+    change_type: []const u8 = "add",
+    points: i32 = 0,
+    remark: []const u8 = "",
+    operator_id: ?i32 = null,
+    created_at: ?i64 = null,
+};
+
+/// 系统字典分类模型
+pub const SysDictCategory = struct {
+    id: ?i32 = null,
+    category_name: []const u8 = "",
+    category_code: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+};
+
+/// 角色菜单关联模型
+pub const SysRoleMenu = struct {
+    id: ?i32 = null,
+    role_id: i32 = 0,
+    menu_id: i32 = 0,
+    created_at: ?i64 = null,
+};
+
+/// 角色权限关联模型
+pub const SysRolePermission = struct {
+    id: ?i32 = null,
+    role_id: i32 = 0,
+    permission_id: i32 = 0,
+    created_at: ?i64 = null,
+};
+
 /// 系统职位模型
 pub const SysPosition = struct {
     id: ?i32 = null,
@@ -162,6 +229,31 @@ pub const OpTask = struct {
     updated_at: ?i64 = null,
 };
 
+/// 任务执行日志模型
+pub const OpTaskLog = struct {
+    id: ?i32 = null,
+    task_id: i32 = 0,
+    task_name: []const u8 = "",
+    start_time: ?i64 = null,
+    end_time: ?i64 = null,
+    duration_ms: i32 = 0,
+    status: []const u8 = "success",
+    result: []const u8 = "",
+    error_message: []const u8 = "",
+    created_at: ?i64 = null,
+};
+
+/// 任务调度日志模型
+pub const OpTaskScheduleLog = struct {
+    id: ?i32 = null,
+    task_id: i32 = 0,
+    task_name: []const u8 = "",
+    schedule_time: ?i64 = null,
+    execute_time: ?i64 = null,
+    status: []const u8 = "waiting",
+    created_at: ?i64 = null,
+};
+
 /// 通用 CRUD 类型别名（用于自动推导表名）
 pub const sys_dept = SysDept;
 pub const sys_position = SysPosition;
@@ -171,5 +263,14 @@ pub const sys_admin = SysAdmin;
 pub const sys_config = SysConfig;
 pub const sys_dict = SysDict;
 pub const sys_dict_item = SysDictItem;
+pub const sys_dict_category = SysDictCategory;
+pub const sys_role_menu = SysRoleMenu;
+pub const sys_role_permission = SysRolePermission;
 pub const biz_member = BizMember;
+pub const biz_member_tag = BizMemberTag;
+pub const biz_member_tag_rel = BizMemberTagRel;
+pub const biz_member_balance_log = BizMemberBalanceLog;
+pub const biz_member_point_log = BizMemberPointLog;
 pub const op_task = OpTask;
+pub const op_task_log = OpTaskLog;
+pub const op_task_schedule_log = OpTaskScheduleLog;
