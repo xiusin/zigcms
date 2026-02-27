@@ -75,7 +75,10 @@ pub const http = @import("http/mod.zig");
 ///
 /// 配置数据库连接、缓存服务、HTTP 客户端等外部服务参数。
 pub const InfraConfig = struct {
+    pub const DatabaseEngine = enum { sqlite, mysql };
+
     // 数据库连接配置
+    db_engine: DatabaseEngine = .mysql,
     db_host: []const u8 = "localhost",
     db_port: u16 = 5432,
     db_name: []const u8 = "zigcms",
@@ -114,20 +117,34 @@ pub const InfraConfig = struct {
 /// ## 错误
 /// 如果数据库连接失败，返回相应的错误。
 pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
-    _ = config; // Currently not used for SQLite
-
-    // 初始化数据库 - 使用 SQLite
     const db = try allocator.create(sql.Database);
     errdefer allocator.destroy(db);
 
-    db.* = sql.Database.sqlite(allocator, "zigcms.db") catch |e| {
-        return e;
-    };
-    // 注意：不需要在这里设置 errdefer db.deinit()
-    // 因为调用者（root.zig）会负责在错误时清理
+    switch (config.db_engine) {
+        .sqlite => {
+            db.* = sql.Database.sqlite(allocator, config.db_name) catch |e| {
+                return e;
+            };
+            logger.info("基础设施层初始化完成，使用 SQLite 数据库({s})", .{config.db_name});
+        },
+        .mysql => {
+            const mysql_cfg = sql.MySQLConfig{
+                .host = config.db_host,
+                .port = config.db_port,
+                .user = config.db_user,
+                .password = config.db_password,
+                .database = config.db_name,
+                .min_connections = 2,
+                .max_connections = @max(2, config.db_pool_size),
+            };
 
-    // 初始化基础设施组件
-    logger.info("基础设施层初始化完成，使用 SQLite 数据库", .{});
+            db.* = sql.Database.mysql(allocator, mysql_cfg) catch |e| {
+                logger.err("MySQL 数据库初始化失败: {any}", .{e});
+                return e;
+            };
+            logger.info("基础设施层初始化完成，使用 MySQL 数据库 {s}@{s}:{d}", .{ config.db_name, config.db_host, config.db_port });
+        },
+    }
 
     return db;
 }
