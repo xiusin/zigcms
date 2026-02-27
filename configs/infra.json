@@ -3,8 +3,8 @@
   "db_host": "150.158.132.171",
   "db_port": 3306,
   "db_name": "zigcms",
-  "db_user": "root",
-  "db_password": "ccb159781",
+  "db_user": "zigcms",
+  "db_password": "NXhzETjZ7NdSw3DY",
   "cache_host": "150.158.132.171",
   "cache_port": 6379,
   "http_timeout_ms": 5000

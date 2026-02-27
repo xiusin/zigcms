@@ -209,7 +209,7 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     const file_config = try loadConfigFromFiles(allocator, "configs");
 
     // 将文件配置映射到系统配置（防腐层转换）
-    return SystemConfig{
+    const system_config = SystemConfig{
         .api = .{
             .host = file_config.api.host,
             .port = file_config.api.port,
@@ -229,6 +229,7 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
             .enforce_business_rules = file_config.domain.enforce_business_rules,
         },
         .infra = .{
+            .db_engine = file_config.infra.db_engine,
             .db_host = file_config.infra.db_host,
             .db_port = file_config.infra.db_port,
             .db_name = file_config.infra.db_name,
@@ -243,6 +244,14 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
         },
         .shared = .{},
     };
+
+    // file_config 中的字符串由 ConfigLoader 分配，完成映射后立即释放
+    if (global_config_loader) |*loader| {
+        loader.deinit();
+        global_config_loader = null;
+    }
+
+    return system_config;
 }
 
 /// 初始化整个系统
