@@ -218,8 +218,15 @@ pub const Row = struct {
     allocator: Allocator,
     data: std.StringHashMapUnmanaged([]const u8),
     field_names: []const []const u8,
+    owned_values: std.ArrayListUnmanaged([]const u8) = .{},
 
     pub fn deinit(self: *const Row) void {
+        // 释放所有复制的值字符串
+        for (self.owned_values.items) |v| {
+            self.allocator.free(v);
+        }
+        var owned_copy = self.owned_values;
+        owned_copy.deinit(self.allocator);
         // StringHashMapUnmanaged.deinit 需要 allocator
         var data_copy = self.data;
         data_copy.deinit(self.allocator);
@@ -291,7 +298,15 @@ pub const ResultSet = struct {
             .allocator = self.allocator,
             .data = .{},
             .field_names = self.field_names,
+            .owned_values = .{},
         };
+        errdefer {
+            for (row.owned_values.items) |v| {
+                self.allocator.free(v);
+            }
+            row.owned_values.deinit(self.allocator);
+            row.data.deinit(self.allocator);
+        }
 
         for (0..self.field_count) |i| {
             const field_name = self.field_names[i];
@@ -301,10 +316,12 @@ pub const ResultSet = struct {
                 const cell_ptr: [*c]u8 = cell_ptr_raw;
                 const len: usize = @intCast(lengths[i]);
                 if (len > 0) {
-                    const value = cell_ptr[0..len];
-                    try row.data.put(self.allocator, field_name, value);
+                    // 复制数据到堆内存，避免 use-after-free
+                    const value_copy = try self.allocator.dupe(u8, cell_ptr[0..len]);
+                    try row.owned_values.append(self.allocator, value_copy);
+                    try row.data.put(self.allocator, field_name, value_copy);
                 } else {
-                    // 空字符串
+                    // 空字符串（静态内存，无需复制）
                     try row.data.put(self.allocator, field_name, "");
                 }
             }

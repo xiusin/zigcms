@@ -214,7 +214,9 @@ pub const App = struct {
         });
         logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });
         try listener.listen();
-        zap.start(.{ .threads = 4, .workers = 4 });
+        // 重要：workers 必须为 1，避免多进程 fork 后共享 MySQL 连接导致崩溃
+        // MySQL 连接不能跨进程共享，多线程模式是安全的
+        zap.start(.{ .threads = 4, .workers = 1 });
     }
 
     /// 打印所有已注册的路由（调试/运维用）
