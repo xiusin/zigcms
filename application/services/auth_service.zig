@@ -8,6 +8,7 @@ const orm_models = @import("../../domain/entities/orm_models.zig");
 const Admin = orm_models.Admin;
 const jwt = @import("../../shared/utils/jwt.zig");
 const global = @import("../../shared/primitives/global.zig");
+const strings = @import("../../shared/utils/strings.zig");
 
 pub const AuthService = struct {
     allocator: Allocator,
@@ -28,11 +29,12 @@ pub const AuthService = struct {
         }
 
         // 创建用户
+        const pwd_hash = try strings.md5(global.get_allocator(), password);
+        defer global.get_allocator().free(pwd_hash);
+
         return try Admin.Create(.{
             .username = username,
-            .password = password,
-            .create_time = std.time.microTimestamp(),
-            .update_time = std.time.microTimestamp(),
+            .password_hash = pwd_hash,
         });
     }
 
@@ -45,7 +47,10 @@ pub const AuthService = struct {
         if (user_opt == null) return error.UserNotFound;
 
         var user = user_opt.?;
-        if (!std.mem.eql(u8, user.password, password)) {
+        const pwd_hash = try strings.md5(self.allocator, password);
+        defer self.allocator.free(pwd_hash);
+
+        if (!std.mem.eql(u8, user.password_hash, pwd_hash)) {
             Admin.freeModel(self.allocator, &user);
             return error.InvalidPassword;
         }

@@ -22,7 +22,7 @@ const SysPermission = struct {
 };
 
 const OrmPermission = sql.defineWithConfig(SysPermission, .{
-    .table_name = "zigcms.sys_permission",
+    .table_name = "sys_permission",
     .primary_key = "id",
 });
 

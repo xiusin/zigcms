@@ -142,8 +142,6 @@ pub fn login(self: *Self, req: zap.Request) !void {
         .user = .{
             .id = user.id,
             .username = user.username,
-            .email = user.email,
-            .phone = user.phone,
         },
     });
 }

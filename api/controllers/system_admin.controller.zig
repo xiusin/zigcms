@@ -99,7 +99,6 @@ fn resetPasswordImpl(self: *Self, req: zap.Request) !void {
 
     _ = OrmAdmin.Update(target_admin_id, .{
         .password_hash = target_hash,
-        .updated_at = std.time.microTimestamp(),
     }) catch |err| return base.send_error(req, err);
 
     base.send_ok(req, "密码重置成功");

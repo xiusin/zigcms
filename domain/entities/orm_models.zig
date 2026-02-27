@@ -43,11 +43,19 @@ pub const Admin = sql.define(struct {
 
     id: ?i32 = null,
     username: []const u8 = "",
-    phone: []const u8 = "",
+    nickname: []const u8 = "",
+    password_hash: []const u8 = "",
+    mobile: []const u8 = "",
     email: []const u8 = "",
-    password: []const u8 = "",
-    create_time: ?i64 = null,
-    update_time: ?i64 = null,
+    avatar: []const u8 = "",
+    gender: i32 = 0,
+    dept_id: i32 = 0,
+    position_id: i32 = 0,
+    status: i32 = 1,
+    remark: []const u8 = "",
+    last_login: ?[]const u8 = null,
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
 });
 
 /// 文章模型
