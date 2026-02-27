@@ -18,19 +18,8 @@
 const std = @import("std");
 const sql = @import("../../application/services/sql/orm.zig");
 
-// 导入原始模型结构体
-const admin_model = @import("admin.model.zig");
-const article_model = @import("article.model.zig");
-const banner_model = @import("banner.model.zig");
-const category_model = @import("category.model.zig");
-const menu_model = @import("menu.model.zig");
-const role_model = @import("role.model.zig");
-const setting_model = @import("setting.model.zig");
-const task_model = @import("task.model.zig");
-const upload_model = @import("upload.model.zig");
-const department_model = @import("department.model.zig");
-const employee_model = @import("employee.model.zig");
-const position_model = @import("position.model.zig");
+// 统一从领域实体入口导入，避免逐文件依赖缺失
+const models = @import("mod.zig");
 
 // ============================================================================
 // ORM 模型定义

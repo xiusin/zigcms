@@ -44,7 +44,7 @@ const std = @import("std");
 ///
 /// 定义系统的核心业务对象，如用户、文章、分类等。
 /// 实体包含业务属性和基本的验证逻辑。
-pub const entities = @import("entities/models.zig");
+pub const entities = @import("entities/mod.zig");
 
 /// 领域服务
 ///
