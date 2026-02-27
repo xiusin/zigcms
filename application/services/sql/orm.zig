@@ -82,7 +82,7 @@ pub fn escapeSqlString(allocator: Allocator, str: []const u8) ![]u8 {
 // ============================================================================
 
 /// 查询结果包装器 - 使用 Arena Allocator 自动管理内存
-/// 
+///
 /// 优势：
 /// - 使用 Arena Allocator 一次性分配所有内存
 /// - deinit() 一次性释放所有内存，无泄漏风险
@@ -93,7 +93,7 @@ pub fn escapeSqlString(allocator: Allocator, str: []const u8) ![]u8 {
 /// ```zig
 /// var result = try QueryResult(User).fromAll(db, backing_allocator);
 /// defer result.deinit();
-/// 
+///
 /// for (result.items()) |user| {
 ///     std.debug.print("User: {s}\n", .{user.name});
 /// }
@@ -102,11 +102,11 @@ pub fn QueryResult(comptime T: type) type {
     return struct {
         arena: std.heap.ArenaAllocator,
         models: []T,
-        
+
         const Self = @This();
-        
+
         /// 从 ResultSet 创建查询结果
-        /// 
+        ///
         /// 参数：
         /// - backing_allocator: 底层分配器（通常是 GPA）
         /// - result_set: 数据库查询结果集
@@ -115,18 +115,18 @@ pub fn QueryResult(comptime T: type) type {
         pub fn fromResultSet(backing_allocator: Allocator, result_set: *interface.ResultSet) !Self {
             var arena = std.heap.ArenaAllocator.init(backing_allocator);
             errdefer arena.deinit();
-            
+
             const allocator = arena.allocator();
             const models = try mapResults(T, allocator, result_set);
-            
+
             return .{
                 .arena = arena,
                 .models = models,
             };
         }
-        
+
         /// 从数据库执行 SELECT * 查询并返回结果
-        /// 
+        ///
         /// 参数：
         /// - db: 数据库连接
         /// - backing_allocator: 底层分配器
@@ -136,56 +136,56 @@ pub fn QueryResult(comptime T: type) type {
             const Model = comptime @import("model.zig").Model(T);
             var arena = std.heap.ArenaAllocator.init(backing_allocator);
             errdefer arena.deinit();
-            
+
             const allocator = arena.allocator();
-            
+
             // 执行查询
             const sql = try std.fmt.allocPrint(allocator, "SELECT * FROM {s}", .{Model.tableName()});
             var result_set = try db.rawQuery(sql);
             errdefer result_set.deinit();
-            
+
             const models = try mapResults(T, allocator, &result_set);
             result_set.deinit();
-            
+
             return .{
                 .arena = arena,
                 .models = models,
             };
         }
-        
+
         /// 获取所有模型
         pub fn items(self: *const Self) []const T {
             return self.models;
         }
-        
+
         /// 获取第一个模型
         pub fn first(self: *const Self) ?T {
             if (self.models.len == 0) return null;
             return self.models[0];
         }
-        
+
         /// 获取最后一个模型
         pub fn last(self: *const Self) ?T {
             if (self.models.len == 0) return null;
             return self.models[self.models.len - 1];
         }
-        
+
         /// 获取数量
         pub fn count(self: *const Self) usize {
             return self.models.len;
         }
-        
+
         /// 是否为空
         pub fn isEmpty(self: *const Self) bool {
             return self.models.len == 0;
         }
-        
+
         /// 获取指定索引的模型
         pub fn get(self: *const Self, index: usize) ?T {
             if (index >= self.models.len) return null;
             return self.models[index];
         }
-        
+
         /// 释放所有内存（一次性释放 Arena 中的所有分配）
         pub fn deinit(self: *Self) void {
             self.arena.deinit();
@@ -440,6 +440,9 @@ pub const Database = struct {
             .transaction_timeout_ms = config.transaction_timeout_ms,
             .keepalive_interval_ms = config.keepalive_interval_ms,
         });
+
+        // 暂时不启用后台保活线程：避免与业务查询并发干扰连接状态。
+        // 连接健康由 acquire 时检查并在失效时重建。
 
         // 获取一个连接作为 Database.conn（用于兼容性）
         const pooled = try pool.acquire();
@@ -1457,16 +1460,16 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             defer q.deinit();
             return q.get();
         }
-        
+
         /// 获取所有记录（使用 Arena Allocator 自动管理内存）
-        /// 
+        ///
         /// 推荐使用此方法代替 all()，避免内存泄漏风险
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var result = try User.allWithArena(db, allocator);
         /// defer result.deinit();
-        /// 
+        ///
         /// for (result.items()) |user| {
         ///     std.debug.print("User: {s}\n", .{user.name});
         /// }
@@ -1480,17 +1483,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn allWithArena(db: *Database, backing_allocator: Allocator) !QueryResult(T) {
             var arena = std.heap.ArenaAllocator.init(backing_allocator);
             errdefer arena.deinit();
-            
+
             const allocator = arena.allocator();
-            
+
             // 执行查询
             const sql = try std.fmt.allocPrint(allocator, "SELECT * FROM {s}", .{tableName()});
             var result_set = try db.rawQuery(sql, .{});
             errdefer result_set.deinit();
-            
+
             const models = try mapResults(T, allocator, &result_set);
             result_set.deinit();
-            
+
             return QueryResult(T){
                 .arena = arena,
                 .models = models,
@@ -3532,12 +3535,14 @@ pub const ConnectionPool = struct {
             try pool.idle_connections.append(allocator, pooled);
         }
 
-        // 启动保活线程
-        if (pool_config.keepalive_interval_ms > 0) {
-            pool.keepalive_thread = std.Thread.spawn(.{}, keepaliveWorker, .{&pool}) catch null;
-        }
-
         return pool;
+    }
+
+    /// 启动保活线程（必须在 ConnectionPool 位于稳定地址后调用）
+    pub fn startKeepalive(self: *ConnectionPool) !void {
+        if (self.config.keepalive_interval_ms == 0) return;
+        if (self.keepalive_thread != null) return;
+        self.keepalive_thread = try std.Thread.spawn(.{}, keepaliveWorker, .{self});
     }
 
     /// 保活工作线程（非阻塞设计）
@@ -3664,6 +3669,27 @@ pub const ConnectionPool = struct {
                     self.idle_mutex.unlock();
 
                     if (pooled.isHealthy(self.config)) {
+                        const ping_ok = if (pooled.conn.exec("SELECT 1")) |_| true else |_| false;
+                        if (!ping_ok) {
+                            pooled.conn.deinit();
+
+                            if (interface.Driver.mysql(self.allocator, self.db_config)) |new_conn| {
+                                pooled.conn = new_conn;
+                            } else |_| {
+                                self.state_mutex.lock();
+                                for (self.all_connections.items, 0..) |p, k| {
+                                    if (p == pooled) {
+                                        _ = self.all_connections.swapRemove(k);
+                                        break;
+                                    }
+                                }
+                                self.state_mutex.unlock();
+
+                                self.allocator.destroy(pooled);
+                                continue;
+                            }
+                        }
+
                         pooled.mutex.lock();
                         pooled.in_use = true;
                         pooled.borrowed = true;

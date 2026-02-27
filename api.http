@@ -1,0 +1,147 @@
+@base = http://127.0.0.1:3000
+@json = application/json
+
+### 登录
+POST {{base}}/login
+Content-Type: {{json}}
+
+{
+  "username": "admin",
+  "password": "123456"
+}
+
+### 用户信息（支持 query id，默认1）
+GET {{base}}/userInfo?id=1
+
+### 部门树
+GET {{base}}/system/dept/tree
+
+### 部门列表
+GET {{base}}/system/dept/all
+
+### 菜单树
+GET {{base}}/system/menu/tree
+
+### 菜单权限查询
+GET {{base}}/system/menu/permissions?menu_id=1
+
+### 菜单权限保存
+POST {{base}}/system/menu/save-permissions
+Content-Type: {{json}}
+
+{
+  "menu_id": 1,
+  "permissions": ["btn:add", "btn:edit"]
+}
+
+### 角色按钮权限
+GET {{base}}/role/button-perms?role_id=1
+
+### 管理员重置密码
+POST {{base}}/system/admin/resetPassword
+Content-Type: {{json}}
+
+{
+  "id": 1,
+  "password": "123456"
+}
+
+### 管理员分配角色
+POST {{base}}/system/admin/assignRoles
+Content-Type: {{json}}
+
+{
+  "id": 1,
+  "role_ids": [1, 2]
+}
+
+### 支付渠道列表
+GET {{base}}/system/payment/list?page=1&limit=10
+
+### 支付渠道保存
+POST {{base}}/system/payment/save
+Content-Type: {{json}}
+
+{
+  "channel_name": "wxpay",
+  "pay_type": 1,
+  "mch_id": "",
+  "app_id": "",
+  "api_key": "",
+  "public_key": "",
+  "private_key": "",
+  "fee_rate": 0.6,
+  "sort": 1,
+  "notify_url": "",
+  "remark": "",
+  "status": 1
+}
+
+### 支付渠道删除
+GET {{base}}/system/payment/delete?id=1
+
+### 支付渠道状态设置
+POST {{base}}/system/payment/set
+Content-Type: {{json}}
+
+{
+  "id": 1,
+  "field": "status",
+  "value": 0
+}
+
+### 支付渠道连接测试
+GET {{base}}/system/payment/test
+
+### 版本列表
+GET {{base}}/system/version/list?page=1&limit=10
+
+### 版本保存
+POST {{base}}/system/version/save
+Content-Type: {{json}}
+
+{
+  "title": "v1.0.0",
+  "version": "1.0.0",
+  "version_type": 1,
+  "force_update": 0,
+  "min_version": "1.0.0",
+  "content": "更新内容",
+  "download_url": "https://example.com/app.apk",
+  "file_size": "10MB",
+  "md5": "",
+  "remark": "",
+  "status": 1,
+  "release_time": "2025-01-01 10:00:00"
+}
+
+### 版本删除
+GET {{base}}/system/version/delete?id=1
+
+### 版本状态设置
+POST {{base}}/system/version/set
+Content-Type: {{json}}
+
+{
+  "id": 1,
+  "field": "status",
+  "value": 0
+}
+
+### 日志列表
+GET {{base}}/log/list?page=1&limit=10
+
+### 日志统计
+GET {{base}}/log/statistics
+
+### 日志清理
+POST {{base}}/log/clean
+Content-Type: {{json}}
+
+{}
+
+### 日志归档
+GET {{base}}/log/archive
+
+### 日志导出
+GET {{base}}/log/export

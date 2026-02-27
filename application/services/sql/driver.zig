@@ -431,7 +431,7 @@ pub const Connection = struct {
                 var builder = sql_errors.queryFailed(sql, @intCast(err_info.code), err_info.message);
                 _ = builder.build();
             }
-            return MySQLError.QueryFailed;
+            return self.toDriverError();
         }
 
         // 获取结果
@@ -484,7 +484,7 @@ pub const Connection = struct {
                 var builder = sql_errors.execFailed(sql, @intCast(err_info.code), err_info.message);
                 _ = builder.build();
             }
-            return MySQLError.QueryFailed;
+            return self.toDriverError();
         }
 
         // 消费可能的结果集
@@ -576,6 +576,16 @@ pub const Connection = struct {
         self.last_error = .{
             .code = code,
             .message = std.mem.span(msg),
+        };
+    }
+
+    fn toDriverError(self: *Connection) MySQLError {
+        const code = c.mysql_errno(self.mysql);
+        return switch (code) {
+            2006 => MySQLError.ServerGone,
+            2013 => MySQLError.ConnectionLost,
+            2002, 2003, 1049 => MySQLError.ConnectionFailed,
+            else => MySQLError.QueryFailed,
         };
     }
 

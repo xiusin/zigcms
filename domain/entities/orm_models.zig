@@ -89,13 +89,11 @@ pub const Banner = sql.define(struct {
     pub const primary_key = "id";
 
     id: ?i32 = null,
-    title: []const u8 = "",
-    image_url: []const u8 = "",
-    link_url: []const u8 = "",
-    sort: i32 = 0,
+    name: []const u8 = "",
     status: i32 = 0,
     create_time: ?i64 = null,
     update_time: ?i64 = null,
+    is_delete: i32 = 0,
 });
 
 /// 分类模型
@@ -105,11 +103,22 @@ pub const Category = sql.define(struct {
 
     id: ?i32 = null,
     name: []const u8 = "",
+    code: []const u8 = "",
     parent_id: i32 = 0,
+    category_type: []const u8 = "article",
+    description: []const u8 = "",
+    cover_image: []const u8 = "",
+    icon: []const u8 = "",
     sort: i32 = 0,
-    status: i32 = 0,
+    status: i32 = 1,
+    seo_title: []const u8 = "",
+    seo_keywords: []const u8 = "",
+    seo_description: []const u8 = "",
+    views: i32 = 0,
+    remark: []const u8 = "",
     create_time: ?i64 = null,
     update_time: ?i64 = null,
+    is_delete: i32 = 0,
 });
 
 /// 菜单模型
@@ -361,20 +370,11 @@ pub const Document = sql.define(struct {
 /// 初始化所有 ORM 模型（设置默认数据库连接）
 pub fn init(db: *sql.Database) void {
     Admin.use(db);
-    Article.use(db);
-    Banner.use(db);
-    Category.use(db);
     Menu.use(db);
     Role.use(db);
     Setting.use(db);
-    Task.use(db);
-    Upload.use(db);
     Department.use(db);
-    Employee.use(db);
     Position.use(db);
-    CmsModel.use(db);
-    CmsField.use(db);
-    Document.use(db);
 }
 
 /// 获取 Database 类型（便于外部使用）
@@ -393,9 +393,6 @@ pub const Dialect = sql.Dialect;
 /// 所有模型列表（用于批量操作）
 pub const AllModels = .{
     Admin,
-    Article,
-    Banner,
-    Category,
     Menu,
     Role,
     Setting,
@@ -404,9 +401,6 @@ pub const AllModels = .{
     Department,
     Employee,
     Position,
-    CmsModel,
-    CmsField,
-    Document,
 };
 
 /// 迁移所有表（创建表）
@@ -425,9 +419,6 @@ pub fn rollback(db: *sql.Database) !void {
         Setting,
         Role,
         Menu,
-        Category,
-        Banner,
-        Article,
         Admin,
     });
 }
