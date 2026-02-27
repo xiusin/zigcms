@@ -15,7 +15,7 @@
 pub const base = @import("base.zig");
 pub const codegen = @import("codegen/main.zig");
 pub const migrate = @import("migrate/main.zig");
-pub const plugin_gen = @import("plugin_gen/main.zig");
+pub const plugin_gen = @import("plugingen/main.zig");
 
 // 导出常用类型
 pub const Command = base.Command;

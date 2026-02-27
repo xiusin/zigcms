@@ -339,5 +339,5 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // Plugin Code Generator (from commands/)
     // ========================================================================
-    _ = createCommandTool(b, "plugin-gen", "cmd/plugin_gen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
+    _ = createCommandTool(b, "plugin-gen", "cmd/plugingen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
 }
