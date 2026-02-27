@@ -12,7 +12,7 @@ const Self = @This();
 allocator: Allocator,
 
 const OrmDept = sql.defineWithConfig(models.SysDept, .{
-    .table_name = "zigcms.sys_dept",
+    .table_name = "sys_dept",
     .primary_key = "id",
 });
 

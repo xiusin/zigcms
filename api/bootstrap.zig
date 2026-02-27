@@ -268,6 +268,39 @@ pub const Bootstrap = struct {
             }.factory, null);
         }
 
+        if (!self.container.isRegistered(controllers.system_ext.Payment)) {
+            try self.container.registerSingleton(controllers.system_ext.Payment, controllers.system_ext.Payment, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Payment {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Payment);
+                    ctrl.* = controllers.system_ext.Payment.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Version)) {
+            try self.container.registerSingleton(controllers.system_ext.Version, controllers.system_ext.Version, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Version {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Version);
+                    ctrl.* = controllers.system_ext.Version.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Log)) {
+            try self.container.registerSingleton(controllers.system_ext.Log, controllers.system_ext.Log, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Log {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Log);
+                    ctrl.* = controllers.system_ext.Log.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
         const dept = try self.container.resolve(controllers.system_ext.Dept);
         const admin = try self.container.resolve(controllers.system_ext.Admin);
         const menu = try self.container.resolve(controllers.system_ext.Menu);

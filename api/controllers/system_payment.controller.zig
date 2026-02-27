@@ -27,7 +27,7 @@ const SysConfig = struct {
 };
 
 const OrmConfig = sql.defineWithConfig(SysConfig, .{
-    .table_name = "zigcms.sys_config",
+    .table_name = "sys_config",
     .primary_key = "id",
 });
 

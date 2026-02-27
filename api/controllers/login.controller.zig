@@ -22,15 +22,11 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 
-
-
 // 第三方库
 
 const zap = @import("zap");
 
 const pretty = @import("pretty");
-
-
 
 // 项目内部模块
 
@@ -44,11 +40,10 @@ const base = @import("base.fn.zig");
 
 const dtos = @import("../dto/mod.zig");
 
-const models = @import("../../domain/entities/models.zig");
-
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const json_mod = @import("../../application/services/json/json.zig");
 const AuthService = @import("../../application/services/auth_service.zig").AuthService;
+const sql = @import("../../application/services/sql/orm.zig");
 
 const Self = @This();
 
@@ -60,46 +55,34 @@ logger: *log_mod.Logger,
 auth_service: *AuthService,
 
 pub fn init(allocator: Allocator, logger: *log_mod.Logger, auth_service: *AuthService) Self {
-    return .{ 
-        .allocator = allocator, 
+    return .{
+        .allocator = allocator,
         .logger = logger,
         .auth_service = auth_service,
     };
 }
 
 /// 用户注册
-
 pub fn register(self: *Self, req: zap.Request) !void {
-
     req.parseBody() catch |e| return base.send_error(req, e);
-
-
 
     var dto: dtos.user.Register = undefined;
 
     var dto_needs_free = false;
 
     if (req.body) |body| {
-
         dto = json_mod.JSON.decode(dtos.user.Register, self.allocator, body) catch |e| return base.send_error(req, e);
 
         dto_needs_free = true;
-
     }
 
     defer {
-
         if (dto_needs_free) {
-
             self.allocator.free(dto.username);
 
             self.allocator.free(dto.password);
-
         }
-
     }
-
-
 
     if (dto.password.len == 0 or dto.username.len == 0) {
         return base.send_error(req, error.ParamMiss);

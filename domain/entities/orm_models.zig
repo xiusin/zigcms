@@ -38,7 +38,7 @@ const position_model = @import("position.model.zig");
 
 /// 管理员模型
 pub const Admin = sql.define(struct {
-    pub const table_name = "zigcms.admin";
+    pub const table_name = "sys_admin";
     pub const primary_key = "id";
 
     id: ?i32 = null,

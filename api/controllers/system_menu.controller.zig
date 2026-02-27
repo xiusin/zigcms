@@ -12,7 +12,7 @@ const Self = @This();
 allocator: Allocator,
 
 const OrmMenu = sql.defineWithConfig(models.SysMenu, .{
-    .table_name = "zigcms.sys_menu",
+    .table_name = "sys_menu",
     .primary_key = "id",
 });
 
@@ -28,7 +28,7 @@ const SysPermission = struct {
 };
 
 const OrmPermission = sql.defineWithConfig(SysPermission, .{
-    .table_name = "zigcms.sys_permission",
+    .table_name = "sys_permission",
     .primary_key = "id",
 });
 

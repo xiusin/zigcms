@@ -13,7 +13,7 @@ const Self = @This();
 allocator: Allocator,
 
 const OrmAdmin = sql.defineWithConfig(models.SysAdmin, .{
-    .table_name = "zigcms.sys_admin",
+    .table_name = "sys_admin",
     .primary_key = "id",
 });
 
@@ -25,7 +25,7 @@ const SysAdminRole = struct {
 };
 
 const OrmAdminRole = sql.defineWithConfig(SysAdminRole, .{
-    .table_name = "zigcms.sys_admin_role",
+    .table_name = "sys_admin_role",
     .primary_key = "id",
 });
 
