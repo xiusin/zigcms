@@ -61,7 +61,7 @@ export default async function request(
   }
   const config: any = {
     headers: {
-      Authorization: token,
+      Authorization: token ? `Bearer ${token}` : '',
     },
     ...dconfig,
   };

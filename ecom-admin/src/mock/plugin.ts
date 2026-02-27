@@ -12,6 +12,7 @@ interface MockConfig {
 
 export function viteMockPlugin(config: MockConfig = {}): Plugin {
   const { enable = true, timeout = 300 } = config;
+  const passthroughPrefixes = ['/api/member/', '/be/api/member/'];
 
   return {
     name: 'vite-plugin-mock',
@@ -23,6 +24,11 @@ export function viteMockPlugin(config: MockConfig = {}): Plugin {
 
         // 只拦截 API 请求
         if (!url.startsWith('/api') && !url.startsWith('/be/api')) {
+          return next();
+        }
+
+        // 登录/刷新用户信息联调走 ZigCMS 实际后端
+        if (passthroughPrefixes.some((prefix) => url.startsWith(prefix))) {
           return next();
         }
 

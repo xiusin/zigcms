@@ -2,6 +2,8 @@ import { mergeConfig } from 'vite';
 import baseConfig from './vite.config.base';
 import { viteMockPlugin } from '../src/mock/plugin';
 
+const API_PROXY_TARGET = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:3000';
+
 export default mergeConfig(
   {
     mode: 'development',
@@ -14,10 +16,19 @@ export default mergeConfig(
         allow: ['..'],
       },
       proxy: {
+        '/api': {
+          target: API_PROXY_TARGET,
+          changeOrigin: true,
+        },
+        '/be/api': {
+          target: API_PROXY_TARGET,
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/be\/api/, '/api'),
+        },
         '/amis-editor': {
           target: 'http://localhost:3201',
           changeOrigin: true,
-          rewrite: (path) => {
+          rewrite: (path: string) => {
             // 将 /amis-editor/... 转换为 /node_modules/amis-editor/dist/...
             return path.replace(/^\/amis-editor/, '/node_modules/amis-editor/dist');
           },
@@ -25,23 +36,12 @@ export default mergeConfig(
         '/amis/sdk': {
           target: 'http://localhost:3201',
           changeOrigin: true,
-          rewrite: (path) => {
+          rewrite: (path: string) => {
             // 将 /amis/sdk/... 转换为 /node_modules/amis/sdk/...
             return path.replace(/^\/amis\/sdk/, '/node_modules/amis/sdk');
           },
         },
       },
-      // 开发环境下不代理到后端，使用 Mock 数据
-      // proxy: {
-      //   '/api': {
-      //     target: 'http://10.200.16.50:9401/be',
-      //     changeOrigin: true,
-      //   },
-      //   '/be/api': {
-      //     target: 'http://10.200.16.50:9401',
-      //     changeOrigin: true,
-      //   },
-      // },
     },
     plugins: [
       // Mock 插件 - 开发环境使用 Mock 数据

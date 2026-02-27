@@ -263,3 +263,19 @@
   - `USERNAME` / `PASSWORD`：登录账号
   - `STRICT_MODE=1`：开启关键字段断言（如 `expires_in/server_time/role_ids/role_names`）
   - `FAIL_DUMP_FILE`：失败响应落盘文件路径
+
+## 开发代理自检
+
+- 命令：`pnpm run dev:proxy-check`
+- 脚本路径：`ecom-admin/scripts/dev_proxy_check.sh`
+- 作用：校验前端开发代理 `/api/*` 已透传到后端，而不是命中前端 404。
+- 默认检查项：
+  - `POST /api/member/refreshInfo`（未登录期望 `HTTP 200 + code 401`）
+  - `POST /api/member/refreshPermissions`（未登录期望 `HTTP 200 + code 401`）
+- 可选环境变量：
+  - `FRONTEND_BASE`：前端开发地址，默认 `http://127.0.0.1:3201`
+  - `FAIL_DUMP_FILE`：失败响应落盘文件
+
+## 开发环境变量建议
+
+- `VITE_PROXY_TARGET`：Vite dev 代理后端目标地址，建议在 `.env.development` 显式配置，默认 `http://127.0.0.1:3000`。

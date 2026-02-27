@@ -9,6 +9,7 @@ const Admin = orm_models.Admin;
 const jwt = @import("../../core/utils/jwt.zig");
 const global = @import("../../core/primitives/global.zig");
 const strings = @import("../../core/utils/strings.zig");
+const datetime = @import("../../application/services/datetime/datetime.zig");
 
 pub const AuthService = struct {
     allocator: Allocator,
@@ -57,9 +58,12 @@ pub const AuthService = struct {
 
         // 登录成功后回写最近登录时间（不影响登录主流程）
         if (user.id) |user_id| {
+            var ts_buf: [32]u8 = undefined;
+            const now_dt = datetime.DateTime.now();
+            const now_str = now_dt.formatGo("2006-01-02 15:04:05", &ts_buf);
             _ = Admin.Update(user_id, .{
-                .last_login = "NOW()",
-                .updated_at = "NOW()",
+                .last_login = now_str,
+                .updated_at = now_str,
             }) catch |err| blk: {
                 std.log.warn("[auth] update last_login failed, user_id={d}, err={s}", .{ user_id, @errorName(err) });
                 break :blk 0;

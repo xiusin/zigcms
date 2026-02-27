@@ -92,13 +92,17 @@ const useUserStore = defineStore('user', {
       this.$reset();
     },
 
-    async info() {},
+    async info() { },
     async login(loginForm: any) {
       try {
         const res: any = await request('/api/member/login', loginForm);
         // debugger;
         setToken(res.data.token);
-        this.setInfo({ ...res.data });
+        let permissionData: any = {};
+        try {
+          permissionData = await this.refreshPermissions();
+        } catch (_) { }
+        this.setInfo({ ...res.data, ...permissionData });
       } catch (err) {
         clearToken();
         throw err;
@@ -108,11 +112,22 @@ const useUserStore = defineStore('user', {
       try {
         const res: any = await request('/api/member/refreshInfo');
         setToken(res.data.token);
-        this.setInfo({ ...res.data });
+        let permissionData: any = {};
+        try {
+          permissionData = await this.refreshPermissions();
+        } catch (_) { }
+        this.setInfo({ ...res.data, ...permissionData });
       } catch (err) {
         clearToken();
         throw err;
       }
+    },
+    async refreshPermissions() {
+      const res: any = await request('/api/member/refreshPermissions');
+      return {
+        pages: res.data?.pages || [],
+        buttons: res.data?.buttons || [],
+      };
     },
     logoutCallBack() {
       const appStore = useAppStore();
