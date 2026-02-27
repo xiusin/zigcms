@@ -391,6 +391,7 @@
   const adminSearchKey = ref('');
   const filterRoleId = ref<number | undefined>();
   const filterStatus = ref<number | undefined>();
+  const refreshTimer = ref<number | null>(null);
 
   const formData = reactive({
     id: 0,
@@ -402,9 +403,23 @@
     email: '',
     avatar: '',
     gender: 0,
+    dept_id: undefined as number | undefined,
     role_id: undefined as number | undefined,
     remark: '',
   });
+
+  const safeRequest = async (
+    action: string,
+    api: string,
+    payload?: any
+  ): Promise<any> => {
+    try {
+      return await request(api, payload);
+    } catch (error: any) {
+      Message.error(error?.msg || `${action}失败`);
+      throw error;
+    }
+  };
 
   const rules = {
     username: [{ required: true, message: '请输入用户名' }],
@@ -423,7 +438,7 @@
     { title: '手机号码', dataIndex: 'mobile', width: 120 },
     { title: '邮箱', dataIndex: 'email', ellipsis: true },
     { title: '性别', dataIndex: 'gender', width: 70, slotName: 'gender' },
-    { title: '角色', dataIndex: 'role_name', width: 100 },
+    { title: '角色', dataIndex: 'role_text', width: 140 },
     { title: '最后登录', dataIndex: 'last_login', width: 150 },
     { title: '状态', dataIndex: 'status', width: 70, slotName: 'status' },
     { title: '操作', dataIndex: 'action', width: 200, slotName: 'action', fixed: 'right' },
@@ -442,7 +457,9 @@
 
   // ========== 部门方法 ==========
   const fetchDeptTree = () => {
-    request('/api/system/dept/tree', { keyword: deptSearchKey.value }).then(
+    safeRequest('获取部门树', '/api/system/dept/tree', {
+      keyword: deptSearchKey.value,
+    }).then(
       (res: any) => {
         deptTreeData.value = res.data || [];
       }
@@ -501,7 +518,7 @@
     const valid = await deptFormRef.value?.validate();
     if (valid) return false;
 
-    await request('/api/system/dept/save', {
+    await safeRequest('保存部门', '/api/system/dept/save', {
       ...deptForm,
       status: deptForm.status ? 1 : 0,
     });
@@ -511,20 +528,30 @@
   };
 
   const handleDeleteDept = async (nodeData: any) => {
-    await request('/api/system/dept/delete', { id: nodeData.key });
+    await safeRequest('删除部门', '/api/system/dept/remove', {
+      id: nodeData.key,
+    });
     Message.success('删除成功');
     fetchDeptTree();
   };
 
   // ========== 管理员方法 ==========
   const fetchRoleList = () => {
-    request('/api/role/list', { pageSize: 100 }).then((res: any) => {
+    safeRequest('获取角色列表', '/api/role/list', { pageSize: 100 }).then(
+      (res: any) => {
       roleList.value = res.data?.list || [];
-    });
+      }
+    );
   };
 
   const handleRefresh = () => {
-    tableRef.value?.search();
+    if (refreshTimer.value) {
+      window.clearTimeout(refreshTimer.value);
+    }
+    refreshTimer.value = window.setTimeout(() => {
+      tableRef.value?.search();
+      refreshTimer.value = null;
+    }, 300);
   };
 
   const getGenderText = (gender: number) => {
@@ -548,6 +575,7 @@
         email: '',
         avatar: '',
         gender: 0,
+        dept_id: selectedDeptId.value,
         role_id: undefined,
         remark: '',
       });
@@ -564,7 +592,23 @@
       return;
     }
 
-    request('/api/system/admin/save', formData).then(() => {
+    if (formData.mobile && !/^1\d{10}$/.test(formData.mobile)) {
+      Message.error('手机号格式不正确');
+      return;
+    }
+
+    if (
+      formData.email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+    ) {
+      Message.error('邮箱格式不正确');
+      return;
+    }
+
+    safeRequest('保存管理员', '/api/system/admin/save', {
+      ...formData,
+      dept_id: formData.dept_id ?? selectedDeptId.value,
+    }).then(() => {
       Message.success(isEdit.value ? '编辑成功' : '添加成功');
       modalVisible.value = false;
       handleRefresh();
@@ -573,7 +617,7 @@
 
   const changeStatus = (record: any) => {
     record.loading = true;
-    request('/api/system/admin/set', {
+    safeRequest('更新管理员状态', '/api/system/admin/set', {
       id: record.id,
       field: 'status',
       value: record.status === 1 ? 0 : 1,
@@ -592,19 +636,20 @@
       title: '重置密码',
       content: `确定要重置 ${record.username} 的密码吗？`,
       onOk: () => {
-        request('/api/system/admin/resetPassword', { id: record.id })
+        safeRequest('重置管理员密码', '/api/system/admin/resetPassword', {
+          id: record.id,
+        })
           .then(() => {
             Message.success('密码已重置，新密码已发送至用户邮箱');
-          })
-          .catch(() => {
-            Message.error('重置密码失败');
           });
       },
     });
   };
 
   const deleteAdmin = (record: any) => {
-    request('/api/system/admin/delete', { id: record.id }).then(() => {
+    safeRequest('删除管理员', '/api/system/admin/delete', {
+      id: record.id,
+    }).then(() => {
       Message.success('删除成功');
       handleRefresh();
     });
@@ -622,7 +667,7 @@
   };
 
   const confirmAssignRole = () => {
-    request('/api/system/admin/assignRoles', {
+    safeRequest('分配管理员角色', '/api/system/admin/assignRoles', {
       id: roleRecord.value.id,
       role_ids: selectedRoles.value.map(Number),
     }).then(() => {

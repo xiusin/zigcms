@@ -68,8 +68,9 @@ pub const AuthService = struct {
 
         // 生成 JWT token
         const payload = .{
-            .sub = user.id.?,
-            .name = user.username,
+            .user_id = user.id.?,
+            .username = user.username,
+            .email = user.email,
             .iat = std.time.timestamp(),
             .exp = std.time.timestamp() + 3600 * 24,
         };

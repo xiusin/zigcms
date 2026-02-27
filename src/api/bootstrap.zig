@@ -83,7 +83,8 @@ pub const Bootstrap = struct {
         try registerCrudWithAlias(self.app, "system/admin", models.SysAdmin);
         try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
         try registerCrudWithAlias(self.app, "system/role", models.SysRole);
-        self.crud_count += 4;
+        try registerCrudWithAlias(self.app, "role", models.SysRole);
+        self.crud_count += 5;
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
@@ -143,7 +144,13 @@ pub const Bootstrap = struct {
         const login = try self.container.resolve(controllers.auth.Login);
         try self.app.route("/login", login, &controllers.auth.Login.login);
         try self.app.route("/register", login, &controllers.auth.Login.register);
-        self.route_count += 2;
+        try self.app.route("/member/login", login, &controllers.auth.Login.member_login);
+        try self.app.route("/api/member/login", login, &controllers.auth.Login.member_login);
+        try self.app.route("/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
+        try self.app.route("/api/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
+        try self.app.route("/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
+        try self.app.route("/api/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
+        self.route_count += 8;
     }
 
     /// 注册公共接口路由
@@ -198,8 +205,16 @@ pub const Bootstrap = struct {
     fn registerSystemExtRoutes(self: *Self) !void {
         const registerWithAlias = struct {
             fn exec(app: *App, comptime path: []const u8, ctrl: anytype, handler: anytype) !void {
-                try app.route(path, ctrl, handler);
-                try app.route("/api" ++ path, ctrl, handler);
+                app.route(path, ctrl, handler) catch |err| switch (err) {
+                    else => {
+                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
+                    },
+                };
+                app.route("/api" ++ path, ctrl, handler) catch |err| switch (err) {
+                    else => {
+                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
+                    },
+                };
             }
         }.exec;
 
@@ -338,7 +353,9 @@ pub const Bootstrap = struct {
 
         try registerWithAlias(self.app, "/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
         try registerWithAlias(self.app, "/system/dept/all", dept, &controllers.system_ext.Dept.dept_all);
+        try registerWithAlias(self.app, "/system/dept/remove", dept, &controllers.system_ext.Dept.dept_delete);
 
+        try registerWithAlias(self.app, "/system/admin/list", admin, &controllers.system_ext.Admin.list_with_roles);
         try registerWithAlias(self.app, "/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
         try registerWithAlias(self.app, "/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
         try self.app.route("/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
@@ -391,7 +408,7 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
         try registerWithAlias(self.app, "/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
 
-        self.route_count += 90;
+        self.route_count += 94;
     }
 
     /// 注册实时通信路由
