@@ -48,16 +48,6 @@ const UserService = @import("src/api/services/user_service.zig").UserService;
 const UserRepository = @import("src/domain/repositories/user_repository.zig").UserRepository;
 const SqliteUserRepository = @import("src/infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
 
-// 会员服务相关导入
-const MemberService = @import("src/api/services/member_service.zig").MemberService;
-const MemberRepository = @import("src/domain/repositories/member_repository.zig").MemberRepository;
-const SqliteMemberRepository = @import("src/infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
-
-// 分类服务相关导入
-const CategoryService = @import("src/api/services/category_service.zig").CategoryService;
-const CategoryRepository = @import("src/domain/repositories/category_repository.zig").CategoryRepository;
-const SqliteCategoryRepository = @import("src/infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
-
 // 认证服务导入
 const AuthService = @import("src/api/services/auth_service.zig").AuthService;
 
@@ -386,12 +376,6 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
         // 1. 注册用户服务相关
         try registerUserServices(container, allocator, db);
 
-        // 2. 注册会员服务相关
-        try registerMemberServices(container, allocator, db);
-
-        // 3. 注册分类服务相关
-        try registerCategoryServices(container, allocator, db);
-
         // 4. 注册认证服务
         try registerAuthServices(container);
 
@@ -435,84 +419,6 @@ fn createSqliteUserRepository(allocator: std.mem.Allocator, db: *sql_orm.Databas
     const repo = try allocator.create(SqliteUserRepository);
     errdefer allocator.destroy(repo);
     repo.* = SqliteUserRepository.init(allocator, db);
-    return repo;
-}
-
-/// 注册会员服务
-fn registerMemberServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
-    _ = func_allocator;
-
-    // 创建仓储实例
-    const sqlite_repo = try createSqliteMemberRepository(container.allocator, db);
-    const member_repo = try container.allocator.create(MemberRepository);
-    errdefer container.allocator.destroy(member_repo);
-    member_repo.* = domain.repositories.member_repository.create(sqlite_repo, &SqliteMemberRepository.vtable());
-
-    // 注册到容器
-    try container.registerInstance(SqliteMemberRepository, sqlite_repo, null);
-    try container.registerInstance(MemberRepository, member_repo, null);
-
-    try container.registerSingleton(MemberService, MemberService, struct {
-        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*MemberService {
-            const resolved_member_repo = try di.resolve(MemberRepository);
-
-            const member_service = try allocator.create(MemberService);
-            errdefer allocator.destroy(member_service);
-            member_service.* = MemberService.init(allocator, resolved_member_repo.*);
-            return member_service;
-        }
-    }.factory, null);
-}
-
-/// 注册分类服务
-fn registerCategoryServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
-    _ = func_allocator;
-
-    // 创建仓储实例
-    const sqlite_repo = try createSqliteCategoryRepository(container.allocator, db);
-    const category_repo = try container.allocator.create(CategoryRepository);
-    errdefer container.allocator.destroy(category_repo);
-    category_repo.* = domain.repositories.category_repository.create(sqlite_repo, &SqliteCategoryRepository.vtable());
-
-    // 注册到容器
-    try container.registerInstance(SqliteCategoryRepository, sqlite_repo, null);
-    try container.registerInstance(CategoryRepository, category_repo, null);
-
-    try container.registerSingleton(CategoryService, CategoryService, struct {
-        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*CategoryService {
-            const resolved_category_repo = try di.resolve(CategoryRepository);
-
-            const category_service = try allocator.create(CategoryService);
-            errdefer allocator.destroy(category_service);
-            category_service.* = CategoryService.init(allocator, resolved_category_repo.*);
-            return category_service;
-        }
-    }.factory, null);
-}
-
-/// 创建会员仓储实现
-fn createSqliteMemberRepository(allocator: std.mem.Allocator, db: *sql_orm.Database) !*SqliteMemberRepository {
-    const repo = try allocator.create(SqliteMemberRepository);
-    errdefer allocator.destroy(repo);
-    repo.* = SqliteMemberRepository.init(allocator, db);
-    return repo;
-}
-
-/// 释放 SQLite 会员仓储实例
-fn deinitSqliteMemberRepository(repo: *SqliteMemberRepository, allocator: std.mem.Allocator) void {
-    allocator.destroy(repo);
-}
-
-/// 释放会员仓储接口实例，并级联释放底层 SQLite 实现
-fn deinitMemberRepository(repo: *MemberRepository, allocator: std.mem.Allocator) void {
-    allocator.destroy(repo);
-}
-
-/// 注册分类服务实现
-fn createSqliteCategoryRepository(allocator: std.mem.Allocator, db: *sql_orm.Database) !*SqliteCategoryRepository {
-    const repo = try allocator.create(SqliteCategoryRepository);
-    errdefer allocator.destroy(repo);
-    repo.* = SqliteCategoryRepository.init(allocator, db);
     return repo;
 }
 

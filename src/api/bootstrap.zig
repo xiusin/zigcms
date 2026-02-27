@@ -67,31 +67,6 @@ pub const Bootstrap = struct {
     /// 注册 CRUD 模块
     /// 自动生成 list/get/save/delete/modify/select 路由
     fn registerCrudModules(self: *Self) !void {
-        // 基础模块
-        try self.app.crud("category", models.Category);
-        try self.app.crud("upload", models.Upload);
-        try self.app.crud("article", models.Article);
-        try self.app.crud("role", models.Role);
-        try self.app.crud("dict", models.Dict);
-        self.crud_count += 5;
-
-        // CMS 内容管理模块
-        try self.app.crud("cms_model", models.CmsModel);
-        try self.app.crud("cms_field", models.CmsField);
-        try self.app.crud("document", models.Document);
-        try self.app.crud("material_category", models.MaterialCategory);
-        try self.app.crud("material", models.Material);
-        self.crud_count += 5;
-
-        // 会员管理模块
-        try self.app.crud("member_group", models.MemberGroup);
-        try self.app.crud("member", models.Member);
-        self.crud_count += 2;
-
-        // 友链管理模块
-        try self.app.crud("friend_link", models.FriendLink);
-        self.crud_count += 1;
-
         // =====================================================
         // ecom-admin-dashboard 对接模块 (sys/biz/op 新表)
         // =====================================================

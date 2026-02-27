@@ -69,5 +69,5 @@ pub const Repository = struct {
 
 // 具体仓储接口导出
 pub const user_repository = @import("user_repository.zig");
-pub const member_repository = @import("member_repository.zig");
-pub const category_repository = @import("category_repository.zig");
+// pub const member_repository = @import("member_repository.zig");
+// pub const category_repository = @import("category_repository.zig");
