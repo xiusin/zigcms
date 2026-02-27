@@ -1435,7 +1435,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         }
 
         /// 克隆模型到指定分配器（只拷贝字符串字段，数值直接赋值）
-        inline fn cloneModel(allocator: Allocator, src: *const T) !T {
+        pub inline fn cloneModel(allocator: Allocator, src: *const T) !T {
             var dst = src.*;
             inline for (std.meta.fields(T)) |field| {
                 if (field.type == []const u8) {
@@ -3082,6 +3082,46 @@ pub fn ModelQuery(comptime T: type) type {
             }
 
             return values.toOwnedSlice();
+        }
+
+        /// 克隆模型到指定分配器（只拷贝字符串字段，数值字段直接赋值）
+        inline fn cloneModel(allocator: Allocator, src: *const T) !T {
+            var dst = src.*;
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const v = @field(dst, field.name);
+                    @field(dst, field.name) = try allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(dst, field.name)) |s| {
+                            @field(dst, field.name) = try allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+            return dst;
+        }
+
+        /// 释放模型中的字符串字段（匹配 mapResults 的分配策略）
+        inline fn freeModelStrings(allocator: Allocator, model: *T) void {
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const s = @field(model.*, field.name);
+                    if (s.len > 0 and s.ptr != "".ptr) {
+                        allocator.free(s);
+                    }
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(model.*, field.name)) |s| {
+                            if (s.len > 0 and s.ptr != "".ptr) {
+                                allocator.free(s);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         /// 获取第一条
