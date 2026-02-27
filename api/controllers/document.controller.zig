@@ -195,51 +195,45 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 }
 
 fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
 
-    // 软删除
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.document SET is_delete = 1, update_time = {d} WHERE id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmDocument.Update(id, .{
+        .is_delete = 1,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "删除成功");
 }
 
 fn publishImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
 
     const now = std.time.microTimestamp();
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.document SET status = 1, publish_time = {d}, update_time = {d} WHERE id = {d}",
-        .{ now, now, id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmDocument.Update(id, .{
+        .status = 1,
+        .publish_time = now,
+        .update_time = now,
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "发布成功");
 }
 
 fn unpublishImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
 
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.document SET status = 3, update_time = {d} WHERE id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmDocument.Update(id, .{
+        .status = 3,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "下架成功");
 }
@@ -260,21 +254,13 @@ fn batchDeleteImpl(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "请选择要删除的文档");
     }
 
-    var ids_str = std.ArrayList(u8).init(self.allocator);
-    defer ids_str.deinit();
-
-    for (data.ids, 0..) |id, i| {
-        if (i > 0) ids_str.appendSlice(", ") catch {};
-        ids_str.writer().print("{d}", .{id}) catch {};
-    }
-
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.document SET is_delete = 1, update_time = {d} WHERE id IN ({s})",
-        .{ std.time.microTimestamp(), ids_str.items },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    var q = OrmDocument.Query();
+    defer q.deinit();
+    _ = q.whereIn("id", data.ids);
+    _ = q.update(.{
+        .is_delete = 1,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "批量删除成功");
 }
@@ -296,28 +282,23 @@ fn batchPublishImpl(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "请选择要操作的文档");
     }
 
-    var ids_str = std.ArrayList(u8).init(self.allocator);
-    defer ids_str.deinit();
-
-    for (data.ids, 0..) |id, i| {
-        if (i > 0) ids_str.appendSlice(", ") catch {};
-        ids_str.writer().print("{d}", .{id}) catch {};
-    }
-
     const now = std.time.microTimestamp();
-    const sql_str = if (data.status == 1)
-        strings.sprinf(
-            "UPDATE zigcms.document SET status = 1, publish_time = {d}, update_time = {d} WHERE id IN ({s})",
-            .{ now, now, ids_str.items },
-        ) catch return base.send_failed(req, "SQL 构建失败")
-    else
-        strings.sprinf(
-            "UPDATE zigcms.document SET status = {d}, update_time = {d} WHERE id IN ({s})",
-            .{ data.status, now, ids_str.items },
-        ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
+    var q = OrmDocument.Query();
+    defer q.deinit();
+    _ = q.whereIn("id", data.ids);
 
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    if (data.status == 1) {
+        _ = q.update(.{
+            .status = 1,
+            .publish_time = now,
+            .update_time = now,
+        }) catch |e| return base.send_error(req, e);
+    } else {
+        _ = q.update(.{
+            .status = data.status,
+            .update_time = now,
+        }) catch |e| return base.send_error(req, e);
+    }
 
     return base.send_ok(req, "批量操作成功");
 }

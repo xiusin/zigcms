@@ -38,6 +38,16 @@ pub const SysDict = integration.SysDict;
 pub const SysDictItem = integration.SysDictItem;
 pub const BizMember = integration.BizMember;
 pub const OpTask = integration.OpTask;
+pub const sys_dept = integration.sys_dept;
+pub const sys_position = integration.sys_position;
+pub const sys_role = integration.sys_role;
+pub const sys_menu = integration.sys_menu;
+pub const sys_admin = integration.sys_admin;
+pub const sys_config = integration.sys_config;
+pub const sys_dict = integration.sys_dict;
+pub const sys_dict_item = integration.sys_dict_item;
+pub const biz_member = integration.biz_member;
+pub const op_task = integration.op_task;
 
 /// 实体类型枚举，用于泛型操作
 pub const EntityType = enum {

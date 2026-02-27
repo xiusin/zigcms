@@ -263,16 +263,44 @@ pub fn Generic(comptime T: type) type {
             }
             if (!field_valid) return base.send_failed(req, "非法字段");
 
-            const sql_str = strings.sprinf("UPDATE {s} SET {s}='{s}', update_time={d} WHERE id={d}", .{
-                base.get_table_name(T),
-                modify_dto.field,
-                modify_dto.value.?,
-                std.time.microTimestamp(),
-                modify_dto.id,
-            }) catch return base.send_failed(req, "SQL 构建失败");
-            defer self.allocator.free(sql_str);
+            const item_opt = OrmModel.Find(@as(i32, @intCast(modify_dto.id))) catch |e| return base.send_error(req, e);
+            if (item_opt == null) return base.send_failed(req, "记录不存在");
 
-            _ = global.get_db().rawExec(sql_str) catch |e| return base.send_error(req, e);
+            var item = item_opt.?;
+            var updated = false;
+
+            inline for (std.meta.fields(T)) |f| {
+                if (std.mem.eql(u8, f.name, modify_dto.field)) {
+                    const raw_value = modify_dto.value.?;
+                    if (f.type == []const u8) {
+                        @field(item, f.name) = raw_value;
+                    } else if (f.type == i32) {
+                        @field(item, f.name) = std.fmt.parseInt(i32, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == i64) {
+                        @field(item, f.name) = std.fmt.parseInt(i64, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == u32) {
+                        @field(item, f.name) = std.fmt.parseInt(u32, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == u64) {
+                        @field(item, f.name) = std.fmt.parseInt(u64, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == bool) {
+                        @field(item, f.name) = std.mem.eql(u8, raw_value, "1") or std.mem.eql(u8, raw_value, "true");
+                    } else if (f.type == ?i32) {
+                        @field(item, f.name) = std.fmt.parseInt(i32, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == ?i64) {
+                        @field(item, f.name) = std.fmt.parseInt(i64, raw_value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == ?[]const u8) {
+                        @field(item, f.name) = raw_value;
+                    } else {
+                        return base.send_failed(req, "字段类型暂不支持");
+                    }
+                    updated = true;
+                    break;
+                }
+            }
+
+            if (!updated) return base.send_failed(req, "更新失败");
+
+            _ = OrmModel.Update(@as(i32, @intCast(modify_dto.id)), item) catch |e| return base.send_error(req, e);
 
             return base.send_ok(req, "更新成功");
         }

@@ -164,6 +164,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 }
 
 fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
@@ -176,23 +177,19 @@ fn deleteImpl(self: *Self, req: zap.Request) !void {
         }
     }
 
-    // 软删除
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.cms_model SET is_delete = 1, update_time = {d} WHERE id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
+    const now = std.time.microTimestamp();
+    _ = OrmCmsModel.Update(id, .{
+        .is_delete = 1,
+        .update_time = now,
+    }) catch |e| return base.send_error(req, e);
 
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
-
-    // 同时软删除关联的字段
-    const field_sql = strings.sprinf(
-        "UPDATE zigcms.cms_field SET is_delete = 1, update_time = {d} WHERE model_id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(field_sql);
-
-    _ = global.get_db().rawExec(field_sql, .{}) catch {};
+    var field_query = OrmCmsField.Query();
+    defer field_query.deinit();
+    _ = field_query.whereEq("model_id", id);
+    _ = field_query.update(.{
+        .is_delete = 1,
+        .update_time = now,
+    }) catch {};
 
     return base.send_ok(req, "删除成功");
 }

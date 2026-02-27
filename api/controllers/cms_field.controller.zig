@@ -172,18 +172,15 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 }
 
 fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
 
-    // 软删除
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.cms_field SET is_delete = 1, update_time = {d} WHERE id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmCmsField.Update(id, .{
+        .is_delete = 1,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "删除成功");
 }
@@ -206,13 +203,10 @@ fn batchSortImpl(self: *Self, req: zap.Request) !void {
     };
 
     for (data.items) |item| {
-        const sql_str = strings.sprinf(
-            "UPDATE zigcms.cms_field SET sort = {d}, update_time = {d} WHERE id = {d}",
-            .{ item.sort, std.time.microTimestamp(), item.id },
-        ) catch continue;
-        defer self.allocator.free(sql_str);
-
-        _ = global.get_db().rawExec(sql_str, .{}) catch {};
+        _ = OrmCmsField.Update(item.id, .{
+            .sort = item.sort,
+            .update_time = std.time.microTimestamp(),
+        }) catch {};
     }
 
     return base.send_ok(req, "排序更新成功");

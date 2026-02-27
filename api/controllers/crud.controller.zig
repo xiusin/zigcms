@@ -186,7 +186,13 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             req.parseBody() catch return base.send_failed(req, "解析请求体失败");
 
             const body = req.body orelse return base.send_failed(req, "请求体为空");
-            const dto = json_mod.JSON.decode(T, self.allocator, body) catch return;
+            var parsed = std.json.parseFromSlice(T, self.allocator, body, .{
+                .allocate = .alloc_always,
+                .ignore_unknown_fields = true,
+                .duplicate_field_behavior = .use_last,
+            }) catch return base.send_failed(req, "解析数据失败");
+            defer parsed.deinit();
+            const dto = parsed.value;
 
             // 设置时间戳
             if (@hasField(T, "update_time")) {
@@ -294,16 +300,43 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
             if (!field_valid) return base.send_failed(req, "字段不存在");
 
-            // 使用原生 SQL 更新单字段
-            const has_updated_at = comptime @hasField(T, "updated_at");
-            const touch_field = if (has_updated_at) "updated_at" else "update_time";
-            const sql_str = strings.sprinf(
-                "UPDATE " ++ TABLE_NAME ++ " SET {s} = '{s}', {s} = {d} WHERE id = {d}",
-                .{ field, value, touch_field, std.time.microTimestamp(), id },
-            ) catch return base.send_failed(req, "SQL 构建失败");
-            defer self.allocator.free(sql_str);
+            const item_opt = OrmModel.Find(id) catch |e| return base.send_error(req, e);
+            if (item_opt == null) return base.send_failed(req, "记录不存在");
 
-            _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+            var item = item_opt.?;
+            var updated = false;
+
+            inline for (std.meta.fields(T)) |f| {
+                if (std.mem.eql(u8, f.name, field)) {
+                    if (f.type == []const u8) {
+                        @field(item, f.name) = value;
+                    } else if (f.type == i32) {
+                        @field(item, f.name) = std.fmt.parseInt(i32, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == i64) {
+                        @field(item, f.name) = std.fmt.parseInt(i64, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == u32) {
+                        @field(item, f.name) = std.fmt.parseInt(u32, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == u64) {
+                        @field(item, f.name) = std.fmt.parseInt(u64, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == bool) {
+                        @field(item, f.name) = std.mem.eql(u8, value, "1") or std.mem.eql(u8, value, "true");
+                    } else if (f.type == ?i32) {
+                        @field(item, f.name) = std.fmt.parseInt(i32, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == ?i64) {
+                        @field(item, f.name) = std.fmt.parseInt(i64, value, 10) catch return base.send_failed(req, "字段值格式错误");
+                    } else if (f.type == ?[]const u8) {
+                        @field(item, f.name) = value;
+                    } else {
+                        return base.send_failed(req, "字段类型暂不支持");
+                    }
+                    updated = true;
+                    break;
+                }
+            }
+
+            if (!updated) return base.send_failed(req, "更新失败");
+
+            _ = OrmModel.Update(id, item) catch |e| return base.send_error(req, e);
 
             return base.send_ok(req, "更新成功");
         }

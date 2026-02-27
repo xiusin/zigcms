@@ -133,6 +133,9 @@ pub const Bootstrap = struct {
         // 管理后台路由
         try self.registerAdminRoutes();
 
+        // 系统扩展路由（非标准 CRUD）
+        try self.registerSystemExtRoutes();
+
         // 实时通信路由
         try self.registerRealtimeRoutes();
     }
@@ -222,6 +225,45 @@ pub const Bootstrap = struct {
 
         // 注意：角色管理路由已在 registerCrudModules 中通过 crud("role", models.Role) 注册
         // 如果需要自定义角色控制器，请使用不同的路径前缀，如 /admin/role/*
+    }
+
+    /// 注册系统扩展路由
+    fn registerSystemExtRoutes(self: *Self) !void {
+        if (!self.container.isRegistered(controllers.system_ext)) {
+            try self.container.registerSingleton(controllers.system_ext, controllers.system_ext, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext);
+                    ctrl.* = controllers.system_ext.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const ext = try self.container.resolve(controllers.system_ext);
+
+        // 组织/管理员扩展
+        try self.app.route("/system/dept/tree", ext, controllers.system_ext.dept_tree);
+        try self.app.route("/system/dept/all", ext, controllers.system_ext.dept_all);
+        try self.app.route("/system/admin/resetPassword", ext, controllers.system_ext.admin_reset_password);
+        try self.app.route("/system/admin/assignRoles", ext, controllers.system_ext.admin_assign_roles);
+
+        // 菜单扩展
+        try self.app.route("/system/menu/tree", ext, controllers.system_ext.menu_tree);
+        try self.app.route("/system/menu/permissions", ext, controllers.system_ext.menu_permissions);
+        try self.app.route("/system/menu/save-permissions", ext, controllers.system_ext.menu_save_permissions);
+        try self.app.route("/system/menu/export", ext, controllers.system_ext.menu_export);
+
+        // 字典项扩展
+        try self.app.route("/system/dict/items", ext, controllers.system_ext.dict_items);
+        try self.app.route("/system/dict/item/save", ext, controllers.system_ext.dict_item_save);
+        try self.app.route("/system/dict/item/delete", ext, controllers.system_ext.dict_item_delete);
+        try self.app.route("/system/dict/item/set", ext, controllers.system_ext.dict_item_set);
+
+        // 角色扩展
+        try self.app.route("/role/button-perms", ext, controllers.system_ext.role_button_perms);
+
+        self.route_count += 13;
     }
 
     /// 注册实时通信路由

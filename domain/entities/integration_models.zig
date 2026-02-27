@@ -161,3 +161,15 @@ pub const OpTask = struct {
     created_at: ?i64 = null,
     updated_at: ?i64 = null,
 };
+
+/// 通用 CRUD 类型别名（用于自动推导表名）
+pub const sys_dept = SysDept;
+pub const sys_position = SysPosition;
+pub const sys_role = SysRole;
+pub const sys_menu = SysMenu;
+pub const sys_admin = SysAdmin;
+pub const sys_config = SysConfig;
+pub const sys_dict = SysDict;
+pub const sys_dict_item = SysDictItem;
+pub const biz_member = BizMember;
+pub const op_task = OpTask;

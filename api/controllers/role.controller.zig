@@ -179,6 +179,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 
 /// 删除实现（软删除）
 fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
@@ -188,14 +189,10 @@ fn deleteImpl(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "系统角色不可删除");
     }
 
-    // 软删除
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.role SET is_delete = 1, update_time = {d} WHERE id = {d}",
-        .{ std.time.microTimestamp(), id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmRole.Update(id, .{
+        .is_delete = 1,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "删除成功");
 }
@@ -261,14 +258,11 @@ fn updatePermissionsImpl(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "角色ID无效");
     }
 
-    // 更新权限
-    const sql_str = strings.sprinf(
-        "UPDATE zigcms.role SET permissions = '{s}', data_scope = {d}, update_time = {d} WHERE id = {d}",
-        .{ dto.permissions, dto.data_scope, std.time.microTimestamp(), dto.id },
-    ) catch return base.send_failed(req, "SQL 构建失败");
-    defer self.allocator.free(sql_str);
-
-    _ = global.get_db().rawExec(sql_str, .{}) catch |e| return base.send_error(req, e);
+    _ = OrmRole.Update(dto.id, .{
+        .permissions = dto.permissions,
+        .data_scope = dto.data_scope,
+        .update_time = std.time.microTimestamp(),
+    }) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "权限更新成功");
 }

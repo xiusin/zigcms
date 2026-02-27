@@ -80,6 +80,9 @@ pub const external = struct {
     pub const Github = @import("github.controller.zig");
 };
 
+// 系统扩展控制器（非标准 CRUD）
+pub const system_ext = @import("system_ext.controller.zig");
+
 // 实时通信控制器
 pub const realtime = struct {
     // TODO: WebSocket 和 SSE 功能需要 zap 支持，暂时注释
