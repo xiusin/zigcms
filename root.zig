@@ -215,17 +215,26 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     };
 
     const api_host = try dup.slice(allocator, file_config.api.host);
+    errdefer allocator.free(api_host);
     const api_public_folder = try dup.slice(allocator, file_config.api.public_folder);
+    errdefer allocator.free(api_public_folder);
     const app_plugin_dir = try dup.slice(allocator, file_config.app.plugin_directory);
+    errdefer allocator.free(app_plugin_dir);
     const infra_db_host = try dup.slice(allocator, file_config.infra.db_host);
+    errdefer allocator.free(infra_db_host);
     const infra_db_name = try dup.slice(allocator, file_config.infra.db_name);
+    errdefer allocator.free(infra_db_name);
     const infra_db_user = try dup.slice(allocator, file_config.infra.db_user);
+    errdefer allocator.free(infra_db_user);
     const infra_db_password = try dup.slice(allocator, file_config.infra.db_password);
+    errdefer allocator.free(infra_db_password);
     const infra_cache_host = try dup.slice(allocator, file_config.infra.cache_host);
-    const infra_cache_password = if (file_config.infra.cache_password) |pwd|
-        try dup.slice(allocator, pwd)
-    else
-        null;
+    errdefer allocator.free(infra_cache_host);
+    const infra_cache_password = if (file_config.infra.cache_password) |pwd| blk: {
+        const copy = try dup.slice(allocator, pwd);
+        errdefer allocator.free(copy);
+        break :blk copy;
+    } else null;
 
     // 将文件配置映射到系统配置（防腐层转换）
     const system_config = SystemConfig{
@@ -272,6 +281,24 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     }
 
     return system_config;
+}
+
+/// 释放 loadSystemConfig 分配的字符串
+pub fn freeSystemConfig(allocator: std.mem.Allocator, config: *SystemConfig) void {
+    // api
+    allocator.free(config.api.host);
+    allocator.free(config.api.public_folder);
+
+    // app
+    allocator.free(config.app.plugin_directory);
+
+    // infra
+    allocator.free(config.infra.db_host);
+    allocator.free(config.infra.db_name);
+    allocator.free(config.infra.db_user);
+    allocator.free(config.infra.db_password);
+    allocator.free(config.infra.cache_host);
+    if (config.infra.cache_password) |pwd| allocator.free(pwd);
 }
 
 /// 初始化整个系统

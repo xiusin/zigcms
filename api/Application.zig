@@ -35,20 +35,20 @@ pub const Application = struct {
         errdefer app.deinit();
 
         const container = zigcms.shared.di.getGlobalContainer() orelse return error.DIContainerNotInitialized;
-        
+
         // 创建应用上下文（从 global 获取资源，使用借用模式保持向后兼容）
         const db = zigcms.shared.global.get_db();
         const app_context = try AppContext.init(allocator, &config, db, container);
         errdefer app_context.deinit();
-        
+
         // 设置日志器到上下文
         app_context.setLogger(global_logger);
-        
+
         // 如果服务管理器存在，设置到上下文
         if (zigcms.shared.global.getServiceManager()) |sm| {
             app_context.setServiceManager(sm);
         }
-        
+
         app_ptr.* = .{
             .allocator = allocator,
             .config = config,
@@ -68,7 +68,7 @@ pub const Application = struct {
 
     pub fn destroy(self: *Self) void {
         self.app.deinit();
-        
+
         // 注意：AppContext 中的资源是从 global 借用的，不要重复释放
         // 只需要释放 AppContext 结构体本身
         if (self.app_context) |ctx| {
@@ -77,11 +77,14 @@ pub const Application = struct {
             allocator.destroy(ctx);
             self.app_context = null;
         }
-        
+
         if (self.system_initialized) {
             logger.deinitDefault();
             zigcms.deinitSystem();
         }
+
+        // 释放配置中的字符串副本
+        zigcms.freeSystemConfig(self.allocator, &self.config);
 
         const allocator = self.allocator;
         allocator.destroy(self);
@@ -90,7 +93,13 @@ pub const Application = struct {
     pub fn run(self: *Self) !void {
         self.bootstrap.printStartupSummary();
         logger.info("🚀 启动 ZigCMS 服务器", .{});
-        try self.app.listen();
+        self.app.listen() catch |err| switch (err) {
+            error.ListenError => {
+                logger.err("启动失败：端口 {d} 已被占用或监听失败", .{self.config.api.port});
+                return; // 优雅退出，不打印堆栈
+            },
+            else => return err,
+        };
     }
 
     pub fn getConfig(self: *const Self) *const SystemConfig {
@@ -105,7 +114,7 @@ pub const Application = struct {
         _ = self;
         return zigcms.shared.di.getGlobalContainer() orelse unreachable;
     }
-    
+
     pub fn getContext(self: *const Self) *AppContext {
         return self.app_context orelse unreachable;
     }
