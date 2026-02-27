@@ -1434,6 +1434,47 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return decrement(getDb(), id, field, amount);
         }
 
+        /// 克隆模型到指定分配器（只拷贝字符串字段，数值直接赋值）
+        inline fn cloneModel(allocator: Allocator, src: *const T) !T {
+            var dst = src.*;
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const v = @field(dst, field.name);
+                    @field(dst, field.name) = try allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(dst, field.name)) |s| {
+                            @field(dst, field.name) = try allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+            return dst;
+        }
+
+        /// 释放模型中的字符串字段（匹配 mapResults 的分配策略）
+        inline fn freeModelStrings(allocator: Allocator, model: *T) void {
+            inline for (std.meta.fields(T)) |field| {
+                if (field.type == []const u8) {
+                    const s = @field(model.*, field.name);
+                    // 只释放非空字符串（空字符串 "" 是静态分配的）
+                    if (s.len > 0 and s.ptr != "".ptr) {
+                        allocator.free(s);
+                    }
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(model.*, field.name)) |s| {
+                            if (s.len > 0 and s.ptr != "".ptr) {
+                                allocator.free(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         /// 查找单条记录
         pub fn find(db: *Database, id: anytype) !?T {
             var q = query(db);
@@ -1455,8 +1496,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     const v = @field(out, field.name);
                     @field(out, field.name) = try db.allocator.dupe(u8, v);
                 } else if (@typeInfo(field.type) == .optional) {
-                    const child = @typeInfo(field.type).optional.child;
-                    if (child == []const u8) {
+                    const ChildType = @typeInfo(field.type).optional.child;
+                    if (ChildType == []const u8) {
                         if (@field(out, field.name)) |s| {
                             @field(out, field.name) = try db.allocator.dupe(u8, s);
                         }
@@ -1464,27 +1505,8 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 }
             }
 
-            const FreeStrings = struct {
-                fn apply(allocator: Allocator, model: *T) void {
-                    inline for (std.meta.fields(T)) |field| {
-                        if (field.type == []const u8) {
-                            const s = @field(model.*, field.name);
-                            if (s.len > 0) allocator.free(s);
-                            @field(model.*, field.name) = "";
-                        } else if (@typeInfo(field.type) == .optional) {
-                            const child = @typeInfo(field.type).optional.child;
-                            if (child == []const u8) {
-                                if (@field(model.*, field.name)) |s| {
-                                    if (s.len > 0) allocator.free(s);
-                                    @field(model.*, field.name) = null;
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            for (results) |*m| FreeStrings.apply(db.allocator, m);
+            // 释放原结果集
+            for (results) |*m| Self.freeModelStrings(db.allocator, m);
             db.allocator.free(results);
 
             return out;
@@ -3068,48 +3090,40 @@ pub fn ModelQuery(comptime T: type) type {
             const results = try self.get();
             if (results.len == 0) return null;
 
-            // 深拷贝第一个元素的字符串字段，确保在释放结果集后数据仍然有效
-            var out = results[0];
+            var out = try Self.cloneModel(self.db.allocator, &results[0]);
 
-            inline for (std.meta.fields(T)) |field| {
-                if (field.type == []const u8) {
-                    const v = @field(out, field.name);
-                    @field(out, field.name) = try self.db.allocator.dupe(u8, v);
-                } else if (@typeInfo(field.type) == .optional) {
-                    const child = @typeInfo(field.type).optional.child;
-                    if (child == []const u8) {
-                        if (@field(out, field.name)) |s| {
-                            @field(out, field.name) = try self.db.allocator.dupe(u8, s);
-                        }
-                    }
-                }
-            }
-
-            const FreeStrings = struct {
-                fn apply(allocator: Allocator, model: *T) void {
-                    inline for (std.meta.fields(T)) |field| {
-                        if (field.type == []const u8) {
-                            const s = @field(model.*, field.name);
-                            if (s.len > 0) allocator.free(s);
-                            @field(model.*, field.name) = "";
-                        } else if (@typeInfo(field.type) == .optional) {
-                            const child = @typeInfo(field.type).optional.child;
-                            if (child == []const u8) {
-                                if (@field(model.*, field.name)) |s| {
-                                    if (s.len > 0) allocator.free(s);
-                                    @field(model.*, field.name) = null;
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            // 释放原结果集中字符串与数组本身，避免泄漏
-            for (results) |*m| FreeStrings.apply(self.db.allocator, m);
+            for (results) |*m| Self.freeModelStrings(self.db.allocator, m);
             self.db.allocator.free(results);
 
             return out;
+        }
+
+        /// 获取第一条（Arena 托管，调用方需 deinit）
+        pub fn firstWithArena(self: *Self, backing_allocator: Allocator) !struct {
+            arena: std.heap.ArenaAllocator,
+            model: ?T,
+            pub fn deinit(ctx: *@This()) void {
+                ctx.arena.deinit();
+            }
+        } {
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            self.limit_val = 1;
+            const results = try self.get();
+            errdefer self.db.allocator.free(results);
+
+            if (results.len == 0) {
+                self.db.allocator.free(results);
+                return .{ .arena = arena, .model = null };
+            }
+
+            const cloned = try Self.cloneModel(arena.allocator(), &results[0]);
+
+            for (results) |*m| Self.freeModelStrings(self.db.allocator, m);
+            self.db.allocator.free(results);
+
+            return .{ .arena = arena, .model = cloned };
         }
 
         /// 获取第一条，如果不存在则报错 (Laravel: firstOrFail)

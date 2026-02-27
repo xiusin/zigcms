@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
 const sql = @import("../../application/services/sql/orm.zig");
-const models = @import("../../domain/entities/models.zig");
+const models = @import("../../domain/entities/mod.zig");
 const global = @import("../../core/primitives/global.zig");
 const strings = @import("../../core/utils/strings.zig");
 
