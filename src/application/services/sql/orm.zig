@@ -3090,7 +3090,7 @@ pub fn ModelQuery(comptime T: type) type {
             const results = try self.get();
             if (results.len == 0) return null;
 
-            var out = try Self.cloneModel(self.db.allocator, &results[0]);
+            const out = try Self.cloneModel(self.db.allocator, &results[0]);
 
             for (results) |*m| Self.freeModelStrings(self.db.allocator, m);
             self.db.allocator.free(results);
