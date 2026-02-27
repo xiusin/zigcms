@@ -40,26 +40,26 @@
 //! - `SystemConfig`: 系统配置结构体
 
 const std = @import("std");
-const logger = @import("application/services/logger/logger.zig");
-const sql_orm = @import("application/services/sql/orm.zig");
+const logger = @import("src/application/services/logger/logger.zig");
+const sql_orm = @import("src/application/services/sql/orm.zig");
 
 // 用户服务相关导入
-const UserService = @import("application/services/user_service.zig").UserService;
-const UserRepository = @import("domain/repositories/user_repository.zig").UserRepository;
-const SqliteUserRepository = @import("infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
+const UserService = @import("src/application/services/user_service.zig").UserService;
+const UserRepository = @import("src/domain/repositories/user_repository.zig").UserRepository;
+const SqliteUserRepository = @import("src/infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
 
 // 会员服务相关导入
-const MemberService = @import("application/services/member_service.zig").MemberService;
-const MemberRepository = @import("domain/repositories/member_repository.zig").MemberRepository;
-const SqliteMemberRepository = @import("infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
+const MemberService = @import("src/application/services/member_service.zig").MemberService;
+const MemberRepository = @import("src/domain/repositories/member_repository.zig").MemberRepository;
+const SqliteMemberRepository = @import("src/infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
 
 // 分类服务相关导入
-const CategoryService = @import("application/services/category_service.zig").CategoryService;
-const CategoryRepository = @import("domain/repositories/category_repository.zig").CategoryRepository;
-const SqliteCategoryRepository = @import("infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
+const CategoryService = @import("src/application/services/category_service.zig").CategoryService;
+const CategoryRepository = @import("src/domain/repositories/category_repository.zig").CategoryRepository;
+const SqliteCategoryRepository = @import("src/infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
 
 // 认证服务导入
-const AuthService = @import("application/services/auth_service.zig").AuthService;
+const AuthService = @import("src/application/services/auth_service.zig").AuthService;
 
 // ============================================================================
 // 编译选项
@@ -77,22 +77,22 @@ pub const mysql_enabled = true;
 /// API 层 - HTTP 请求处理
 ///
 /// 包含控制器、DTO、中间件等 HTTP 相关组件。
-pub const api = @import("api/Api.zig");
+pub const api = @import("src/api/Api.zig");
 
 /// 应用层 - 业务用例编排
 ///
 /// 包含用例、服务管理器、ORM、缓存等应用服务。
-pub const application = @import("application/mod.zig");
+pub const application = @import("src/application/mod.zig");
 
 /// 领域层 - 核心业务逻辑
 ///
 /// 包含实体、领域服务、仓储接口等业务核心。
-pub const domain = @import("domain/mod.zig");
+pub const domain = @import("src/domain/mod.zig");
 
 /// 基础设施层 - 外部服务实现
 ///
 /// 包含数据库、缓存、HTTP 客户端等外部服务实现。
-pub const infrastructure = @import("infrastructure/mod.zig");
+pub const infrastructure = @import("src/infrastructure/mod.zig");
 
 /// 核心层 - 统一基础设施
 ///
@@ -102,29 +102,30 @@ pub const core = @import("src/core/mod.zig");
 /// 共享层 - 通用组件（兼容层，建议使用 core）
 ///
 /// 包含工具函数、类型定义、错误处理等跨层共享组件。
-pub const shared = @import("shared/mod.zig");
+// shared 已合并到 core，保留别名以兼容旧代码
+pub const shared = core;
 
 /// SQL ORM 模块 - 数据库操作
 ///
 /// 提供完整的多数据库 ORM 功能（MySQL/SQLite/PostgreSQL）。
-pub const sql = @import("application/services/sql/mod.zig");
+pub const sql = @import("src/application/services/sql/mod.zig");
 
 /// Redis 客户端模块 - 缓存和键值存储
 ///
 /// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
-pub const redis = @import("application/services/redis/mod.zig");
+pub const redis = @import("src/application/services/redis/mod.zig");
 
 /// 缓存驱动模块 - 缓存实现
 ///
 /// 提供内存缓存、Redis缓存等驱动实现。
-pub const cache_drivers = @import("application/services/cache_drivers.zig");
+pub const cache_drivers = @import("src/application/services/cache_drivers.zig");
 
 // ============================================================================
 // 服务管理
 // ============================================================================
 
 /// 服务管理器类型
-pub const ServiceManager = @import("application/services/mod.zig").ServiceManager;
+pub const ServiceManager = @import("src/application/services/mod.zig").ServiceManager;
 
 // 全局服务实例
 var service_manager: ?ServiceManager = null;

@@ -1,11 +1,18 @@
-//! 统一错误处理模块 (Unified Error Handling Module)
+//! 统一错误处理模块 (Errors Module)
 //!
-//! 合并了原 shared/errors 和 application/services/errors 的功能。
-//! 提供统一的错误类型定义、HTTP 状态码映射和错误响应构建。
+//! 定义应用程序的错误类型层次结构，提供错误到 HTTP 状态码的映射，
+//! 以及错误消息的国际化支持。
+//!
+//! ## 功能
+//! - 定义统一的错误类型（AppError）
+//! - 提供错误详情结构（ErrorDetail）
+//! - HTTP 状态码映射（errorToHttpStatus）
+//! - 错误消息映射（errorToMessage）
+//! - 错误响应构建器（ErrorResponse）
 //!
 //! ## 使用示例
 //! ```zig
-//! const errors = @import("core/errors/mod.zig");
+//! const errors = @import("shared/errors/mod.zig");
 //!
 //! // 获取错误的 HTTP 状态码
 //! const status = errors.errorToHttpStatus(error.NotFound); // 404
@@ -21,13 +28,17 @@ const std = @import("std");
 
 /// 应用错误类型
 pub const AppError = error{
+    // ============================================================================
     // 通用错误 (1000-1099)
+    // ============================================================================
     InternalError,
     NotImplemented,
     InvalidParameter,
     InvalidOperation,
 
+    // ============================================================================
     // 认证和授权错误 (1100-1199)
+    // ============================================================================
     Unauthorized,
     Forbidden,
     InvalidCredentials,
@@ -35,35 +46,47 @@ pub const AppError = error{
     TokenInvalid,
     PermissionDenied,
 
+    // ============================================================================
     // 资源错误 (1200-1299)
+    // ============================================================================
     NotFound,
     AlreadyExists,
     Conflict,
     ResourceLocked,
 
+    // ============================================================================
     // 验证错误 (1300-1399)
+    // ============================================================================
     ValidationError,
     InvalidFormat,
     InvalidLength,
     RequiredFieldMissing,
 
+    // ============================================================================
     // 业务逻辑错误 (1400-1499)
+    // ============================================================================
     BusinessRuleViolation,
     InvalidState,
     OperationNotAllowed,
 
+    // ============================================================================
     // 数据库错误 (1500-1599)
+    // ============================================================================
     DatabaseError,
     QueryError,
     ConnectionError,
     TransactionError,
 
+    // ============================================================================
     // 外部服务错误 (1600-1699)
+    // ============================================================================
     ExternalServiceError,
     NetworkError,
     TimeoutError,
 
+    // ============================================================================
     // 文件和上传错误 (1700-1799)
+    // ============================================================================
     FileNotFound,
     FileTooBig,
     InvalidFileType,
@@ -76,172 +99,164 @@ pub const ErrorDetail = struct {
     message: []const u8,
     field: ?[]const u8 = null,
     details: ?[]const u8 = null,
-};
 
-/// 错误响应
-pub const ErrorResponse = struct {
-    success: bool = false,
-    error_code: u32,
-    message: []const u8,
-    details: ?[]const u8 = null,
-
-    /// 从错误创建响应
-    pub fn fromError(err: anyerror) ErrorResponse {
+    pub fn init(code: u32, message: []const u8) ErrorDetail {
         return .{
-            .error_code = errorToCode(err),
-            .message = errorToMessage(err),
+            .code = code,
+            .message = message,
         };
+    }
+
+    pub fn withField(self: ErrorDetail, field: []const u8) ErrorDetail {
+        var result = self;
+        result.field = field;
+        return result;
+    }
+
+    pub fn withDetails(self: ErrorDetail, details: []const u8) ErrorDetail {
+        var result = self;
+        result.details = details;
+        return result;
     }
 };
 
-/// 错误到 HTTP 状态码映射
+/// HTTP 状态码映射
 pub fn errorToHttpStatus(err: anyerror) u16 {
     return switch (err) {
-        error.NotFound, error.FileNotFound => 404,
-        error.Unauthorized, error.InvalidCredentials, error.TokenExpired, error.TokenInvalid => 401,
-        error.Forbidden, error.PermissionDenied => 403,
-        error.AlreadyExists, error.Conflict => 409,
-        error.ValidationError, error.InvalidFormat, error.InvalidLength, error.RequiredFieldMissing, error.InvalidParameter => 400,
-        error.TimeoutError => 408,
-        error.FileTooBig => 413,
-        error.InvalidFileType => 415,
+        // 400 Bad Request
+        error.InvalidParameter,
+        error.InvalidFormat,
+        error.InvalidLength,
+        error.ValidationError,
+        => 400,
+
+        // 401 Unauthorized
+        error.Unauthorized,
+        error.InvalidCredentials,
+        error.TokenExpired,
+        error.TokenInvalid,
+        => 401,
+
+        // 403 Forbidden
+        error.Forbidden,
+        error.PermissionDenied,
+        => 403,
+
+        // 404 Not Found
+        error.NotFound,
+        error.FileNotFound,
+        => 404,
+
+        // 409 Conflict
+        error.AlreadyExists,
+        error.Conflict,
+        => 409,
+
+        // 422 Unprocessable Entity
+        error.RequiredFieldMissing,
+        error.BusinessRuleViolation,
+        error.InvalidState,
+        => 422,
+
+        // 500 Internal Server Error
         else => 500,
     };
 }
 
-/// 错误到错误码映射
-pub fn errorToCode(err: anyerror) u32 {
-    return switch (err) {
-        error.InternalError => 1000,
-        error.NotImplemented => 1001,
-        error.InvalidParameter => 1002,
-        error.InvalidOperation => 1003,
-        error.Unauthorized => 1100,
-        error.Forbidden => 1101,
-        error.InvalidCredentials => 1102,
-        error.TokenExpired => 1103,
-        error.TokenInvalid => 1104,
-        error.PermissionDenied => 1105,
-        error.NotFound => 1200,
-        error.AlreadyExists => 1201,
-        error.Conflict => 1202,
-        error.ResourceLocked => 1203,
-        error.ValidationError => 1300,
-        error.InvalidFormat => 1301,
-        error.InvalidLength => 1302,
-        error.RequiredFieldMissing => 1303,
-        error.BusinessRuleViolation => 1400,
-        error.InvalidState => 1401,
-        error.OperationNotAllowed => 1402,
-        error.DatabaseError => 1500,
-        error.QueryError => 1501,
-        error.ConnectionError => 1502,
-        error.TransactionError => 1503,
-        error.ExternalServiceError => 1600,
-        error.NetworkError => 1601,
-        error.TimeoutError => 1602,
-        error.FileNotFound => 1700,
-        error.FileTooBig => 1701,
-        error.InvalidFileType => 1702,
-        error.UploadError => 1703,
-        else => 9999,
-    };
-}
-
-/// 错误到消息映射
+/// 错误消息映射
 pub fn errorToMessage(err: anyerror) []const u8 {
     return switch (err) {
-        error.InternalError => "内部错误",
+        // 通用错误
+        error.InternalError => "内部服务器错误",
         error.NotImplemented => "功能未实现",
         error.InvalidParameter => "参数无效",
         error.InvalidOperation => "操作无效",
-        error.Unauthorized => "未授权",
+
+        // 认证和授权
+        error.Unauthorized => "未授权访问",
         error.Forbidden => "禁止访问",
-        error.InvalidCredentials => "凭证无效",
+        error.InvalidCredentials => "用户名或密码错误",
         error.TokenExpired => "令牌已过期",
         error.TokenInvalid => "令牌无效",
         error.PermissionDenied => "权限不足",
+
+        // 资源错误
         error.NotFound => "资源不存在",
         error.AlreadyExists => "资源已存在",
         error.Conflict => "资源冲突",
         error.ResourceLocked => "资源已锁定",
-        error.ValidationError => "验证失败",
-        error.InvalidFormat => "格式无效",
-        error.InvalidLength => "长度无效",
+
+        // 验证错误
+        error.ValidationError => "数据验证失败",
+        error.InvalidFormat => "格式不正确",
+        error.InvalidLength => "长度不符合要求",
         error.RequiredFieldMissing => "必填字段缺失",
+
+        // 业务逻辑
         error.BusinessRuleViolation => "违反业务规则",
         error.InvalidState => "状态无效",
-        error.OperationNotAllowed => "操作不允许",
+        error.OperationNotAllowed => "不允许的操作",
+
+        // 数据库
         error.DatabaseError => "数据库错误",
         error.QueryError => "查询错误",
         error.ConnectionError => "连接错误",
         error.TransactionError => "事务错误",
+
+        // 外部服务
         error.ExternalServiceError => "外部服务错误",
         error.NetworkError => "网络错误",
         error.TimeoutError => "请求超时",
+
+        // 文件上传
         error.FileNotFound => "文件不存在",
         error.FileTooBig => "文件过大",
-        error.InvalidFileType => "文件类型无效",
+        error.InvalidFileType => "文件类型不支持",
         error.UploadError => "上传失败",
+
         else => "未知错误",
     };
 }
 
-/// 错误上下文（用于错误链）
-pub const Error = struct {
-    msg: []const u8,
-    code: ?i32 = null,
-    cause: ?*const Error = null,
-    source_file: ?[]const u8 = null,
-    source_line: ?u32 = null,
-    allocator: ?std.mem.Allocator = null,
-    owns_message: bool = false,
+/// 错误响应构建器
+pub const ErrorResponse = struct {
+    code: u32,
+    message: []const u8,
+    errors: ?[]ErrorDetail = null,
 
-    /// 获取错误消息
-    pub fn message(self: *const Error) []const u8 {
-        return self.msg;
+    pub fn fromError(err: anyerror) ErrorResponse {
+        return .{
+            .code = errorToHttpStatus(err),
+            .message = errorToMessage(err),
+        };
     }
 
-    /// 获取错误码
-    pub fn getCode(self: *const Error) ?i32 {
-        return self.code;
-    }
-
-    /// 解包错误链
-    pub fn unwrap(self: *const Error) ?*const Error {
-        return self.cause;
-    }
-
-    /// 获取根因错误
-    pub fn rootCause(self: *const Error) *const Error {
-        var current = self;
-        while (current.cause) |c| {
-            current = c;
-        }
-        return current;
-    }
-
-    /// 释放错误
-    pub fn deinit(self: *Error) void {
-        if (self.owns_message) {
-            if (self.allocator) |alloc| {
-                alloc.free(self.msg);
-            }
-        }
+    pub fn withErrors(self: ErrorResponse, errors: []ErrorDetail) ErrorResponse {
+        var result = self;
+        result.errors = errors;
+        return result;
     }
 };
 
-/// 创建简单错误
-pub fn new(msg: []const u8) Error {
-    return .{ .msg = msg };
-}
+/// 结果类型 - 用于返回成功或错误
+pub fn Result(comptime T: type) type {
+    return union(enum) {
+        ok: T,
+        err: ErrorResponse,
 
-/// 创建带错误码的错误
-pub fn newWithCode(code: i32, msg: []const u8) Error {
-    return .{ .msg = msg, .code = code };
-}
+        pub fn isOk(self: @This()) bool {
+            return self == .ok;
+        }
 
-/// 包装已有错误
-pub fn wrap(cause: *const Error, msg: []const u8) Error {
-    return .{ .msg = msg, .cause = cause };
+        pub fn isErr(self: @This()) bool {
+            return self == .err;
+        }
+
+        pub fn unwrap(self: @This()) !T {
+            return switch (self) {
+                .ok => |value| value,
+                .err => error.ResultContainsError,
+            };
+        }
+    };
 }

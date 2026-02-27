@@ -1,42 +1,37 @@
 //! 通用类型定义模块 (Types Module)
 //!
-//! 定义项目中共享的类型，包括分页参数、HTTP 方法、状态码、结果类型等。
+//! 定义项目中共享的类型，包括类型别名、枚举、结构体等。
+//! 这些类型在各层之间传递数据时使用。
+//!
+//! ## 包含的类型
+//! - 标准库类型别名（Allocator, ArrayList 等）
+//! - HTTP 相关类型（HttpMethod, StatusCode）
+//! - 分页参数（Pagination）
+//! - 结果类型（Result, Option）
 
 const std = @import("std");
 
-/// 分页参数
-pub const Pagination = struct {
-    page: u32 = 1,
-    page_size: u32 = 10,
-    total: ?u64 = null,
+// ============================================================================
+// 标准库类型别名
+// ============================================================================
 
-    /// 计算偏移量
-    pub fn offset(self: Pagination) u64 {
-        return @as(u64, self.page - 1) * @as(u64, self.page_size);
-    }
+/// 内存分配器类型别名
+pub const Allocator = std.mem.Allocator;
 
-    /// 计算总页数
-    pub fn totalPages(self: Pagination) u32 {
-        if (self.total) |t| {
-            return @intCast((t + @as(u64, self.page_size) - 1) / @as(u64, self.page_size));
-        }
-        return 0;
-    }
-};
+/// 动态数组类型别名
+pub const ArrayList = std.ArrayList;
 
-/// 分页结果
-pub fn PageResult(comptime T: type) type {
-    return struct {
-        items: []T,
-        pagination: Pagination,
+/// 字符串哈希表类型别名
+pub const StringHashMap = std.StringHashMap;
 
-        pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-            allocator.free(self.items);
-        }
-    };
-}
+/// 自动哈希表类型别名
+pub const AutoHashMap = std.AutoHashMap;
 
-/// HTTP 方法
+// ============================================================================
+// HTTP 相关类型
+// ============================================================================
+
+/// HTTP 请求方法
 pub const HttpMethod = enum {
     GET,
     POST,
@@ -47,70 +42,73 @@ pub const HttpMethod = enum {
     OPTIONS,
 };
 
-/// HTTP 状态码
-pub const HttpStatus = struct {
-    pub const OK = 200;
-    pub const Created = 201;
-    pub const NoContent = 204;
-    pub const BadRequest = 400;
-    pub const Unauthorized = 401;
-    pub const Forbidden = 403;
-    pub const NotFound = 404;
-    pub const Conflict = 409;
-    pub const InternalServerError = 500;
+/// HTTP 响应状态码
+pub const StatusCode = enum(u16) {
+    OK = 200,
+    Created = 201,
+    NoContent = 204,
+    BadRequest = 400,
+    Unauthorized = 401,
+    Forbidden = 403,
+    NotFound = 404,
+    UnprocessableEntity = 422,
+    InternalServerError = 500,
 };
 
-/// 操作结果
+// ============================================================================
+// 分页类型
+// ============================================================================
+
+/// 分页参数
+///
+/// 用于分页查询的参数结构体。
+pub const Pagination = struct {
+    /// 当前页码（从 1 开始）
+    page: i32 = 1,
+    /// 每页记录数
+    page_size: i32 = 10,
+    /// 总记录数
+    total: i32 = 0,
+
+    /// 计算偏移量
+    pub fn offset(self: Pagination) i32 {
+        return (self.page - 1) * self.page_size;
+    }
+
+    /// 计算总页数
+    pub fn totalPages(self: Pagination) i32 {
+        if (self.page_size == 0) return 0;
+        return @divTrunc(self.total + self.page_size - 1, self.page_size);
+    }
+};
+
+// ============================================================================
+// 结果类型
+// ============================================================================
+
+/// 结果类型
+///
+/// 表示操作结果，可能是成功值或错误。
 pub fn Result(comptime T: type, comptime E: type) type {
     return union(enum) {
         ok: T,
         err: E,
 
+        /// 检查是否成功
         pub fn isOk(self: @This()) bool {
             return self == .ok;
         }
 
+        /// 检查是否失败
         pub fn isErr(self: @This()) bool {
             return self == .err;
-        }
-
-        pub fn unwrap(self: @This()) T {
-            return switch (self) {
-                .ok => |v| v,
-                .err => unreachable,
-            };
-        }
-
-        pub fn unwrapErr(self: @This()) E {
-            return switch (self) {
-                .ok => unreachable,
-                .err => |e| e,
-            };
         }
     };
 }
 
-/// 可选结果
-pub fn Optional(comptime T: type) type {
+/// 可选类型别名
+///
+/// 表示可能存在或不存在的值。
+pub fn Option(comptime T: type) type {
     return ?T;
-}
-
-/// 排序方向
-pub const SortDirection = enum {
-    Asc,
-    Desc,
-};
-
-/// 排序参数
-pub const SortParam = struct {
-    field: []const u8,
-    direction: SortDirection = .Asc,
-};
-
-/// 时间戳类型
-pub const Timestamp = i64;
-
-/// 获取当前时间戳
-pub fn now() Timestamp {
-    return std.time.timestamp();
 }

@@ -8,7 +8,7 @@
 //! 具体的配置加载、系统初始化、路由注册等逻辑委托给 Application 模块处理。
 
 const std = @import("std");
-const Application = @import("api/Application.zig").Application;
+const Application = @import("src/api/Application.zig").Application;
 
 // ✅ 启用 MySQL 驱动（编译时标志，供 interface.zig 检测）
 pub const mysql_enabled = true;

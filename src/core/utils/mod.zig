@@ -1,89 +1,68 @@
 //! 工具函数模块 (Utils Module)
 //!
-//! 提供跨层共享的工具函数，包括字符串处理、JWT、加密等。
-//! 从原 shared/utils 迁移而来。
+//! 提供跨层共享的通用工具函数集合。
+//! 所有工具函数都是无状态的，可以安全地在多线程环境中使用。
+//!
+//! ## 包含的工具
+//! - `strings`: 字符串处理工具
+//! - `jwt`: JWT 令牌生成和验证
+//! - `redis`: Redis 客户端工具
+//! - `color`: 终端颜色输出
+//! - `regex`: 正则表达式工具
+//! - `github`: GitHub API 工具
+//! - `tos`: 腾讯云对象存储工具
+//! - `webui`: Web UI 工具
+//! - `benchmark`: 性能基准测试
+//! - `security`: 安全验证模块
+//! - `metrics`: 指标收集模块
+//! - `health`: 健康检查模块
 
-const std = @import("std");
-
-// 重导出子模块
+/// 字符串处理工具
 pub const strings = @import("strings.zig");
+
+/// JWT 令牌工具
 pub const jwt = @import("jwt.zig");
+
+/// Redis 客户端工具
+pub const redis = @import("redis.zig");
+
+/// 终端颜色输出工具
+pub const color = @import("color.zig");
+
+/// 正则表达式工具
+pub const regex = @import("regex.zig");
+
+/// GitHub API 工具
+pub const github = @import("github.zig");
+
+/// 腾讯云对象存储工具
+pub const tos = @import("tos.zig");
+
+/// 性能基准测试
+pub const benchmark = @import("benchmark.zig");
+
+/// 安全验证模块
 pub const security = @import("security.zig");
-pub const health = @import("health.zig");
+
+/// 指标收集模块
 pub const metrics = @import("metrics.zig");
 
-/// 字符串工具
-pub const StringUtils = struct {
-    /// 去除首尾空白
-    pub fn trim(s: []const u8) []const u8 {
-        return std.mem.trim(u8, s, " \t\n\r");
-    }
+/// 健康检查模块
+pub const health = @import("health.zig");
 
-    /// 判断是否为空
-    pub fn isEmpty(s: []const u8) bool {
-        return s.len == 0;
-    }
-
-    /// 判断是否为空白
-    pub fn isBlank(s: []const u8) bool {
-        return trim(s).len == 0;
-    }
-
-    /// 分割字符串
-    pub fn split(s: []const u8, delimiter: u8) std.mem.SplitIterator(u8, .scalar) {
-        return std.mem.splitScalar(u8, s, delimiter);
-    }
-};
-
-/// 时间工具
-pub const TimeUtils = struct {
-    /// 获取当前时间戳（秒）
-    pub fn now() i64 {
-        return std.time.timestamp();
-    }
-
-    /// 获取当前时间戳（毫秒）
-    pub fn nowMs() i64 {
-        return std.time.milliTimestamp();
-    }
-};
-
-/// 随机工具
-pub const RandomUtils = struct {
-    /// 生成随机字节
-    pub fn bytes(buf: []u8) void {
-        std.crypto.random.bytes(buf);
-    }
-
-    /// 生成随机整数
-    pub fn int(comptime T: type) T {
-        return std.crypto.random.int(T);
-    }
-
-    /// 生成 UUID v4
-    pub fn uuid() [36]u8 {
-        var buf: [16]u8 = undefined;
-        std.crypto.random.bytes(&buf);
-
-        // 设置版本和变体
-        buf[6] = (buf[6] & 0x0f) | 0x40;
-        buf[8] = (buf[8] & 0x3f) | 0x80;
-
-        var result: [36]u8 = undefined;
-        const hex = "0123456789abcdef";
-        var i: usize = 0;
-        var j: usize = 0;
-
-        while (i < 16) : (i += 1) {
-            if (i == 4 or i == 6 or i == 8 or i == 10) {
-                result[j] = '-';
-                j += 1;
-            }
-            result[j] = hex[buf[i] >> 4];
-            result[j + 1] = hex[buf[i] & 0x0f];
-            j += 2;
-        }
-
-        return result;
-    }
+/// 工具模块统一访问结构
+///
+/// 提供所有工具的统一访问点，便于导入和使用。
+pub const Utils = struct {
+    pub const Strings = strings;
+    pub const JWT = jwt;
+    pub const Redis = redis;
+    pub const Color = color;
+    pub const Regex = regex;
+    pub const GitHub = github;
+    pub const TOS = tos;
+    pub const Benchmark = benchmark;
+    pub const Security = security;
+    pub const Metrics = metrics;
+    pub const Health = health;
 };

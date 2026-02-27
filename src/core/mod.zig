@@ -56,6 +56,12 @@ pub const patterns = @import("patterns/mod.zig");
 /// 应用上下文模块
 pub const context = @import("context/mod.zig");
 
+/// 全局模块（原 shared/primitives/global）
+pub const global = @import("primitives/global.zig");
+
+/// 原语模块
+pub const primitives = @import("primitives/mod.zig");
+
 // ============================================================================
 // 便捷访问
 // ============================================================================
@@ -83,6 +89,9 @@ pub const CoreConfig = struct {
     /// 是否启用调试模式
     debug_mode: bool = false,
 };
+
+/// 共享层配置（兼容旧代码）
+pub const SharedConfig = CoreConfig;
 
 // ============================================================================
 // 生命周期管理

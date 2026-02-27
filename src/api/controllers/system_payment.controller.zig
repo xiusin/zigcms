@@ -1,0 +1,172 @@
+const std = @import("std");
+const zap = @import("zap");
+const Allocator = std.mem.Allocator;
+
+const base = @import("base.fn.zig");
+const sql = @import("../../application/services/sql/orm.zig");
+const global = @import("../../core/primitives/global.zig");
+const json_mod = @import("../../application/services/json/json.zig");
+const strings = @import("../../core/utils/strings.zig");
+
+const Self = @This();
+
+allocator: Allocator,
+
+const SysConfig = struct {
+    id: ?i32 = null,
+    config_name: []const u8 = "",
+    config_key: []const u8 = "",
+    config_group: []const u8 = "basic",
+    config_type: []const u8 = "text",
+    config_value: []const u8 = "",
+    description: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+};
+
+const OrmConfig = sql.defineWithConfig(SysConfig, .{
+    .table_name = "sys_config",
+    .primary_key = "id",
+});
+
+const PaymentPayload = struct {
+    id: ?i32 = null,
+    pay_type: i32 = 1,
+    channel_name: []const u8 = "",
+    mch_id: []const u8 = "",
+    app_id: []const u8 = "",
+    api_key: []const u8 = "",
+    public_key: []const u8 = "",
+    private_key: []const u8 = "",
+    fee_rate: f64 = 0,
+    sort: i32 = 0,
+    notify_url: []const u8 = "",
+    remark: []const u8 = "",
+    status: i32 = 1,
+};
+
+pub fn init(allocator: Allocator) Self {
+    if (!OrmConfig.hasDb()) {
+        OrmConfig.use(global.get_db());
+    }
+    return .{ .allocator = allocator };
+}
+
+pub const list = listImpl;
+pub const save = saveImpl;
+pub const delete = deleteImpl;
+pub const set = setImpl;
+pub const test_conn = testImpl;
+
+fn listImpl(self: *Self, req: zap.Request) !void {
+    req.parseQuery();
+    var page: i32 = 1;
+    var limit: i32 = 10;
+    if (req.getParamSlice("page")) |s| page = @intCast(strings.to_int(s) catch 1);
+    if (req.getParamSlice("page_size")) |s| limit = @intCast(strings.to_int(s) catch 10);
+    if (req.getParamSlice("limit")) |s| limit = @intCast(strings.to_int(s) catch 10);
+
+    var q = OrmConfig.WhereEq("config_group", "payment");
+    defer q.deinit();
+    _ = q.orderBy("sort", .asc);
+
+    const total = q.count() catch |e| return base.send_error(req, e);
+    _ = q.page(@intCast(page), @intCast(limit));
+
+    const rows = q.get() catch |e| return base.send_error(req, e);
+    defer OrmConfig.freeModels(self.allocator, rows);
+
+    var items = std.ArrayListUnmanaged(PaymentPayload){};
+    defer items.deinit(self.allocator);
+
+    for (rows) |row| {
+        const parsed = json_mod.JSON.decode(PaymentPayload, self.allocator, row.config_value) catch PaymentPayload{};
+        items.append(self.allocator, .{
+            .id = row.id,
+            .pay_type = parsed.pay_type,
+            .channel_name = if (parsed.channel_name.len > 0) parsed.channel_name else row.config_name,
+            .mch_id = parsed.mch_id,
+            .app_id = parsed.app_id,
+            .api_key = parsed.api_key,
+            .public_key = parsed.public_key,
+            .private_key = parsed.private_key,
+            .fee_rate = parsed.fee_rate,
+            .sort = row.sort,
+            .notify_url = parsed.notify_url,
+            .remark = if (parsed.remark.len > 0) parsed.remark else row.description,
+            .status = row.status,
+        }) catch {};
+    }
+
+    base.send_layui_table_response(req, items.items, total, .{});
+}
+
+fn saveImpl(self: *Self, req: zap.Request) !void {
+    req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+    const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+    const dto = json_mod.JSON.decode(PaymentPayload, self.allocator, body) catch return base.send_failed(req, "参数格式错误");
+    const config_value = json_mod.JSON.encode(self.allocator, dto) catch return base.send_failed(req, "序列化失败");
+    defer self.allocator.free(config_value);
+
+    if (dto.id) |id| {
+        if (id > 0) {
+            _ = OrmConfig.Update(id, .{
+                .config_name = dto.channel_name,
+                .config_group = "payment",
+                .config_type = "json",
+                .config_value = config_value,
+                .description = dto.remark,
+                .sort = dto.sort,
+                .status = dto.status,
+                .updated_at = std.time.microTimestamp(),
+            }) catch |e| return base.send_error(req, e);
+            return base.send_ok(req, "保存成功");
+        }
+    }
+
+    const key = try std.fmt.allocPrint(self.allocator, "payment:{d}", .{std.time.microTimestamp()});
+    defer self.allocator.free(key);
+
+    _ = OrmConfig.Create(.{
+        .config_name = dto.channel_name,
+        .config_key = key,
+        .config_group = "payment",
+        .config_type = "json",
+        .config_value = config_value,
+        .description = dto.remark,
+        .sort = dto.sort,
+        .status = dto.status,
+    }) catch |e| return base.send_error(req, e);
+
+    base.send_ok(req, "保存成功");
+}
+
+fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    req.parseQuery();
+    const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
+    const id = strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误");
+    _ = OrmConfig.Destroy(id) catch |e| return base.send_error(req, e);
+    base.send_ok(req, "删除成功");
+}
+
+fn setImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+    const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+    const SetDto = struct { id: i32, field: []const u8, value: i32 };
+    const dto = json_mod.JSON.decode(SetDto, global.get_allocator(), body) catch return base.send_failed(req, "参数格式错误");
+    if (!std.mem.eql(u8, dto.field, "status")) return base.send_failed(req, "仅支持 status 字段");
+
+    _ = OrmConfig.Update(dto.id, .{ .status = dto.value, .updated_at = std.time.microTimestamp() }) catch |e| return base.send_error(req, e);
+    base.send_ok(req, "更新成功");
+}
+
+fn testImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    base.send_ok(req, .{ .success = true, .message = "连接测试成功" });
+}

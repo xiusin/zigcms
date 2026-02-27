@@ -59,7 +59,7 @@ fn setupMySQLPaths(artifact: *std.Build.Step.Compile, target: std.Build.Resolved
 // 辅助函数：创建命令行工具
 fn createCommandTool(b: *std.Build, name: []const u8, source_file: []const u8, description: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
     const commands_base = b.createModule(.{
-        .root_source_file = b.path("commands/base.zig"),
+        .root_source_file = b.path("cmd/base.zig"),
     });
 
     const module = b.createModule(.{
@@ -329,16 +329,15 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // Code Generation Tool (from commands/)
     // ========================================================================
-    _ = createCommandTool(b, "codegen", "commands/codegen/main.zig", "Run the code generation tool (model, controller, DTO)", target, optimize);
+    _ = createCommandTool(b, "codegen", "cmd/codegen/main.zig", "Run the code generation tool (model, controller, DTO)", target, optimize);
 
     // ========================================================================
     // Database Migration Tool (from commands/)
     // ========================================================================
-    _ = createCommandTool(b, "migrate", "commands/migrate/main.zig", "Run database migrations (up/down/status/create)", target, optimize);
+    _ = createCommandTool(b, "migrate", "cmd/migrate/main.zig", "Run database migrations (up/down/status/create)", target, optimize);
 
     // ========================================================================
     // Plugin Code Generator (from commands/)
     // ========================================================================
-    _ = createCommandTool(b, "plugin-gen", "commands/plugin_gen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
-
+    _ = createCommandTool(b, "plugin-gen", "cmd/plugin_gen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
 }
