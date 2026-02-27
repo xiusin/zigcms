@@ -58,7 +58,6 @@ pub const system_ext = struct {
     pub const Payment = @import("system_payment.controller.zig");
     pub const Version = @import("system_version.controller.zig");
     pub const Log = @import("log.controller.zig");
-    pub const IntegrationOps = @import("integration_ops.controller.zig"); // 已拆分，保留兼容
 };
 
 // 实时通信控制器
