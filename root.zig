@@ -44,22 +44,22 @@ const logger = @import("src/application/services/logger/logger.zig");
 const sql_orm = @import("src/application/services/sql/orm.zig");
 
 // 用户服务相关导入
-const UserService = @import("src/application/services/user_service.zig").UserService;
+const UserService = @import("src/api/services/user_service.zig").UserService;
 const UserRepository = @import("src/domain/repositories/user_repository.zig").UserRepository;
 const SqliteUserRepository = @import("src/infrastructure/database/sqlite_user_repository.zig").SqliteUserRepository;
 
 // 会员服务相关导入
-const MemberService = @import("src/application/services/member_service.zig").MemberService;
+const MemberService = @import("src/api/services/member_service.zig").MemberService;
 const MemberRepository = @import("src/domain/repositories/member_repository.zig").MemberRepository;
 const SqliteMemberRepository = @import("src/infrastructure/database/sqlite_member_repository.zig").SqliteMemberRepository;
 
 // 分类服务相关导入
-const CategoryService = @import("src/application/services/category_service.zig").CategoryService;
+const CategoryService = @import("src/api/services/category_service.zig").CategoryService;
 const CategoryRepository = @import("src/domain/repositories/category_repository.zig").CategoryRepository;
 const SqliteCategoryRepository = @import("src/infrastructure/database/sqlite_category_repository.zig").SqliteCategoryRepository;
 
 // 认证服务导入
-const AuthService = @import("src/application/services/auth_service.zig").AuthService;
+const AuthService = @import("src/api/services/auth_service.zig").AuthService;
 
 // ============================================================================
 // 编译选项

@@ -1407,7 +1407,7 @@ zigcms/
 #### 15.3.1 创建模型
 
 1. 在 `domain/entities/` 创建模型文件
-2. 在 `domain/entities/models.zig` 导出
+2. 在 `domain/entities/mod.zig` 导出
 3. 创建对应的 Repository 接口
 
 #### 15.3.2 创建服务

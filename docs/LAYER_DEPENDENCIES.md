@@ -37,7 +37,7 @@ API 层 → 应用层 → 领域层 → 共享层
 ### 1. shared/primitives/global.zig
 
 **问题**：global.zig 位于共享层，但依赖了多个业务层：
-- domain/entities/models.zig
+- domain/entities/mod.zig
 - domain/entities/orm_models.zig
 - api/controllers/base.fn.zig
 - application/services/services.zig

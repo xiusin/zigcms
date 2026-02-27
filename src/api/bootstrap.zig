@@ -11,7 +11,7 @@ const zigcms = @import("../../root.zig");
 const logger = @import("../application/services/logger/logger.zig");
 const App = @import("App.zig").App;
 const controllers = @import("controllers/mod.zig");
-const models = @import("../domain/entities/models.zig");
+const models = @import("../domain/entities/mod.zig");
 
 const DIContainer = @import("../core/di/container.zig").DIContainer;
 const AppContext = @import("../core/context/app_context.zig").AppContext;
@@ -148,7 +148,7 @@ pub const Bootstrap = struct {
                 fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.auth.Login {
                     const l = try di.resolve(logger.Logger);
                     // 从容器中解析 AuthService
-                    const auth_service = try di.resolve(@import("../application/services/auth_service.zig").AuthService);
+                    const auth_service = try di.resolve(@import("./services/auth_service.zig").AuthService);
 
                     const ctrl = try allocator.create(controllers.auth.Login);
                     ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);

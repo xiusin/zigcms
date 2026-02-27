@@ -42,7 +42,7 @@ const dtos = @import("../dto/mod.zig");
 
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const json_mod = @import("../../application/services/json/json.zig");
-const AuthService = @import("../../application/services/auth_service.zig").AuthService;
+const AuthService = @import("../services/auth_service.zig").AuthService;
 const sql = @import("../../application/services/sql/orm.zig");
 
 const Self = @This();

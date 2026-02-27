@@ -21,7 +21,7 @@
 //! ```
 
 const std = @import("std");
-const models = @import("../../domain/entities/models.zig");
+const models = @import("../../domain/entities/mod.zig");
 
 /// CRUD 模块配置
 pub const CrudModuleConfig = struct {

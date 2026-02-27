@@ -21,7 +21,6 @@ const log_mod = @import("../../application/services/logger/logger.zig");
 const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 const base = @import("base.fn.zig");
-const models = @import("../../domain/entities/models.zig");
 const orm_models = @import("../../domain/entities/orm_models.zig");
 const global = @import("../../core/primitives/global.zig");
 const strings = @import("../../core/utils/strings.zig");
