@@ -25,8 +25,8 @@
 //! ```
 
 const std = @import("std");
-const AggregateRoot = @import("../../shared_kernel/patterns/aggregate_root.zig").AggregateRoot;
-const DomainEvent = @import("../../shared_kernel/patterns/domain_event.zig").DomainEvent;
+const AggregateRoot = @import("../../src/core/patterns/aggregate_root.zig").AggregateRoot;
+const DomainEvent = @import("../../src/core/patterns/domain_event.zig").DomainEvent;
 const UserEvents = @import("../events/user_events.zig");
 
 // ============================================================================

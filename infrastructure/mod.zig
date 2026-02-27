@@ -1,18 +1,19 @@
 //! 基础设施层入口文件 (Infrastructure Layer)
 //!
 //! ZigCMS 基础设施层提供与外部系统交互的具体实现。
-//! 该层实现领域层定义的仓储接口，处理数据库、缓存、HTTP 等外部服务。
+//! 该层实现领域层定义的仓储接口，处理数据库、缓存、HTTP、Redis 等外部服务。
 //!
 //! ## 职责
-//! - 提供数据库、缓存、HTTP 客户端等外部服务的实现
+//! - 提供数据库、缓存、HTTP 客户端、Redis 等外部服务的实现
 //! - 实现领域层定义的仓库接口
 //! - 处理外部系统集成
 //! - 与外部系统通信的适配器
 //!
 //! ## 模块结构
-//! - `database`: 数据库连接和事务管理
+//! - `database`: 数据库连接、ORM 和事务管理
 //! - `cache`: 缓存服务（内存、Redis）
 //! - `http`: HTTP 客户端
+//! - `redis`: Redis 客户端
 //! - `messaging`: 消息队列（待实现）
 //!
 //! ## 使用示例
@@ -23,22 +24,27 @@
 //! const db = try infra.init(allocator, .{});
 //! defer infra.deinit();
 //!
-//! // 使用数据库
-//! const conn = try infra.database.DatabaseFactory.create(allocator, .SQLite, config);
-//! defer conn.close();
+//! // 使用数据库 ORM
+//! const User = infra.database.orm.define(UserEntity, .{});
+//! const users = try User.all(db);
 //!
 //! // 使用缓存
-//! const cache = try infra.cache.CacheFactory.create(allocator, .{});
+//! var cache_service = infra.cache.CacheService.init(allocator);
+//! try cache_service.set("key", "value", 3600);
+//!
+//! // 使用 Redis
+//! var conn = try infra.redis.connect(.{}, allocator);
+//! defer conn.close();
 //! ```
 //!
 //! ## 依赖规则
-//! - 基础设施层依赖领域层（实现仓储接口）
-//! - 依赖共享层和应用层的服务
+//! - 基础设施层依赖核心层（core）
+//! - 实现领域层定义的仓储接口
 //! - 是依赖链的最外层，直接与外部系统交互
 
 const std = @import("std");
 const logger = @import("../application/services/logger/logger.zig");
-const sql = @import("../application/services/sql/orm.zig");
+const sql = @import("../application/services/sql/mod.zig");
 
 // ============================================================================
 // 公共 API 导出
@@ -61,6 +67,11 @@ pub const cache = @import("cache/mod.zig");
 /// 提供 HTTP 客户端功能，用于与外部 API 交互。
 /// 支持各种 HTTP 方法、超时设置、重试机制。
 pub const http = @import("http/mod.zig");
+
+/// Redis 客户端基础设施
+///
+/// 提供完整的 Redis 客户端功能，支持连接池、所有数据类型操作。
+pub const redis = @import("redis/mod.zig");
 
 /// 消息系统基础设施（待实现）
 ///

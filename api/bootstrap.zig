@@ -13,7 +13,7 @@ const App = @import("App.zig").App;
 const controllers = @import("controllers/mod.zig");
 const models = @import("../domain/entities/models.zig");
 
-const DIContainer = @import("../shared/di/container.zig").DIContainer;
+const DIContainer = @import("../src/core/di/container.zig").DIContainer;
 const AppContext = @import("../shared/context/app_context.zig").AppContext;
 
 /// Bootstrap 模块 - 系统启动编排器

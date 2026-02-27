@@ -4,13 +4,13 @@
 
 const std = @import("std");
 const testing = std.testing;
-const ValueObject = @import("../shared_kernel/patterns/value_object.zig").ValueObject;
-const DomainEvent = @import("../shared_kernel/patterns/domain_event.zig").DomainEvent;
-const AggregateRoot = @import("../shared_kernel/patterns/aggregate_root.zig").AggregateRoot;
-const CommandBus = @import("../shared_kernel/patterns/command.zig").CommandBus;
-const QueryBus = @import("../shared_kernel/patterns/query.zig").QueryBus;
-const Query = @import("../shared_kernel/patterns/query.zig").Query;
-const QueryHandler = @import("../shared_kernel/patterns/query.zig").QueryHandler;
+const ValueObject = @import("../src/core/patterns/value_object.zig").ValueObject;
+const DomainEvent = @import("../src/core/patterns/domain_event.zig").DomainEvent;
+const AggregateRoot = @import("../src/core/patterns/aggregate_root.zig").AggregateRoot;
+const CommandBus = @import("../src/core/patterns/command.zig").CommandBus;
+const QueryBus = @import("../src/core/patterns/query.zig").QueryBus;
+const Query = @import("../src/core/patterns/query.zig").Query;
+const QueryHandler = @import("../src/core/patterns/query.zig").QueryHandler;
 
 // ============================================================================
 // 测试辅助类型

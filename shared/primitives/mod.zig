@@ -18,7 +18,8 @@ pub const global = @import("global.zig");
 /// 依赖注入容器
 ///
 /// 提供服务的注册和解析功能，支持单例和瞬态生命周期。
-pub const container = @import("container.zig");
+/// 注意：已迁移到 src/core/di/container.zig
+pub const container = @import("../../src/core/di/container.zig");
 
 /// 服务注册表
 ///

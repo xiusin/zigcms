@@ -1,9 +1,10 @@
 //! 数据库基础设施模块 (Database Module)
 //!
-//! 提供数据库连接管理、事务处理、连接池等功能。
+//! 提供数据库连接管理、ORM、事务处理、连接池等功能。
 //! 支持多种数据库驱动（SQLite、PostgreSQL、MySQL）。
 //!
 //! ## 功能
+//! - ORM（对象关系映射）
 //! - 数据库连接接口（DatabaseConnection）
 //! - 事务管理接口（Transaction）
 //! - 数据库工厂（DatabaseFactory）
@@ -12,6 +13,10 @@
 //! ## 使用示例
 //! ```zig
 //! const database = @import("infrastructure/database/mod.zig");
+//!
+//! // 使用 ORM
+//! const User = database.orm.define(UserEntity, .{});
+//! const users = try User.all(db);
 //!
 //! // 创建数据库连接
 //! const conn = try database.DatabaseFactory.create(allocator, .SQLite, config);
@@ -28,6 +33,13 @@
 //! ```
 
 const std = @import("std");
+
+// ============================================================================
+// ORM 模块导出
+// ============================================================================
+
+/// ORM 模块
+pub const orm = @import("orm/mod.zig");
 
 /// 数据库连接接口
 pub const DatabaseConnection = struct {

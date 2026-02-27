@@ -3,7 +3,7 @@
 //! 实现领域事件的发布/订阅机制，支持同步和异步事件处理。
 
 const std = @import("std");
-const DomainEvent = @import("../../shared_kernel/patterns/domain_event.zig").DomainEvent;
+const DomainEvent = @import("domain_event.zig").DomainEvent;
 
 /// 领域事件处理函数类型
 pub fn DomainEventHandlerFunc(comptime EventType: type) type {

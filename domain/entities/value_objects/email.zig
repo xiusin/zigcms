@@ -6,7 +6,7 @@
 //! - 值的相等性比较
 
 const std = @import("std");
-const ValueObject = @import("../../../shared_kernel/patterns/value_object.zig").ValueObject;
+const ValueObject = @import("../../../src/core/patterns/value_object.zig").ValueObject;
 
 /// 邮箱值对象
 pub const Email = ValueObject([]const u8);

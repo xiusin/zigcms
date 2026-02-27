@@ -3,7 +3,7 @@
 //! 定义用户聚合相关的所有领域事件
 
 const std = @import("std");
-const DomainEvent = @import("../../shared_kernel/patterns/domain_event.zig").DomainEvent;
+const DomainEvent = @import("../../src/core/patterns/domain_event.zig").DomainEvent;
 
 /// 用户创建事件
 pub const UserCreated = DomainEvent(struct {

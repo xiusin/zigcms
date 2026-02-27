@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const testing = std.testing;
-const DddErrors = @import("../shared_kernel/patterns/ddd_errors.zig");
+const DddErrors = @import("../src/core/patterns/ddd_errors.zig");
 const DomainError = DddErrors.DomainError;
 const BusinessRuleError = DddErrors.BusinessRuleError;
 const AggregateError = DddErrors.AggregateError;

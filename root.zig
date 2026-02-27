@@ -94,7 +94,12 @@ pub const domain = @import("domain/mod.zig");
 /// 包含数据库、缓存、HTTP 客户端等外部服务实现。
 pub const infrastructure = @import("infrastructure/mod.zig");
 
-/// 共享层 - 通用组件
+/// 核心层 - 统一基础设施
+///
+/// 包含 DI、错误处理、日志、配置、类型、工具、DDD 模式等核心组件。
+pub const core = @import("src/core/mod.zig");
+
+/// 共享层 - 通用组件（兼容层，建议使用 core）
 ///
 /// 包含工具函数、类型定义、错误处理等跨层共享组件。
 pub const shared = @import("shared/mod.zig");

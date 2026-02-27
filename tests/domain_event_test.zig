@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const testing = std.testing;
-const DomainEvent = @import("../shared_kernel/patterns/domain_event.zig").DomainEvent;
+const DomainEvent = @import("../src/core/patterns/domain_event.zig").DomainEvent;
 const UserCreated = @import("../domain/events/user_events.zig").UserCreated;
 const UserActivated = @import("../domain/events/user_events.zig").UserActivated;
 const UserDisabled = @import("../domain/events/user_events.zig").UserDisabled;
@@ -121,7 +121,7 @@ test "DomainEvent - toJson serialization" {
 test "DomainEvent - createSimple" {
     const allocator = testing.allocator;
 
-    const event = try DomainEvent(struct { id: i32 }).createSimple(allocator, "TestEvent", .{.id = 42});
+    const event = try DomainEvent(struct { id: i32 }).createSimple(allocator, "TestEvent", .{ .id = 42 });
     defer event.deinit(allocator);
 
     try testing.expectEqualStrings("TestEvent", event.metadata.event_type);

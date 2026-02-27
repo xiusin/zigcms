@@ -3,7 +3,7 @@ const zigcms = @import("../root.zig");
 const logger = @import("../application/services/logger/logger.zig");
 const App = @import("App.zig").App;
 const Bootstrap = @import("bootstrap.zig").Bootstrap;
-const DIContainer = @import("../shared/di/container.zig").DIContainer;
+const DIContainer = @import("../src/core/di/container.zig").DIContainer;
 const SystemConfig = @import("../shared/config/system_config.zig").SystemConfig;
 const AppContext = @import("../shared/context/app_context.zig").AppContext;
 
@@ -34,7 +34,7 @@ pub const Application = struct {
         var app = try App.init(allocator);
         errdefer app.deinit();
 
-        const container = zigcms.shared.di.getGlobalContainer() orelse return error.DIContainerNotInitialized;
+        const container = zigcms.core.di.getGlobalContainer() orelse return error.DIContainerNotInitialized;
 
         // 创建应用上下文（从 global 获取资源，使用借用模式保持向后兼容）
         const db = zigcms.shared.global.get_db();

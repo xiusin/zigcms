@@ -4,19 +4,22 @@
 
 const std = @import("std");
 const testing = std.testing;
-const Command = @import("../shared_kernel/patterns/command.zig").Command;
-const CommandBus = @import("../shared_kernel/patterns/command.zig").CommandBus;
-const CommandResult = @import("../shared_kernel/patterns/command.zig").CommandResult;
-const CommandHandler = @import("../shared_kernel/patterns/command.zig").CommandHandler;
-const Query = @import("../shared_kernel/patterns/query.zig").Query;
-const QueryBus = @import("../shared_kernel/patterns/query.zig").QueryBus;
-const QueryResult = @import("../shared_kernel/patterns/query.zig").QueryResult;
-const QueryHandler = @import("../shared_kernel/patterns/query.zig").QueryHandler;
-const QueryPagination = @import("../shared_kernel/patterns/query.zig").QueryPagination;
-const SortDirection = @import("../shared_kernel/patterns/query.zig").SortDirection;
-const Projection = @import("../shared_kernel/patterns/projection.zig").Projection;
-const UserProjection = @import("../shared_kernel/patterns/projection.zig").UserProjection;
-const ProjectionRepository = @import("../shared_kernel/patterns/projection.zig").ProjectionRepository;
+const command_mod = @import("../src/core/patterns/command.zig");
+const Command = command_mod.Command;
+const CommandBus = command_mod.CommandBus;
+const CommandResult = command_mod.CommandResult;
+const CommandHandler = command_mod.CommandHandler;
+const query_mod = @import("../src/core/patterns/query.zig");
+const Query = query_mod.Query;
+const QueryBus = query_mod.QueryBus;
+const QueryResult = query_mod.QueryResult;
+const QueryHandler = query_mod.QueryHandler;
+const QueryPagination = query_mod.QueryPagination;
+const SortDirection = query_mod.SortDirection;
+const projection_mod = @import("../src/core/patterns/projection.zig");
+const Projection = projection_mod.Projection;
+const UserProjection = projection_mod.UserProjection;
+const ProjectionRepository = projection_mod.ProjectionRepository;
 
 // ============================================================================
 // Command Bus 测试

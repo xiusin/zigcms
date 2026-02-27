@@ -8,7 +8,7 @@ const User = @import("../domain/entities/user.model.zig").User;
 const UserData = @import("../domain/entities/user.model.zig").UserData;
 const UserStatus = @import("../domain/entities/user.model.zig").UserStatus;
 const UserCreated = @import("../domain/events/user_events.zig").UserCreated;
-const AggregateRoot = @import("../shared_kernel/patterns/aggregate_root.zig").AggregateRoot;
+const AggregateRoot = @import("../src/core/patterns/aggregate_root.zig").AggregateRoot;
 
 // ============================================================================
 // User 聚合根测试

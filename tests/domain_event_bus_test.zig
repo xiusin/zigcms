@@ -4,8 +4,8 @@
 
 const std = @import("std");
 const testing = std.testing;
-const DomainEvent = @import("../shared_kernel/patterns/domain_event.zig").DomainEvent;
-const DomainEventBus = @import("../shared_kernel/infrastructure/domain_event_bus.zig").DomainEventBus;
+const DomainEvent = @import("../src/core/patterns/domain_event.zig").DomainEvent;
+const DomainEventBus = @import("../src/core/patterns/domain_event_bus.zig").DomainEventBus;
 const UserCreated = @import("../domain/events/user_events.zig").UserCreated;
 const UserActivated = @import("../domain/events/user_events.zig").UserActivated;
 
