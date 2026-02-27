@@ -208,21 +208,40 @@ pub fn loadConfigFromFiles(allocator: std.mem.Allocator, config_dir: []const u8)
 pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
     const file_config = try loadConfigFromFiles(allocator, "configs");
 
+    const dup = struct {
+        fn slice(allocator_: std.mem.Allocator, source: []const u8) ![]const u8 {
+            return allocator_.dupe(u8, source);
+        }
+    };
+
+    const api_host = try dup.slice(allocator, file_config.api.host);
+    const api_public_folder = try dup.slice(allocator, file_config.api.public_folder);
+    const app_plugin_dir = try dup.slice(allocator, file_config.app.plugin_directory);
+    const infra_db_host = try dup.slice(allocator, file_config.infra.db_host);
+    const infra_db_name = try dup.slice(allocator, file_config.infra.db_name);
+    const infra_db_user = try dup.slice(allocator, file_config.infra.db_user);
+    const infra_db_password = try dup.slice(allocator, file_config.infra.db_password);
+    const infra_cache_host = try dup.slice(allocator, file_config.infra.cache_host);
+    const infra_cache_password = if (file_config.infra.cache_password) |pwd|
+        try dup.slice(allocator, pwd)
+    else
+        null;
+
     // 将文件配置映射到系统配置（防腐层转换）
     const system_config = SystemConfig{
         .api = .{
-            .host = file_config.api.host,
+            .host = api_host,
             .port = file_config.api.port,
             .max_clients = file_config.api.max_clients,
             .timeout = file_config.api.timeout,
-            .public_folder = file_config.api.public_folder,
+            .public_folder = api_public_folder,
         },
         .app = .{
             .enable_cache = file_config.app.enable_cache,
             .cache_ttl_seconds = file_config.app.cache_ttl_seconds,
             .max_concurrent_tasks = file_config.app.max_concurrent_tasks,
             .enable_plugins = file_config.app.enable_plugins,
-            .plugin_directory = file_config.app.plugin_directory,
+            .plugin_directory = app_plugin_dir,
         },
         .domain = .{
             .validate_models = file_config.domain.validate_models,
@@ -230,15 +249,16 @@ pub fn loadSystemConfig(allocator: std.mem.Allocator) !SystemConfig {
         },
         .infra = .{
             .db_engine = file_config.infra.db_engine,
-            .db_host = file_config.infra.db_host,
+            .db_host = infra_db_host,
             .db_port = file_config.infra.db_port,
-            .db_name = file_config.infra.db_name,
-            .db_user = file_config.infra.db_user,
-            .db_password = file_config.infra.db_password,
+            .db_name = infra_db_name,
+            .db_user = infra_db_user,
+            .db_password = infra_db_password,
             .db_pool_size = file_config.infra.db_pool_size,
             .cache_enabled = file_config.infra.cache_enabled,
-            .cache_host = file_config.infra.cache_host,
+            .cache_host = infra_cache_host,
             .cache_port = file_config.infra.cache_port,
+            .cache_password = infra_cache_password,
             .cache_ttl = file_config.infra.cache_ttl,
             .http_timeout_ms = file_config.infra.http_timeout_ms,
         },
