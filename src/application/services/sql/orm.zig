@@ -745,8 +745,8 @@ pub const Database = struct {
     /// 用于缓存版本号等轻量级场景
     pub fn kv_set(self: *Database, key: []const u8, value: []const u8) !void {
         const sql = switch (self.driver_type) {
-            .mysql => "INSERT INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = UNIX_TIMESTAMP()",
-            .sqlite, .memory => "INSERT OR REPLACE INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, strftime('%s', 'now'))",
+            .mysql => "INSERT INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()",
+            .sqlite, .memory => "INSERT OR REPLACE INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, datetime('now'))",
             else => return error.UnsupportedDriver,
         };
         _ = try self.exec(sql, .{ key, value });

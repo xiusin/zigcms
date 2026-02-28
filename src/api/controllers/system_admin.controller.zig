@@ -865,7 +865,6 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
         .old_role_ids = old_role_ids_text,
         .new_role_ids = new_role_ids_text,
         .request_ip = request_ip,
-        .created_at = std.time.timestamp(),
     }) catch |err| {
         std.log.err("写入管理员角色审计失败 admin_id={d} err={}", .{ admin_id, err });
     };
