@@ -425,7 +425,7 @@
 
   const formModel: any = ref(generateFormModel());
 
-  const getDataList = (data: any) => request('/api/log/list', data);
+  const getDataList = (data: any) => request('/api/system/log/list', data);
 
   // 使用模拟数据（当API不可用时）
   const useMockData = () => {
@@ -455,7 +455,7 @@
   const fetchStatistics = async () => {
     statisticsLoading.value = true;
     try {
-      const res = await request('/api/log/statistics', {});
+      const res = await request('/api/system/log/statistics', {});
       if (res.data) {
         statistics.value = {
           total: res.data.total || 0,
@@ -582,7 +582,7 @@
 
   const handleExport = () => {
     Message.loading('正在导出...');
-    request('/api/log/export', formModel.value)
+    request('/api/system/log/export', formModel.value)
       .then((res: any) => {
         Message.success('导出成功');
         if (res.data?.url) {
@@ -618,7 +618,7 @@
     }
 
     try {
-      const res = await request('/api/log/clean', params);
+      const res = await request('/api/system/log/clean', params);
       Message.success(`成功清理 ${res.data?.count || 0} 条日志`);
       cleanVisible.value = false;
       handleRefresh();
@@ -647,7 +647,7 @@
     }
 
     try {
-      const res = await request('/api/log/archive', {
+      const res = await request('/api/system/log/archive', {
         startDate: archiveForm.value.dateRange[0],
         endDate: archiveForm.value.dateRange[1],
         remark: archiveForm.value.remark,

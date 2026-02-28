@@ -44,7 +44,7 @@ export const mockData: Record<
   MockResponse | ((req?: any) => MockResponse)
 > = {
   // 登录
-  '/api/member/login': {
+  '/api/system/member/login': {
     code: 200,
     msg: '登录成功',
     data: {
@@ -551,7 +551,7 @@ export const mockData: Record<
   '/api/template/save': success({ id: randomId() }, '保存成功'),
 
   // 日志管理
-  '/api/log/list': pageSuccess(
+  '/api/system/log/list': pageSuccess(
     Array.from({ length: 20 }, (_, i) => ({
       id: i + 1,
       user_text: randomName(),
@@ -570,13 +570,13 @@ export const mockData: Record<
       response_data: JSON.stringify({ code: 200, msg: 'success' }),
     }))
   ),
-  '/api/log/export': success(
+  '/api/system/log/export': success(
     { url: '/downloads/operation_log.xlsx' },
     '导出成功'
   ),
 
   // 审计日志统计
-  '/api/log/statistics': success({
+  '/api/system/log/statistics': success({
     // 统计概览
     total: 15680,
     today: 328,
@@ -604,10 +604,10 @@ export const mockData: Record<
   }),
 
   // 日志清理
-  '/api/log/clean': success(null, '日志清理成功'),
+  '/api/system/log/clean': success(null, '日志清理成功'),
 
   // 日志归档
-  '/api/log/archive': success(
+  '/api/system/log/archive': success(
     { url: '/downloads/log_archive_2026_01.zip' },
     '归档成功'
   ),
@@ -930,7 +930,7 @@ export const mockData: Record<
   '/api/product/detail/option/delete': success(null, '删除成功'),
 
   // 密码重置
-  '/api/resetPassword': success(null, '密码重置成功'),
+  '/api/system/admin/resetPassword': success(null, '密码重置成功'),
 
   // ========== 业务管理模块 ==========
 

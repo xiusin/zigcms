@@ -82,8 +82,7 @@ pub const Bootstrap = struct {
         try registerCrudWithAlias(self.app, "system/dept", models.SysDept);
         try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
         try registerCrudWithAlias(self.app, "system/role", models.SysRole);
-        try registerCrudWithAlias(self.app, "role", models.SysRole);
-        self.crud_count += 4;
+        self.crud_count += 3;
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
@@ -118,9 +117,6 @@ pub const Bootstrap = struct {
 
         // 系统扩展路由（独立控制器）
         try self.registerSystemExtRoutes();
-
-        // 实时通信路由
-        try self.registerRealtimeRoutes();
     }
 
     /// 注册认证相关路由
@@ -204,11 +200,6 @@ pub const Bootstrap = struct {
     fn registerSystemExtRoutes(self: *Self) !void {
         const registerWithAlias = struct {
             fn exec(app: *App, comptime path: []const u8, ctrl: anytype, handler: anytype) !void {
-                app.route(path, ctrl, handler) catch |err| switch (err) {
-                    else => {
-                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
-                    },
-                };
                 app.route("/api" ++ path, ctrl, handler) catch |err| switch (err) {
                     else => {
                         if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
@@ -361,8 +352,7 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/admin/select", admin, &controllers.system_ext.Admin.select);
         try registerWithAlias(self.app, "/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
         try registerWithAlias(self.app, "/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
-        try self.app.route("/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
-        try registerWithAlias(self.app, "/userInfo", admin, &controllers.system_ext.Admin.user_info);
+        try registerWithAlias(self.app, "/system/userInfo", admin, &controllers.system_ext.Admin.user_info);
 
         try registerWithAlias(self.app, "/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
         try registerWithAlias(self.app, "/system/menu/permissions", menu, &controllers.system_ext.Menu.permissions);
@@ -374,9 +364,6 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
         try registerWithAlias(self.app, "/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
 
-        try registerWithAlias(self.app, "/role/button-perms", role, &controllers.system_ext.Role.button_perms);
-        try registerWithAlias(self.app, "/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
-        try registerWithAlias(self.app, "/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);
         try registerWithAlias(self.app, "/system/role/button-perms", role, &controllers.system_ext.Role.button_perms);
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
         try registerWithAlias(self.app, "/system/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);
@@ -404,73 +391,13 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/payment/set", payment, &controllers.system_ext.Payment.set);
         try registerWithAlias(self.app, "/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
 
-        try registerWithAlias(self.app, "/log/list", log_ctrl, &controllers.system_ext.Log.list);
-        try registerWithAlias(self.app, "/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
-        try registerWithAlias(self.app, "/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
-        try registerWithAlias(self.app, "/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
-        try registerWithAlias(self.app, "/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
+        try registerWithAlias(self.app, "/system/log/list", log_ctrl, &controllers.system_ext.Log.list);
+        try registerWithAlias(self.app, "/system/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
+        try registerWithAlias(self.app, "/system/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
+        try registerWithAlias(self.app, "/system/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
+        try registerWithAlias(self.app, "/system/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
 
         self.route_count += 100;
-    }
-
-    /// 注册实时通信路由
-    fn registerRealtimeRoutes(self: *Self) !void {
-        _ = self; // TODO: 实时通信功能需要 zap 支持，暂时注释
-        // WebSocket 控制器
-        // TODO: WebSocket 功能需要 zap 支持，暂时注释
-        // const WSController = controllers.realtime.WebSocket;
-        // const ws_ctrl_ptr = try self.allocator.create(WSController);
-
-        // var owned_ws = false;
-        // errdefer if (!owned_ws) self.allocator.destroy(ws_ctrl_ptr);
-
-        // ws_ctrl_ptr.* = WSController.init(self.allocator);
-
-        // // 追踪控制器指针以便后续清理
-        // const wsDestroyFn = struct {
-        //     fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
-        //         const typed_ptr: *WSController = @ptrCast(@alignCast(ptr));
-        //         typed_ptr.deinit();
-        //         alloc.destroy(typed_ptr);
-        //     }
-        // }.destroy;
-
-        // try self.app.controllers.append(self.allocator, .{
-        //     .ptr = @ptrCast(ws_ctrl_ptr),
-        //     .deinit_fn = wsDestroyFn,
-        // });
-        // owned_ws = true;
-
-        // try self.app.route("/ws", ws_ctrl_ptr, &WSController.upgrade);
-        // self.route_count += 1;
-
-        // SSE 控制器
-        // TODO: SSE 功能需要 zap 支持，暂时注释
-        // const SSEController = controllers.realtime.SSE;
-        // const sse_ctrl_ptr = try self.allocator.create(SSEController);
-
-        // var owned_sse = false;
-        // errdefer if (!owned_sse) self.allocator.destroy(sse_ctrl_ptr);
-
-        // sse_ctrl_ptr.* = SSEController.init(self.allocator);
-
-        // // 追踪控制器指针以便后续清理
-        // const sseDestroyFn = struct {
-        //     fn destroy(ptr: *anyopaque, alloc: std.mem.Allocator) void {
-        //         const typed_ptr: *SSEController = @ptrCast(@alignCast(ptr));
-        //         typed_ptr.deinit();
-        //         alloc.destroy(typed_ptr);
-        //     }
-        // }.destroy;
-
-        // try self.app.controllers.append(self.allocator, .{
-        //     .ptr = @ptrCast(sse_ctrl_ptr),
-        //     .deinit_fn = sseDestroyFn,
-        // });
-        // owned_sse = true;
-
-        // try self.app.route("/sse", sse_ctrl_ptr, &SSEController.connect);
-        // self.route_count += 1;
     }
 
     /// 获取路由统计信息

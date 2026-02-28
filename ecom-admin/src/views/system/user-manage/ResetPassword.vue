@@ -75,7 +75,7 @@
         }
         thisFormData.value.username = undefined;
         loading.value = true;
-        request('/api/resetPassword', thisFormData.value)
+        request('/api/system/admin/resetPassword', thisFormData.value)
           .then(() => {
             onClose();
             Message.success('操作成功');
