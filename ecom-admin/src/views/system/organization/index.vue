@@ -456,14 +456,56 @@
   };
 
   // ========== 部门方法 ==========
+  const buildTree = (list: any[]) => {
+    if (!Array.isArray(list)) return [];
+    const map = new Map<number, any>();
+    list.forEach((item) => {
+      const id = Number(item.id);
+      map.set(id, { ...item, id, key: id, value: id, children: [] });
+    });
+    const roots: any[] = [];
+    list.forEach((item) => {
+      const id = Number(item.id);
+      const parentId = Number(item.parent_id || 0);
+      const node = map.get(id);
+      if (!node) return;
+      if (parentId > 0 && map.has(parentId)) {
+        map.get(parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    return roots;
+  };
+
   const fetchDeptTree = () => {
     safeRequest('获取部门树', '/api/system/dept/tree', {
       keyword: deptSearchKey.value,
-    }).then(
-      (res: any) => {
-        deptTreeData.value = res.data || [];
-      }
-    );
+    })
+      .then((res: any) => {
+        // 调试：打印完整响应
+        // eslint-disable-next-line no-console
+        console.log('[deptTree][full-res]', res);
+        const raw = res?.data;
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.list)
+            ? raw.list
+            : Array.isArray(raw?.items)
+              ? raw.items
+              : [];
+        // 调试：打印后端返回和构建结果
+        // eslint-disable-next-line no-console
+        console.log('[deptTree][resp]', res?.data);
+        deptTreeData.value = buildTree(list);
+        // eslint-disable-next-line no-console
+        console.log('[deptTree][built]', deptTreeData.value);
+      })
+      .catch((err: any) => {
+        // eslint-disable-next-line no-console
+        console.error('[deptTree][error]', err);
+        Message.error(err?.msg || '获取部门树失败');
+      });
   };
 
   const handleExpandAll = () => {

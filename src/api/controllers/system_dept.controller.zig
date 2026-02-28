@@ -35,7 +35,6 @@ const DeptNode = struct {
     status: i32,
     value: i32,
     key: i32,
-    raw: models.SysDept,
 };
 
 /// 初始化部门扩展控制器。
@@ -122,10 +121,10 @@ fn deptTreeImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const items = q.get() catch |err| return base.send_error(req, err);
-    defer OrmDept.freeModels(items);
 
     var nodes = std.ArrayListUnmanaged(DeptNode){};
     defer nodes.deinit(self.allocator);
+    defer OrmDept.freeModels(items);
 
     for (items) |item| {
         const matched = keyword.len == 0 or containsAsciiIgnoreCase(item.dept_name, keyword) or containsAsciiIgnoreCase(item.dept_code, keyword);
@@ -144,7 +143,6 @@ fn deptTreeImpl(self: *Self, req: zap.Request) !void {
             .status = item.status,
             .value = id,
             .key = id,
-            .raw = item,
         }) catch {};
     }
 
