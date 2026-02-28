@@ -465,16 +465,21 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
     }
 
     var role_id_present = false;
-    var target_role_id: i32 = 0;
+    var role_ids_buf = std.ArrayListUnmanaged(i32){};
+    defer role_ids_buf.deinit(self.allocator);
 
-    // 优先使用 role_ids 数组（如果存在且有值）
+    // 优先使用 role_ids 数组
     if (obj.get("role_ids")) |role_ids_val| {
-        if (role_ids_val == .array and role_ids_val.array.items.len > 0) {
+        if (role_ids_val == .array) {
             role_id_present = true;
-            const first_role = role_ids_val.array.items[0];
-            if (first_role == .integer) {
-                target_role_id = @intCast(first_role.integer);
+            for (role_ids_val.array.items) |role_id_item| {
+                if (role_id_item == .integer) {
+                    const rid: i32 = @intCast(role_id_item.integer);
+                    if (rid > 0) role_ids_buf.append(self.allocator, rid) catch {};
+                }
             }
+        } else {
+            return base.send_failed(req, "role_ids 参数格式错误");
         }
     }
 
@@ -483,11 +488,22 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
         if (obj.get("role_id")) |role_val| {
             role_id_present = true;
             if (role_val == .integer) {
-                target_role_id = @intCast(role_val.integer);
+                const rid: i32 = @intCast(role_val.integer);
+                if (rid > 0) role_ids_buf.append(self.allocator, rid) catch {};
             } else if (role_val != .null) {
                 return base.send_failed(req, "role_id 参数格式错误");
             }
         }
+    }
+
+    var normalized_role_ids: []i32 = &.{};
+    var normalized_role_ids_owner: ?[]i32 = null;
+    defer if (normalized_role_ids_owner) |owned| self.allocator.free(owned);
+
+    if (role_id_present) {
+        const normalized = normalizeRoleIds(self.allocator, role_ids_buf.items) catch |err| return base.send_error(req, err);
+        normalized_role_ids_owner = normalized;
+        normalized_role_ids = normalized;
     }
 
     var dynamic_hash: ?[]const u8 = null;
@@ -584,25 +600,24 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
     }
 
     if (role_id_present) {
-        if (target_role_id > 0) {
-            ensureRoleEnabled(target_role_id) catch |err| switch (err) {
+        for (normalized_role_ids) |rid| {
+            ensureRoleEnabled(rid) catch |err| switch (err) {
                 error.InvalidRole => {
-                    std.log.err("角色不存在: role_id={d}", .{target_role_id});
+                    std.log.err("角色不存在: role_id={d}", .{rid});
                     return base.send_failed(req, "角色不存在");
                 },
                 error.RoleDisabled => {
-                    std.log.err("角色已禁用: role_id={d}", .{target_role_id});
+                    std.log.err("角色已禁用: role_id={d}", .{rid});
                     return base.send_failed(req, "角色已禁用");
                 },
                 else => {
-                    std.log.err("角色验证失败: role_id={d}, error={}", .{ target_role_id, err });
+                    std.log.err("角色验证失败: role_id={d}, error={}", .{ rid, err });
                     return base.send_error(req, err);
                 },
             };
-            try replaceAdminRoles(admin_id, &.{target_role_id});
-        } else {
-            try replaceAdminRoles(admin_id, &.{});
         }
+
+        try replaceAdminRoles(admin_id, normalized_role_ids);
     }
 
     return base.send_ok(req, .{ .id = admin_id });
