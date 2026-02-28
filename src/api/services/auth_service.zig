@@ -52,7 +52,7 @@ pub const AuthService = struct {
         defer self.allocator.free(pwd_hash);
 
         if (!std.mem.eql(u8, user.password_hash, pwd_hash)) {
-            Admin.freeModel(self.allocator, &user);
+            Admin.freeModel(&user);
             return error.InvalidPassword;
         }
 
@@ -80,6 +80,9 @@ pub const AuthService = struct {
         const token = try jwt.encode(self.allocator, .{ .alg = .HS256 }, payload, .{
             .secret = global.JwtTokenSecret,
         });
+
+        // 返回前释放 ORM 字符串字段，避免泄漏（调用方如需字段应提前拷贝）
+        Admin.freeModel(&user);
 
         return .{ .token = token, .user = user };
     }

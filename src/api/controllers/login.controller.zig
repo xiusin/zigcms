@@ -137,7 +137,7 @@ pub fn memberLogin(self: *Self, req: zap.Request) !void {
     var user = auth_result.user;
     const token = auth_result.token;
     defer {
-        Admin.freeModel(self.allocator, &user);
+        Admin.freeModel(&user);
         self.allocator.free(token);
     }
 
@@ -176,7 +176,7 @@ pub fn memberRefreshInfo(self: *Self, req: zap.Request) !void {
         else => return base.send_error(req, err),
     };
     var user = auth_ctx.user;
-    defer OrmSysAdmin.freeModel(self.allocator, &user);
+    defer OrmSysAdmin.freeModel(&user);
 
     const admin_id = user.id orelse 0;
     const role_info = try self.resolveRoleInfo(admin_id);
@@ -211,7 +211,7 @@ pub fn memberRefreshPermissions(self: *Self, req: zap.Request) !void {
         else => return base.send_error(req, err),
     };
     var user = auth_ctx.user;
-    defer OrmSysAdmin.freeModel(self.allocator, &user);
+    defer OrmSysAdmin.freeModel(&user);
 
     const admin_id: i32 = user.id orelse 0;
     const role_info = try self.resolveRoleInfo(admin_id);
@@ -291,7 +291,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     defer q.deinit();
     const rels = q.get() catch null;
     if (rels == null or rels.?.len == 0) {
-        if (rels) |rows| OrmAdminRole.freeModels(self.allocator, rows);
+        if (rels) |rows| OrmAdminRole.freeModels(rows);
         return .{
             .role_ids = &.{1},
             .role_ids_owner = null,
@@ -301,7 +301,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     }
 
     const rows = rels.?;
-    defer OrmAdminRole.freeModels(self.allocator, rows);
+    defer Admin.freeModel(&rows);
 
     const owned_ids = try self.allocator.alloc(i32, rows.len);
     for (rows, 0..) |rel, idx| {
@@ -314,7 +314,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     const role_opt = OrmSysRole.Find(primary) catch null;
     if (role_opt) |role| {
         var role_mut = role;
-        defer OrmSysRole.freeModel(self.allocator, &role_mut);
+        defer OrmSysRole.freeModel(&role_mut);
         if (role_mut.role_name.len > 0) {
             role_text = role_mut.role_name;
         }
@@ -333,11 +333,12 @@ fn resolveDeptInfo(self: *Self, dept_id_opt: ?i32) !struct {
     department_id: i32,
     department_name: []const u8,
 } {
+    _ = self;
     if (dept_id_opt) |dept_id| {
         const dept_opt = OrmSysDept.Find(dept_id) catch null;
         if (dept_opt) |dept| {
             var dept_mut = dept;
-            defer OrmSysDept.freeModel(self.allocator, &dept_mut);
+            defer OrmSysDept.freeModel(&dept_mut);
             return .{
                 .department_id = dept_id,
                 .department_name = dept_mut.dept_name,
@@ -392,7 +393,7 @@ pub fn register(self: *Self, req: zap.Request) !void {
         error.UserAlreadyExists => return base.send_failed(req, "用户已存在"),
         else => return base.send_error(req, err),
     };
-    defer Admin.freeModel(self.allocator, &new_user);
+    defer Admin.freeModel(&new_user);
 
     return base.send_ok(req, .{
         .id = new_user.id,
@@ -432,7 +433,7 @@ pub fn login(self: *Self, req: zap.Request) !void {
     const token = auth_result.token;
 
     defer {
-        Admin.freeModel(self.allocator, &user);
+        Admin.freeModel(&user);
         self.allocator.free(token);
     }
 

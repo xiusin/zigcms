@@ -104,7 +104,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     _ = q.page(page, limit);
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(self.allocator, items_slice);
+    defer OrmPosition.freeModels(items_slice);
 
     var items = std.ArrayListUnmanaged(models.Position){};
     defer items.deinit(self.allocator);
@@ -117,6 +117,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
 
 /// 获取单条记录实现
 fn getImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
     const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
@@ -127,7 +128,7 @@ fn getImpl(self: *Self, req: zap.Request) !void {
     }
 
     var item = item_opt.?;
-    defer OrmPosition.freeModel(self.allocator, &item);
+    defer OrmPosition.freeModel(&item);
 
     return base.send_ok(req, item);
 }
@@ -176,7 +177,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 
     // 新增
     var new_item = OrmPosition.Create(dto) catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModel(self.allocator, &new_item);
+    defer OrmPosition.freeModel(&new_item);
 
     return base.send_ok(req, new_item);
 }

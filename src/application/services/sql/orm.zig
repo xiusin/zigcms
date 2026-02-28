@@ -978,7 +978,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             _ = try db.exec(dropTableSql(), .{});
         }
 
-        /// 释放模型中的字符串内存
+        /// 释放模型中的字符串内存（使用模型绑定的数据库分配器）
         ///
         /// 内存所有权说明：
         /// - 只释放由 ORM 查询分配的字符串（长度 > 0 且非静态字符串）
@@ -988,9 +988,9 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 注意：调用后模型中的字符串指针将变为悬空指针，不应再访问
         ///
         /// 参数：
-        /// - allocator: 用于释放内存的分配器（必须与分配时使用的相同）
         /// - model: 要释放的模型指针
-        pub fn freeModel(allocator: Allocator, model: *T) void {
+        pub fn freeModel(model: *T) void {
+            const allocator = getDb().allocator;
             inline for (std.meta.fields(T)) |field| {
                 if (field.type == []const u8) {
                     const str = @field(model.*, field.name);
@@ -1011,7 +1011,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             }
         }
 
-        /// 释放模型数组及其所有字符串内存
+        /// 释放模型数组及其所有字符串内存（使用模型绑定的数据库分配器）
         ///
         /// 内存所有权说明：
         /// - 释放数组中每个模型的字符串字段
@@ -1021,17 +1021,25 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 使用示例：
         /// ```zig
         /// const users = try User.all(db);
-        /// defer User.freeModels(db.allocator, users);
+        /// defer User.freeModels(users);
         /// ```
         ///
         /// 参数：
-        /// - allocator: 用于释放内存的分配器（必须与分配时使用的相同）
         /// - models: 要释放的模型数组
-        pub fn freeModels(allocator: Allocator, models: []T) void {
-            for (models) |*model| {
-                freeModel(allocator, model);
-            }
+        pub fn freeModels(models: []T) void {
+            const allocator = getDb().allocator;
+            for (models) |*model| freeModel(model);
             allocator.free(models);
+        }
+
+        /// 使用默认数据库分配器释放单个模型（便捷包装）
+        pub fn freeModelWithDefault(model: *T) void {
+            freeModel(model);
+        }
+
+        /// 使用默认数据库分配器释放模型数组（便捷包装）
+        pub fn freeModelsWithDefault(models: []T) void {
+            freeModels(models);
         }
 
         // ====================================================================

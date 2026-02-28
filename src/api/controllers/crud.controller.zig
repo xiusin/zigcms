@@ -104,7 +104,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
 
             var data = data_opt.?;
-            defer OrmModel.freeModel(global.get_allocator(), &data);
+            defer OrmModel.freeModel(&data);
             base.send_ok(req, data);
         }
 
@@ -125,7 +125,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
 
             var created = OrmModel.Create(dto) catch |err| return base.send_error(req, err);
-            defer OrmModel.freeModel(global.get_allocator(), &created);
+            defer OrmModel.freeModel(&created);
             base.send_ok(req, created);
         }
 
@@ -168,7 +168,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             var model = (OrmModel.Find(id) catch |err| return base.send_error(req, err)) orelse {
                 return base.send_failed(req, "记录不存在");
             };
-            defer OrmModel.freeModel(global.get_allocator(), &model);
+            defer OrmModel.freeModel(&model);
 
             if (!setFieldValue(T, &model, field_name, value_val)) {
                 return base.send_failed(req, "字段不存在或类型不匹配");

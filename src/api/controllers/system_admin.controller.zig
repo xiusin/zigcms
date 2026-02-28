@@ -142,7 +142,7 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         var rel_q = OrmAdminRole.WhereEq("role_id", rid);
         defer rel_q.deinit();
         const rels = rel_q.get() catch |err| return base.send_error(req, err);
-        defer OrmAdminRole.freeModels(self.allocator, rels);
+        defer OrmAdminRole.freeModels(rels);
         for (rels) |rel| {
             role_filtered_admin_ids.append(self.allocator, rel.admin_id) catch {};
         }
@@ -157,7 +157,7 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
     const total = q.count() catch |err| return base.send_error(req, err);
     _ = q.page(@intCast(page), @intCast(limit));
     const admins = q.get() catch |err| return base.send_error(req, err);
-    defer OrmAdmin.freeModels(self.allocator, admins);
+    defer OrmAdmin.freeModels(admins);
 
     var admin_ids = std.ArrayListUnmanaged(i32){};
     defer admin_ids.deinit(self.allocator);
@@ -388,7 +388,7 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     var old_q = OrmAdminRole.WhereEq("admin_id", admin_id);
     defer old_q.deinit();
     const old_rows = old_q.get() catch |err| return base.send_error(req, err);
-    defer OrmAdminRole.freeModels(self.allocator, old_rows);
+    defer OrmAdminRole.freeModels(old_rows);
 
     var old_ids = std.ArrayListUnmanaged(i32){};
     defer old_ids.deinit(self.allocator);
@@ -456,7 +456,7 @@ fn userInfoImpl(self: *Self, req: zap.Request) !void {
     const user_opt = OrmAdmin.Find(id) catch |err| return base.send_error(req, err);
     if (user_opt) |user| {
         var user_mut = user;
-        defer OrmAdmin.freeModel(self.allocator, &user_mut);
+        defer OrmAdmin.freeModel(&user_mut);
         return base.send_ok(req, .{
             .id = user_mut.id orelse id,
             .username = user_mut.username,

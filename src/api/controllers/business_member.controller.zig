@@ -123,7 +123,7 @@ fn pointRechargeImpl(self: *Self, req: zap.Request) !void {
     var member = (OrmMember.Find(dto.member_id) catch |err| return base.send_error(req, err)) orelse {
         return base.send_failed(req, "会员不存在");
     };
-    defer OrmMember.freeModel(self.allocator, &member);
+    defer OrmMember.freeModel(&member);
 
     if (std.mem.eql(u8, dto.change_type, "reduce")) {
         member.points -= dto.points;
@@ -164,7 +164,7 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
     var member = (OrmMember.Find(dto.member_id) catch |err| return base.send_error(req, err)) orelse {
         return base.send_failed(req, "会员不存在");
     };
-    defer OrmMember.freeModel(self.allocator, &member);
+    defer OrmMember.freeModel(&member);
 
     if (std.mem.eql(u8, dto.change_type, "reduce")) {
         member.balance -= dto.amount;

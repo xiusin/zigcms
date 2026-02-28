@@ -139,7 +139,7 @@ fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
                 .sort = @as(i32, @intCast(idx + 1)),
                 .status = 1,
             }) catch |err| return base.send_error(req, err);
-            defer OrmPermission.freeModel(self.allocator, &created);
+            defer OrmPermission.freeModel(&created);
             break :blk created.id orelse 0;
         };
 
