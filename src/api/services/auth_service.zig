@@ -81,9 +81,6 @@ pub const AuthService = struct {
             .secret = global.JwtTokenSecret,
         });
 
-        // 返回前释放 ORM 字符串字段，避免泄漏（调用方如需字段应提前拷贝）
-        Admin.freeModel(&user);
-
         return .{ .token = token, .user = user };
     }
 };
