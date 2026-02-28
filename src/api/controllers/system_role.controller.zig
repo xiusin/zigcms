@@ -59,6 +59,9 @@ pub const button_perms = buttonPermsImpl;
 /// 角色权限保存接口。
 pub const role_permissions_save = rolePermissionsSaveImpl;
 
+/// 角色权限查询接口。
+pub const role_permissions_get = rolePermissionsGetImpl;
+
 /// 读取角色列表缓存版本。
 pub fn getRoleCacheVersion(allocator: Allocator) []const u8 {
     const db = global.get_db();
@@ -172,6 +175,79 @@ fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
     bumpRoleCacheVersion(self.allocator);
 
     base.send_ok(req, "权限保存成功");
+}
+
+/// 查询角色菜单与按钮权限。
+fn rolePermissionsGetImpl(self: *Self, req: zap.Request) !void {
+    var role_id: i32 = 0;
+
+    req.parseQuery();
+    if (req.getParamSlice("role_id")) |role_id_str| {
+        role_id = std.fmt.parseInt(i32, role_id_str, 10) catch 0;
+    }
+
+    if (role_id <= 0) {
+        req.parseBody() catch {};
+        if (req.body) |body| {
+            var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+            defer if (parsed) |*p| p.deinit();
+            if (parsed) |p| {
+                if (p.value == .object) {
+                    if (p.value.object.get("role_id")) |role_id_val| {
+                        switch (role_id_val) {
+                            .integer => role_id = @intCast(role_id_val.integer),
+                            .string => role_id = std.fmt.parseInt(i32, role_id_val.string, 10) catch 0,
+                            else => {},
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (role_id <= 0) return base.send_failed(req, "缺少 role_id 参数");
+
+    var role_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
+    defer role_menu_q.deinit();
+    const role_menus = role_menu_q.get() catch |err| return base.send_error(req, err);
+    defer OrmRoleMenu.freeModels(role_menus);
+
+    var menu_ids = std.ArrayListUnmanaged(i32){};
+    defer menu_ids.deinit(self.allocator);
+    for (role_menus) |row| {
+        menu_ids.append(self.allocator, row.menu_id) catch {};
+    }
+
+    var role_perm_q = OrmRolePermission.WhereEq("role_id", role_id);
+    defer role_perm_q.deinit();
+    const role_perms = role_perm_q.get() catch |err| return base.send_error(req, err);
+    defer OrmRolePermission.freeModels(role_perms);
+
+    var button_perm_codes = std.ArrayListUnmanaged([]const u8){};
+    defer button_perm_codes.deinit(self.allocator);
+    var button_perm_owners = std.ArrayListUnmanaged([]u8){};
+    defer {
+        for (button_perm_owners.items) |owned| self.allocator.free(owned);
+        button_perm_owners.deinit(self.allocator);
+    }
+
+    for (role_perms) |row| {
+        const perm_opt = OrmPermission.Find(row.permission_id) catch null;
+        if (perm_opt) |perm| {
+            var perm_mut = perm;
+            defer OrmPermission.freeModel(&perm_mut);
+            if (perm_mut.perm_code.len == 0) continue;
+
+            const owned = self.allocator.dupe(u8, perm_mut.perm_code) catch continue;
+            button_perm_owners.append(self.allocator, owned) catch {};
+            button_perm_codes.append(self.allocator, owned) catch {};
+        }
+    }
+
+    base.send_ok(req, .{
+        .menu_ids = menu_ids.items,
+        .button_perms = button_perm_codes.items,
+    });
 }
 
 /// 默认按钮权限列表。

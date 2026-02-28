@@ -84,7 +84,7 @@
             @page-change="handlePositionPageChange"
           >
             <template #dept="{ record }">
-              <a-tag color="arcoblue">{{ record.dept_name }}</a-tag>
+              <a-tag color="arcoblue">{{ getDeptName(record.dept_id) }}</a-tag>
             </template>
             <template #status="{ record }">
               <a-switch
@@ -251,6 +251,12 @@
     deptForm.id ? '编辑部门' : '添加部门'
   );
 
+  const getDeptName = (deptId: number | null | undefined) => {
+    if (!deptId) return '-';
+    const hit = deptList.value.find((item) => Number(item.id) === Number(deptId));
+    return hit?.dept_name || '-';
+  };
+
   // 职位管理
   const positionLoading = ref(false);
   const positionSearchKey = ref('');
@@ -319,9 +325,46 @@
       });
   };
 
+  /** 构建树形结构 */
+  const buildTree = (list: any[]): any[] => {
+    if (!Array.isArray(list)) return [];
+    const map = new Map<number, any>();
+    list.forEach((item) => {
+      const id = Number(item.id);
+      map.set(id, {
+        ...item,
+        key: id,
+        value: id,
+        title: item.dept_name || item.title || '',
+        children: [],
+      });
+    });
+    const roots: any[] = [];
+    list.forEach((item) => {
+      const id = Number(item.id);
+      const parentId = Number(item.parent_id || 0);
+      const node = map.get(id);
+      if (!node) return;
+      if (parentId > 0 && map.has(parentId)) {
+        map.get(parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    return roots;
+  };
+
   const fetchDeptTree = () => {
     request('/api/system/dept/tree', {}).then((res: any) => {
-      deptTreeData.value = res.data || [];
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.list)
+          ? raw.list
+          : Array.isArray(raw?.items)
+            ? raw.items
+            : [];
+      deptTreeData.value = buildTree(list);
     });
   };
 
@@ -362,7 +405,7 @@
   };
 
   const handleDeleteDept = async (record: any) => {
-    await request('/api/system/dept/delete', { id: record.id });
+    await request('/api/system/dept/remove', { id: record.id });
     Message.success('删除成功');
     fetchDeptList();
     fetchDeptTree();

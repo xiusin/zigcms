@@ -241,6 +241,25 @@
     }
   };
 
+  const fetchRolePermissions = async (roleId: number) => {
+    try {
+      const res = await request('/api/role/permissions/get', {
+        role_id: roleId,
+      });
+      const menuIds = Array.isArray(res?.data?.menu_ids)
+        ? res.data.menu_ids.map((id: number) => Number(id))
+        : [];
+      const buttonPerms = Array.isArray(res?.data?.button_perms)
+        ? res.data.button_perms
+        : [];
+
+      info.value.menu_ids = menuIds;
+      info.value.button_perms = buttonPerms;
+    } catch (e) {
+      console.error('获取角色权限详情失败:', e);
+    }
+  };
+
   // 获取按钮权限列表
   const fetchButtonPerms = async () => {
     btnPermsLoading.value = true;
@@ -284,6 +303,7 @@
         menu_ids: item.menu_ids || [],
         button_perms: item.button_perms || [],
       });
+      fetchRolePermissions(Number(item.id));
     }
   }
 
@@ -306,11 +326,39 @@
       return;
     }
     loading.value = true;
-    request('/api/role/save', info.value)
-      .then(() => {
+    const rolePayload = {
+      id: info.value.id,
+      role_name: info.value.role_name,
+      role_key: info.value.role_key,
+      sort: info.value.sort,
+      remark: info.value.remark,
+      status: info.value.status ?? 1,
+    };
+
+    request('/api/role/save', rolePayload)
+      .then(async (res: any) => {
+        const roleId =
+          info.value.id ||
+          res?.data?.id ||
+          res?.data?.data?.id ||
+          0;
+
+        if (!roleId) {
+          throw new Error('角色保存成功但未返回角色ID');
+        }
+
+        await request('/api/role/permissions/save', {
+          role_id: Number(roleId),
+          menu_ids: (info.value.menu_ids || []).map((id: number) => Number(id)),
+          button_perms: info.value.button_perms || [],
+        });
+
         emits('refresh');
         Message.success('操作成功');
         onClose();
+      })
+      .catch((err: any) => {
+        Message.error(err?.msg || err?.message || '保存失败');
       })
       .finally(() => {
         loading.value = false;

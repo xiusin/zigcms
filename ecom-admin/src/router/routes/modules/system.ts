@@ -24,17 +24,6 @@ const RouterConfig: AppRouteRecordRaw = {
       },
     },
     {
-      path: 'position',
-      name: 'position',
-      component: () => import('@/views/system/position/index.vue'),
-      meta: {
-        locale: '职位管理',
-        requiresAuth: true,
-        icon: 'icon-user',
-        roles: ['*'],
-      },
-    },
-    {
       path: 'user-manage',
       name: 'user-manage',
       component: () => import('@/views/system/user-manage/user-manage.vue'),
