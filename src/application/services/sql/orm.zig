@@ -2009,23 +2009,55 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
             const DataType = @TypeOf(data);
             const fields = std.meta.fields(DataType);
+            var first_field = true;
 
-            inline for (fields, 0..) |field, i| {
-                if (i > 0) try sql.appendSlice(allocator, ", ");
-                try sql.appendSlice(allocator, field.name);
+            inline for (fields) |field| {
+                const value = @field(data, field.name);
+                if (!shouldSkipInsertField(field.name, value)) {
+                    if (!first_field) try sql.appendSlice(allocator, ", ");
+                    try sql.appendSlice(allocator, field.name);
+                    first_field = false;
+                }
             }
 
             try sql.appendSlice(allocator, ") VALUES (");
+            var first_value = true;
 
-            inline for (fields, 0..) |field, i| {
-                if (i > 0) try sql.appendSlice(allocator, ", ");
+            inline for (fields) |field| {
                 const value = @field(data, field.name);
-                try appendValue(allocator, &sql, value, field.name);
+                if (!shouldSkipInsertField(field.name, value)) {
+                    if (!first_value) try sql.appendSlice(allocator, ", ");
+                    try appendValue(allocator, &sql, value, field.name);
+                    first_value = false;
+                }
             }
 
             try sql.append(allocator, ')');
 
             return sql.toOwnedSlice(allocator);
+        }
+
+        fn shouldSkipInsertField(field_name: []const u8, value: anytype) bool {
+            const V = @TypeOf(value);
+            const type_info = @typeInfo(V);
+
+            if (type_info == .optional and value == null) {
+                return true;
+            }
+
+            if (std.mem.eql(u8, field_name, "id")) {
+                if (type_info == .optional) {
+                    if (value) |v| {
+                        return v <= 0;
+                    }
+                    return true;
+                }
+                if (type_info == .int or type_info == .comptime_int) {
+                    return value <= 0;
+                }
+            }
+
+            return false;
         }
 
         fn buildUpdateSql(allocator: Allocator, table: []const u8, pk: []const u8, id: anytype, data: anytype) ![]u8 {

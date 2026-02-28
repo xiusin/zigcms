@@ -78,13 +78,12 @@ pub const Bootstrap = struct {
         // ecom-admin-dashboard 对接模块 (sys/biz/op 新表)
         // =====================================================
 
-        // Phase 1: 组织/管理员/职位/角色
+        // Phase 1: 组织/职位/角色（管理员由 system_ext.Admin 接管完整接口）
         try registerCrudWithAlias(self.app, "system/dept", models.SysDept);
-        try registerCrudWithAlias(self.app, "system/admin", models.SysAdmin);
         try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
         try registerCrudWithAlias(self.app, "system/role", models.SysRole);
         try registerCrudWithAlias(self.app, "role", models.SysRole);
-        self.crud_count += 5;
+        self.crud_count += 4;
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
@@ -348,7 +347,6 @@ pub const Bootstrap = struct {
         const member_ctrl = try self.container.resolve(controllers.system_ext.Member);
         const task_ctrl = try self.container.resolve(controllers.system_ext.Task);
         const payment = try self.container.resolve(controllers.system_ext.Payment);
-        const version = try self.container.resolve(controllers.system_ext.Version);
         const log_ctrl = try self.container.resolve(controllers.system_ext.Log);
 
         try registerWithAlias(self.app, "/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
@@ -356,6 +354,11 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/dept/remove", dept, &controllers.system_ext.Dept.dept_delete);
 
         try registerWithAlias(self.app, "/system/admin/list", admin, &controllers.system_ext.Admin.list_with_roles);
+        try registerWithAlias(self.app, "/system/admin/get", admin, &controllers.system_ext.Admin.get);
+        try registerWithAlias(self.app, "/system/admin/save", admin, &controllers.system_ext.Admin.save);
+        try registerWithAlias(self.app, "/system/admin/set", admin, &controllers.system_ext.Admin.set);
+        try registerWithAlias(self.app, "/system/admin/delete", admin, &controllers.system_ext.Admin.delete);
+        try registerWithAlias(self.app, "/system/admin/select", admin, &controllers.system_ext.Admin.select);
         try registerWithAlias(self.app, "/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
         try registerWithAlias(self.app, "/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
         try self.app.route("/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
@@ -397,18 +400,13 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/payment/set", payment, &controllers.system_ext.Payment.set);
         try registerWithAlias(self.app, "/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
 
-        try registerWithAlias(self.app, "/system/version/list", version, &controllers.system_ext.Version.list);
-        try registerWithAlias(self.app, "/system/version/save", version, &controllers.system_ext.Version.save);
-        try registerWithAlias(self.app, "/system/version/delete", version, &controllers.system_ext.Version.delete);
-        try registerWithAlias(self.app, "/system/version/set", version, &controllers.system_ext.Version.set);
-
         try registerWithAlias(self.app, "/log/list", log_ctrl, &controllers.system_ext.Log.list);
         try registerWithAlias(self.app, "/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
         try registerWithAlias(self.app, "/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
         try registerWithAlias(self.app, "/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
         try registerWithAlias(self.app, "/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
 
-        self.route_count += 94;
+        self.route_count += 100;
     }
 
     /// 注册实时通信路由

@@ -301,11 +301,290 @@ pub const reset_password = resetPasswordImpl;
 /// 分配管理员角色接口。
 pub const assign_roles = assignRolesImpl;
 
+/// 管理员保存接口。
+pub const save = saveAdminImpl;
+
+/// 管理员详情接口。
+pub const get = getAdminImpl;
+
+/// 管理员状态设置接口。
+pub const set = setAdminImpl;
+
+/// 管理员删除接口。
+pub const delete = deleteAdminImpl;
+
+/// 管理员下拉接口。
+pub const select = selectAdminImpl;
+
 /// 用户信息接口。
 pub const user_info = userInfoImpl;
 
 /// 组织架构管理员列表增强接口。
 pub const list_with_roles = listWithRolesImpl;
+
+/// 管理员保存（新增/编辑）。
+fn saveAdminImpl(self: *Self, req: zap.Request) !void {
+    req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+    const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+    var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+        return base.send_failed(req, "请求体格式错误");
+    };
+    defer parsed.deinit();
+    if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
+
+    const obj = parsed.value.object;
+    var id: i32 = 0;
+    if (obj.get("id")) |id_val| {
+        if (id_val == .integer) id = @intCast(id_val.integer);
+    }
+
+    var role_id_present = false;
+    var target_role_id: i32 = 0;
+    if (obj.get("role_id")) |role_val| {
+        role_id_present = true;
+        if (role_val == .integer) {
+            target_role_id = @intCast(role_val.integer);
+        } else if (role_val != .null) {
+            return base.send_failed(req, "role_id 参数格式错误");
+        }
+    }
+
+    var dynamic_hash: ?[]const u8 = null;
+    defer if (dynamic_hash) |hash| self.allocator.free(hash);
+
+    var model = models.SysAdmin{};
+    var admin_id: i32 = 0;
+
+    if (id > 0) {
+        const current_opt = OrmAdmin.Find(id) catch |err| return base.send_error(req, err);
+        if (current_opt == null) return base.send_failed(req, "管理员不存在");
+        model = current_opt.?;
+        defer OrmAdmin.freeModel(&model);
+
+        if (obj.get("username")) |v| {
+            if (v == .string) {
+                const username = std.mem.trim(u8, v.string, " \t\r\n");
+                if (username.len == 0) return base.send_failed(req, "用户名不能为空");
+                const unique = ensureUsernameUnique(self, username, id) catch |err| return base.send_error(req, err);
+                if (!unique) return base.send_failed(req, "用户名已存在");
+                model.username = username;
+            }
+        }
+        if (obj.get("nickname")) |v| {
+            if (v == .string) model.nickname = v.string;
+        }
+        if (obj.get("mobile")) |v| {
+            if (v == .string) model.mobile = v.string;
+        }
+        if (obj.get("email")) |v| {
+            if (v == .string) model.email = v.string;
+        }
+        if (obj.get("avatar")) |v| {
+            if (v == .string) model.avatar = v.string;
+        }
+        if (obj.get("remark")) |v| {
+            if (v == .string) model.remark = v.string;
+        }
+        if (obj.get("gender")) |v| {
+            if (v == .integer) model.gender = @intCast(v.integer);
+        }
+        if (obj.get("status")) |v| {
+            if (v == .integer) model.status = @intCast(v.integer);
+        }
+        if (obj.get("dept_id")) |v| {
+            if (v == .null) {
+                model.dept_id = null;
+            } else if (v == .integer) {
+                model.dept_id = @intCast(v.integer);
+            }
+        }
+
+        if (obj.get("password")) |pwd_val| {
+            if (pwd_val == .string and pwd_val.string.len > 0) {
+                var confirm_ok = true;
+                if (obj.get("confirm_password")) |confirm_val| {
+                    if (confirm_val == .string) {
+                        confirm_ok = std.mem.eql(u8, pwd_val.string, confirm_val.string);
+                    }
+                }
+                if (!confirm_ok) return base.send_failed(req, "两次密码输入不一致");
+
+                const pwd_hash = strings.md5(self.allocator, pwd_val.string) catch return base.send_failed(req, "密码加密失败");
+                dynamic_hash = pwd_hash;
+                model.password_hash = pwd_hash;
+            }
+        }
+
+        _ = OrmAdmin.Update(id, model) catch |err| return base.send_error(req, err);
+        admin_id = id;
+    } else {
+        const username_val = obj.get("username") orelse return base.send_failed(req, "缺少 username 参数");
+        const nickname_val = obj.get("nickname") orelse return base.send_failed(req, "缺少 nickname 参数");
+        const password_val = obj.get("password") orelse return base.send_failed(req, "缺少 password 参数");
+        const confirm_val = obj.get("confirm_password") orelse return base.send_failed(req, "缺少 confirm_password 参数");
+        if (username_val != .string or nickname_val != .string or password_val != .string or confirm_val != .string) {
+            return base.send_failed(req, "参数格式错误");
+        }
+
+        const username = std.mem.trim(u8, username_val.string, " \t\r\n");
+        if (username.len == 0) return base.send_failed(req, "用户名不能为空");
+        if (!std.mem.eql(u8, password_val.string, confirm_val.string)) return base.send_failed(req, "两次密码输入不一致");
+
+        const unique = ensureUsernameUnique(self, username, 0) catch |err| return base.send_error(req, err);
+        if (!unique) return base.send_failed(req, "用户名已存在");
+
+        const pwd_hash = strings.md5(self.allocator, password_val.string) catch return base.send_failed(req, "密码加密失败");
+        dynamic_hash = pwd_hash;
+
+        model = .{
+            .username = username,
+            .nickname = nickname_val.string,
+            .password_hash = pwd_hash,
+            .mobile = if (obj.get("mobile")) |v| if (v == .string) v.string else "" else "",
+            .email = if (obj.get("email")) |v| if (v == .string) v.string else "" else "",
+            .avatar = if (obj.get("avatar")) |v| if (v == .string) v.string else "" else "",
+            .gender = if (obj.get("gender")) |v| if (v == .integer) @intCast(v.integer) else 0 else 0,
+            .dept_id = if (obj.get("dept_id")) |v| if (v == .integer) @intCast(v.integer) else null else null,
+            .status = if (obj.get("status")) |v| if (v == .integer) @intCast(v.integer) else 1 else 1,
+            .remark = if (obj.get("remark")) |v| if (v == .string) v.string else "" else "",
+        };
+
+        var created = OrmAdmin.Create(model) catch |err| return base.send_error(req, err);
+        defer OrmAdmin.freeModel(&created);
+        admin_id = created.id orelse 0;
+        if (admin_id <= 0) return base.send_failed(req, "管理员创建失败");
+    }
+
+    if (role_id_present) {
+        if (target_role_id > 0) {
+            ensureRoleEnabled(target_role_id) catch |err| switch (err) {
+                error.InvalidRole => return base.send_failed(req, "角色不存在"),
+                error.RoleDisabled => return base.send_failed(req, "角色已禁用"),
+                else => return base.send_error(req, err),
+            };
+            try replaceAdminRoles(admin_id, &.{target_role_id});
+        } else {
+            try replaceAdminRoles(admin_id, &.{});
+        }
+    }
+
+    return base.send_ok(req, .{ .id = admin_id });
+}
+
+/// 管理员详情读取。
+fn getAdminImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const id = parseIdFromReq(req) orelse return base.send_failed(req, "缺少 id 参数");
+    const admin_opt = OrmAdmin.Find(id) catch |err| return base.send_error(req, err);
+    if (admin_opt == null) return base.send_failed(req, "管理员不存在");
+
+    var admin = admin_opt.?;
+    defer OrmAdmin.freeModel(&admin);
+    return base.send_ok(req, admin);
+}
+
+/// 管理员单字段设置。
+fn setAdminImpl(self: *Self, req: zap.Request) !void {
+    req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+    const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+    var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+        return base.send_failed(req, "请求体格式错误");
+    };
+    defer parsed.deinit();
+    if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
+
+    const id_val = parsed.value.object.get("id") orelse return base.send_failed(req, "缺少 id 参数");
+    const field_val = parsed.value.object.get("field") orelse return base.send_failed(req, "缺少 field 参数");
+    const value_val = parsed.value.object.get("value") orelse return base.send_failed(req, "缺少 value 参数");
+    if (id_val != .integer or field_val != .string or value_val != .integer) return base.send_failed(req, "参数格式错误");
+    if (!std.mem.eql(u8, field_val.string, "status")) return base.send_failed(req, "仅支持更新 status 字段");
+
+    const target_id: i32 = @intCast(id_val.integer);
+    _ = OrmAdmin.Update(target_id, .{ .status = @as(i32, @intCast(value_val.integer)) }) catch |err| return base.send_error(req, err);
+    return base.send_ok(req, "更新成功");
+}
+
+/// 删除管理员并清理角色关系。
+fn deleteAdminImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const id = parseIdFromReq(req) orelse return base.send_failed(req, "缺少 id 参数");
+
+    var delete_rel_q = OrmAdminRole.WhereEq("admin_id", id);
+    defer delete_rel_q.deinit();
+    _ = delete_rel_q.delete() catch |err| return base.send_error(req, err);
+
+    _ = OrmAdmin.Destroy(id) catch |err| return base.send_error(req, err);
+    return base.send_ok(req, "删除成功");
+}
+
+/// 管理员下拉列表。
+fn selectAdminImpl(self: *Self, req: zap.Request) !void {
+    var q = OrmAdmin.Query();
+    defer q.deinit();
+    _ = q.whereEq("status", @as(i32, 1));
+    _ = q.orderBy("id", .desc);
+    _ = q.limit(100);
+
+    const rows = q.get() catch |err| return base.send_error(req, err);
+    defer OrmAdmin.freeModels(rows);
+
+    const Item = struct {
+        id: i32,
+        username: []const u8,
+        nickname: []const u8,
+    };
+
+    var items = std.ArrayListUnmanaged(Item){};
+    defer items.deinit(self.allocator);
+    for (rows) |row| {
+        items.append(self.allocator, .{
+            .id = row.id orelse 0,
+            .username = row.username,
+            .nickname = row.nickname,
+        }) catch {};
+    }
+    return base.send_ok(req, items.items);
+}
+
+/// 校验用户名是否唯一（可排除当前管理员）。
+fn ensureUsernameUnique(self: *Self, username: []const u8, exclude_id: i32) !bool {
+    _ = self;
+    var q = OrmAdmin.WhereEq("username", username);
+    defer q.deinit();
+    const rows = q.get() catch |err| return err;
+    defer OrmAdmin.freeModels(rows);
+
+    for (rows) |row| {
+        if ((row.id orelse 0) != exclude_id) return false;
+    }
+    return true;
+}
+
+/// 校验角色是否存在且启用。
+fn ensureRoleEnabled(role_id: i32) !void {
+    const role_opt = OrmRole.Find(role_id) catch |err| return err;
+    if (role_opt == null) return error.InvalidRole;
+
+    var role = role_opt.?;
+    defer OrmRole.freeModel(&role);
+    if (role.status != 1) return error.RoleDisabled;
+}
+
+/// 覆盖管理员角色关联。
+fn replaceAdminRoles(admin_id: i32, role_ids: []const i32) !void {
+    var delete_q = OrmAdminRole.WhereEq("admin_id", admin_id);
+    defer delete_q.deinit();
+    _ = delete_q.delete() catch |err| return err;
+
+    for (role_ids) |rid| {
+        _ = OrmAdminRole.Create(.{
+            .admin_id = admin_id,
+            .role_id = rid,
+        }) catch |err| return err;
+    }
+}
 
 /// 重置管理员密码为默认值。
 fn resetPasswordImpl(self: *Self, req: zap.Request) !void {

@@ -2,11 +2,16 @@
 
 ## 文档版本
 
-- 当前版本：v1.2.0
-- 更新时间：2026-02-27
+- 当前版本：v1.3.0
+- 更新时间：2026-02-28
 
 ## 变更记录
 
+- v1.3.0
+  - `/api/system/admin/save` 由扩展控制器接管，新增“创建即写入密码哈希、可选 role_id 同步角色关系”的行为
+  - `/api/system/admin/delete` 增加级联清理 `sys_admin_role`
+  - `/api/system/admin/set` 限定仅允许更新 `status`
+  - `/api/system/dept/tree` 补充 `leader/phone/sort/status/raw` 字段，兼容组织架构页面编辑回填
 - v1.2.0
   - `/api/member/refreshInfo` 增加 `server_time`
   - `/api/member/refreshInfo` 增加 `expire_soon`
@@ -132,8 +137,13 @@
 - title
 - dept_name
 - dept_code
+- leader
+- phone
+- sort
+- status
 - value
 - key
+- raw（完整部门对象，用于前端编辑回填）
 
 ### 5) POST /api/system/dept/save
 请求：
@@ -211,6 +221,17 @@
 - role_id
 - remark
 
+行为约束：
+- 新增管理员：
+  - 必填 `username/nickname/password/confirm_password`
+  - `password` 与 `confirm_password` 必须一致
+  - 后端会将密码写入 `password_hash`
+- 编辑管理员：
+  - `password` 非空时才更新密码哈希
+  - `role_id` 传入时会覆盖管理员角色关系（`role_id<=0` 表示清空角色）
+- 唯一性：`username` 必须唯一
+- 角色校验：`role_id` 必须存在且启用
+
 ### 9) POST /api/system/admin/set
 请求：
 
@@ -224,6 +245,9 @@
 ```json
 { "id": 1 }
 ```
+
+行为约束：
+- 删除管理员时，后端会先清理 `sys_admin_role` 关联，再删除管理员。
 
 ### 11) POST /api/system/admin/delete
 请求：
@@ -263,6 +287,34 @@
   - `USERNAME` / `PASSWORD`：登录账号
   - `STRICT_MODE=1`：开启关键字段断言（如 `expires_in/server_time/role_ids/role_names`）
   - `FAIL_DUMP_FILE`：失败响应落盘文件路径
+
+### 完整链路冒烟（部门 + 管理员）
+
+- 脚本路径：`scripts/ecom_org_full_smoke.sh`
+- 覆盖链路：
+  - 部门新增 -> 部门树检索
+  - 管理员新增（含密码哈希与角色绑定）
+  - 管理员状态切换
+  - 管理员角色分配
+  - 管理员列表检索
+  - 管理员删除 + 部门删除（硬删清理）
+- 可选环境变量：
+  - `API_BASE`：接口地址（默认 `http://127.0.0.1:3000`）
+  - `USERNAME` / `PASSWORD`：登录账号（默认 `admin/123456`）
+  - `ROLE_ID`：新建管理员绑定角色（默认 `2`）
+  - `FAIL_DUMP_FILE`：失败响应落盘文件
+
+### 推荐执行顺序
+
+1. 先执行 mock 数据 SQL：`docs/sql/ecom_org_mock_seed.sql`
+2. 再执行快速冒烟：`bash ./scripts/ecom_org_smoke.sh`
+3. 最后执行完整冒烟：`bash ./scripts/ecom_org_full_smoke.sh`
+
+### 幂等回归（连续两轮）
+
+- 脚本路径：`scripts/ecom_org_idempotent_regression.sh`
+- 作用：连续执行两次 `ecom_org_full_smoke.sh`，验证重复回归不会造成数据污染或唯一约束冲突。
+- 执行命令：`bash ./scripts/ecom_org_idempotent_regression.sh`
 
 ## 开发代理自检
 

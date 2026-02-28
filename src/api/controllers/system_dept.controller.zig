@@ -27,8 +27,13 @@ const DeptNode = struct {
     title: []const u8,
     dept_name: []const u8,
     dept_code: []const u8,
+    leader: []const u8,
+    phone: []const u8,
+    sort: i32,
+    status: i32,
     value: i32,
     key: i32,
+    raw: models.SysDept,
 };
 
 /// 初始化部门扩展控制器。
@@ -42,6 +47,43 @@ pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
+/// 读取 keyword 参数（兼容 query/body）。
+fn parseKeywordFromReq(req: zap.Request) []const u8 {
+    req.parseQuery();
+    if (req.getParamSlice("keyword")) |keyword| {
+        return std.mem.trim(u8, keyword, " \t\r\n");
+    }
+
+    req.parseBody() catch return "";
+    const body = req.body orelse return "";
+    var parsed = std.json.parseFromSlice(std.json.Value, global.get_allocator(), body, .{}) catch return "";
+    defer parsed.deinit();
+    if (parsed.value != .object) return "";
+    const keyword_val = parsed.value.object.get("keyword") orelse return "";
+    if (keyword_val != .string) return "";
+    return std.mem.trim(u8, keyword_val.string, " \t\r\n");
+}
+
+/// ASCII 忽略大小写包含判断。
+fn containsAsciiIgnoreCase(haystack: []const u8, needle: []const u8) bool {
+    if (needle.len == 0) return true;
+    if (haystack.len < needle.len) return false;
+
+    var i: usize = 0;
+    while (i + needle.len <= haystack.len) : (i += 1) {
+        var matched = true;
+        var j: usize = 0;
+        while (j < needle.len) : (j += 1) {
+            if (std.ascii.toLower(haystack[i + j]) != std.ascii.toLower(needle[j])) {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) return true;
+    }
+    return false;
+}
+
 /// 部门树接口。
 pub const dept_tree = deptTreeImpl;
 
@@ -53,6 +95,8 @@ pub const dept_delete = deptDeleteImpl;
 
 /// 返回部门树。
 fn deptTreeImpl(self: *Self, req: zap.Request) !void {
+    const keyword = parseKeywordFromReq(req);
+
     var q = OrmDept.Query();
     defer q.deinit();
     _ = q.whereEq("status", @as(i32, 1));
@@ -61,23 +105,31 @@ fn deptTreeImpl(self: *Self, req: zap.Request) !void {
     const items = q.get() catch |err| return base.send_error(req, err);
     defer OrmDept.freeModels(items);
 
-    var tree = std.ArrayListUnmanaged(DeptNode){};
-    defer tree.deinit(self.allocator);
+    var nodes = std.ArrayListUnmanaged(DeptNode){};
+    defer nodes.deinit(self.allocator);
 
     for (items) |item| {
+        const matched = keyword.len == 0 or containsAsciiIgnoreCase(item.dept_name, keyword) or containsAsciiIgnoreCase(item.dept_code, keyword);
+        if (!matched) continue;
+
         const id = item.id orelse 0;
-        tree.append(self.allocator, .{
+        nodes.append(self.allocator, .{
             .id = id,
             .parent_id = item.parent_id,
             .title = item.dept_name,
             .dept_name = item.dept_name,
             .dept_code = item.dept_code,
+            .leader = item.leader,
+            .phone = item.phone,
+            .sort = item.sort,
+            .status = item.status,
             .value = id,
             .key = id,
+            .raw = item,
         }) catch {};
     }
 
-    base.send_ok(req, tree.items);
+    base.send_ok(req, nodes.items);
 }
 
 /// 返回部门扁平列表。

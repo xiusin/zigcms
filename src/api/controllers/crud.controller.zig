@@ -116,6 +116,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             const dto = json_mod.JSON.decode(T, self.allocator, body) catch {
                 return base.send_failed(req, "解析数据失败");
             };
+            defer OrmModel.freeModel(&dto);
 
             if (extractId(T, dto)) |id| {
                 if (id > 0) {
