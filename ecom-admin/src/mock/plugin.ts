@@ -14,10 +14,7 @@ export function viteMockPlugin(config: MockConfig = {}): Plugin {
   const { enable = true, timeout = 300 } = config;
   // 放行代理
   const passthroughPrefixes = [
-    '/api/member/',
-    '/be/api/member/',
-    '/api/system/admin/',
-    '/api/system/dept/',
+    '/api/system/',
   ];
 
   return {

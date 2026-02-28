@@ -243,7 +243,7 @@
 
   const fetchRolePermissions = async (roleId: number) => {
     try {
-      const res = await request('/api/role/permissions/get', {
+      const res = await request('/api/system/role/permissions/get', {
         role_id: roleId,
       });
       const menuIds = Array.isArray(res?.data?.menu_ids)
@@ -265,7 +265,7 @@
     btnPermsLoading.value = true;
     try {
       // 优先从后端获取按钮权限配置
-      const res = await request('/api/role/button-perms', {}, undefined, 'GET');
+      const res = await request('/api/system/role/button-perms', {}, undefined, 'GET');
       if (res.data?.length) {
         buttonPermsOptions.value = res.data;
       } else {
@@ -335,7 +335,7 @@
       status: info.value.status ?? 1,
     };
 
-    request('/api/role/save', rolePayload)
+    request('/api/system/role/save', rolePayload)
       .then(async (res: any) => {
         const roleId =
           info.value.id ||
@@ -347,7 +347,7 @@
           throw new Error('角色保存成功但未返回角色ID');
         }
 
-        await request('/api/role/permissions/save', {
+        await request('/api/system/role/permissions/save', {
           role_id: Number(roleId),
           menu_ids: (info.value.menu_ids || []).map((id: number) => Number(id)),
           button_perms: info.value.button_perms || [],

@@ -20,11 +20,6 @@ export default mergeConfig(
           target: API_PROXY_TARGET,
           changeOrigin: true,
         },
-        '/be/api': {
-          target: API_PROXY_TARGET,
-          changeOrigin: true,
-          rewrite: (path: string) => path.replace(/^\/be\/api/, '/api'),
-        },
         '/amis-editor': {
           target: 'http://localhost:3201',
           changeOrigin: true,

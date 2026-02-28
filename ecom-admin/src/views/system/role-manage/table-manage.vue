@@ -155,7 +155,7 @@
   const formModel: any = ref(generateFormModel());
 
   const getDataList = (data: any) => {
-    return request('/api/role/list', data);
+    return request('/api/system/role/list', data);
   };
   function editRole(item: any) {
     editRef.value?.show(item);
@@ -170,7 +170,7 @@
 
   const deleteItem = async (record: any) => {
     record.loading = true;
-    request('/api/role/delete', {
+    request('/api/system/role/delete', {
       id: record.id,
     })
       .then(() => {

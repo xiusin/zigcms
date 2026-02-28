@@ -759,7 +759,7 @@
 
   // ========== 管理员方法 ==========
   const fetchRoleList = () => {
-    safeRequest('获取角色列表', '/api/role/list', { pageSize: 100 })
+    safeRequest('获取角色列表', '/api/system/role/list', { pageSize: 100 })
       .then((res: any) => {
         roleList.value = res.data?.list || [];
         persistRoleCache(roleList.value);
@@ -767,7 +767,7 @@
       .catch(() => {
         Message.warning('获取角色列表失败，2秒后将自动重试');
         window.setTimeout(() => {
-          safeRequest('重试获取角色列表', '/api/role/list', { pageSize: 100 })
+          safeRequest('重试获取角色列表', '/api/system/role/list', { pageSize: 100 })
             .then((res: any) => {
               roleList.value = res.data?.list || [];
               persistRoleCache(roleList.value);

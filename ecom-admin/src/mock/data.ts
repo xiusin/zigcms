@@ -34,7 +34,7 @@ const randomDate = () =>
     .replace('T', ' ');
 const randomName = () =>
   ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十'][
-    Math.floor(Math.random() * 8)
+  Math.floor(Math.random() * 8)
   ];
 const randomPhone = () => `138${Math.floor(Math.random() * 100000000)}`;
 
@@ -136,7 +136,7 @@ export const mockData: Record<
   '/api/member/set': success(null, '设置成功'),
 
   // 角色管理
-  '/api/role/list': pageSuccess(
+  '/api/system/role/list': pageSuccess(
     Array.from({ length: 10 }, (_, i) => ({
       id: i + 1,
       role_name: ['管理员', '普通用户', '审核员', '运营员', '财务'][i % 5],
@@ -150,9 +150,9 @@ export const mockData: Record<
     }))
   ),
 
-  '/api/role/save': success({ id: randomId() }, '保存成功'),
-  '/api/role/delete': success(null, '删除成功'),
-  '/api/role/info': success({
+  '/api/system/role/save': success({ id: randomId() }, '保存成功'),
+  '/api/system/role/delete': success(null, '删除成功'),
+  '/api/system/role/info': success({
     id: 1,
     role_name: '管理员',
     role_key: 'admin',
@@ -168,7 +168,7 @@ export const mockData: Record<
     status: 1,
   }),
   // 角色按钮权限配置
-  '/api/role/button-perms': success([
+  '/api/system/role/button-perms': success([
     { label: '新增', value: 'btn:add' },
     { label: '编辑', value: 'btn:edit' },
     { label: '删除', value: 'btn:delete' },
@@ -2045,9 +2045,9 @@ export const mockData: Record<
         .toString(36)
         .substring(2, 8)
         .toUpperCase()}-${Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase()}`,
+          .toString(36)
+          .substring(2, 8)
+          .toUpperCase()}`,
       bind_type: (i % 3) + 1,
       bind_id: i + 1,
       product_id: (i % 5) + 1,
@@ -2076,9 +2076,9 @@ export const mockData: Record<
         .toString(36)
         .substring(2, 8)
         .toUpperCase()}-${Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase()}`,
+          .toString(36)
+          .substring(2, 8)
+          .toUpperCase()}`,
     })),
     '激活码生成成功'
   ),
