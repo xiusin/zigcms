@@ -858,12 +858,16 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     const new_role_ids_text = joinRoleIds(self.allocator, valid_role_ids.items) catch return base.send_failed(req, "角色审计数据构建失败");
     defer self.allocator.free(new_role_ids_text);
 
+    // 避免空 slice 被绑定为 NULL，确保写入非空字符串
+    const old_role_ids_value = if (old_role_ids_text.len == 0) "[]" else old_role_ids_text;
+    const new_role_ids_value = if (new_role_ids_text.len == 0) "[]" else new_role_ids_text;
+
     _ = OrmAdminRoleAudit.Create(.{
         .admin_id = admin_id,
         .operator_id = operator.operator_id,
         .operator_name = operator.operator_name,
-        .old_role_ids = old_role_ids_text,
-        .new_role_ids = new_role_ids_text,
+        .old_role_ids = old_role_ids_value,
+        .new_role_ids = new_role_ids_value,
         .request_ip = request_ip,
     }) catch |err| {
         std.log.err("写入管理员角色审计失败 admin_id={d} err={}", .{ admin_id, err });

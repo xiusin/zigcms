@@ -51,7 +51,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
         /// 分页查询。
         fn listImpl(self: *Self, req: zap.Request) !void {
             req.parseQuery();
-            if (std.mem.eql(u8, table_name, "sys_role")) {
+            if (std.mem.endsWith(u8, table_name, "sys_role")) {
                 const version = role_ext.getRoleCacheVersion(self.allocator);
                 const need_free_version = !std.mem.eql(u8, version, "0");
                 defer if (need_free_version) self.allocator.free(version);
@@ -137,7 +137,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             if (extractId(T, dto)) |id| {
                 if (id > 0) {
                     _ = OrmModel.Update(id, dto) catch |err| return base.send_error(req, err);
-                    if (std.mem.eql(u8, table_name, "sys_role")) {
+                    if (std.mem.endsWith(u8, table_name, "sys_role")) {
                         role_ext.bumpRoleCacheVersion(self.allocator);
                     }
                     return base.send_ok(req, dto);
@@ -146,7 +146,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
 
             var created = OrmModel.Create(dto) catch |err| return base.send_error(req, err);
             defer OrmModel.freeModel(&created);
-            if (std.mem.eql(u8, table_name, "sys_role")) {
+            if (std.mem.endsWith(u8, table_name, "sys_role")) {
                 role_ext.bumpRoleCacheVersion(self.allocator);
             }
             base.send_ok(req, created);
@@ -159,7 +159,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             const id: usize = strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误");
 
             _ = OrmModel.Destroy(id) catch |err| return base.send_error(req, err);
-            if (std.mem.eql(u8, table_name, "sys_role")) {
+            if (std.mem.endsWith(u8, table_name, "sys_role")) {
                 role_ext.bumpRoleCacheVersion(self.allocator);
             }
             base.send_ok(req, "删除成功");
@@ -200,7 +200,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
 
             _ = OrmModel.Update(id, model) catch |err| return base.send_error(req, err);
-            if (std.mem.eql(u8, table_name, "sys_role")) {
+            if (std.mem.endsWith(u8, table_name, "sys_role")) {
                 role_ext.bumpRoleCacheVersion(self.allocator);
             }
             base.send_ok(req, "更新成功");
