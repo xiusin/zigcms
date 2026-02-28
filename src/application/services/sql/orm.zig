@@ -2180,6 +2180,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
 /// 模型查询构建器
 pub fn ModelQuery(comptime T: type) type {
+    const OrmQueryResult = QueryResult(T);
     return struct {
         const Self = @This();
 
@@ -3004,6 +3005,41 @@ pub fn ModelQuery(comptime T: type) type {
             return self.mapResults(&result);
         }
 
+        /// 执行查询（使用 Arena Allocator 自动管理内存）
+        ///
+        /// 推荐在需要跨作用域保留查询结果时使用，避免手动深拷贝字符串字段。
+        /// Arena 内所有字符串内存由 QueryResult 统一管理，调用 deinit() 一次性释放。
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var role_q = OrmRole.Query();
+        /// defer role_q.deinit();
+        /// _ = role_q.whereRaw(in_clause);
+        /// var result = try role_q.getWithArena(self.allocator);
+        /// defer result.deinit();
+        ///
+        /// for (result.items()) |role| {
+        ///     std.debug.print("role: {s}\n", .{role.role_name}); // 安全访问
+        /// }
+        /// ```
+        pub fn getWithArena(self: *Self, backing_allocator: Allocator) !OrmQueryResult {
+            const sql = try self.toSql();
+            defer self.db.allocator.free(sql);
+
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            var result_set = try self.db.rawQuery(sql, .{});
+            defer result_set.deinit();
+
+            const rows = try self.mapResultsWithAllocator(arena.allocator(), &result_set);
+
+            return OrmQueryResult{
+                .arena = arena,
+                .models = rows,
+            };
+        }
+
         /// 获取结果（返回 List 包装器，自动管理内存）
         /// 使用: var list = try query.collect(); defer list.deinit();
         pub fn collect(self: *Self) !define(T).List {
@@ -3397,8 +3433,13 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         fn mapResults(self: *Self, result: *interface.ResultSet) ![]T {
+            return self.mapResultsWithAllocator(self.db.allocator, result);
+        }
+
+        fn mapResultsWithAllocator(self: *Self, alloc: Allocator, result: *interface.ResultSet) ![]T {
+            _ = self;
             var models = std.ArrayListUnmanaged(T){};
-            errdefer models.deinit(self.db.allocator);
+            errdefer models.deinit(alloc);
 
             const fields = std.meta.fields(T);
             var field_indices: [fields.len]?usize = .{null} ** fields.len;
@@ -3432,7 +3473,7 @@ pub fn ModelQuery(comptime T: type) type {
                         if (val) |v| {
                             // 根据可选类型的子类型进行转换
                             if (child_type == []const u8) {
-                                @field(model, field.name) = try self.db.allocator.dupe(u8, v);
+                                @field(model, field.name) = try alloc.dupe(u8, v);
                             } else if (@typeInfo(child_type) == .int) {
                                 @field(model, field.name) = std.fmt.parseInt(child_type, v, 10) catch null;
                             } else if (@typeInfo(child_type) == .float) {
@@ -3446,7 +3487,7 @@ pub fn ModelQuery(comptime T: type) type {
                     } else if (field.type == []const u8) {
                         // 复制字符串到堆内存（避免悬空指针）
                         if (val) |v| {
-                            @field(model, field.name) = try self.db.allocator.dupe(u8, v);
+                            @field(model, field.name) = try alloc.dupe(u8, v);
                         } else {
                             @field(model, field.name) = "";
                         }
@@ -3467,10 +3508,10 @@ pub fn ModelQuery(comptime T: type) type {
                     }
                 }
 
-                try models.append(self.db.allocator, model);
+                try models.append(alloc, model);
             }
 
-            return models.toOwnedSlice(self.db.allocator);
+            return models.toOwnedSlice(alloc);
         }
 
         // 使用顶层的 formatWhere 函数

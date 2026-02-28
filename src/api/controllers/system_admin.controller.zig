@@ -254,38 +254,16 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         role_ids.append(self.allocator, rel.role_id) catch {};
     }
 
-    var roles = std.ArrayListUnmanaged(models.SysRole){};
-    defer {
-        for (roles.items) |role| {
-            self.allocator.free(role.role_name);
-            self.allocator.free(role.role_key);
-            self.allocator.free(role.remark);
-        }
-        roles.deinit(self.allocator);
-    }
-    if (role_ids.items.len > 0) {
+    var role_result: sql.QueryResult(models.SysRole) = if (role_ids.items.len > 0) blk: {
         var role_q = OrmRole.Query();
         defer role_q.deinit();
         const role_in_clause = buildInClause(self.allocator, "id", role_ids.items) catch return base.send_failed(req, "构建查询条件失败");
         defer self.allocator.free(role_in_clause);
         _ = role_q.whereRaw(role_in_clause);
-        const role_rows = role_q.get() catch |err| return base.send_error(req, err);
-        defer OrmRole.freeModels(role_rows);
-        for (role_rows) |role| {
-            const role_copy = models.SysRole{
-                .id = role.id,
-                .role_name = self.allocator.dupe(u8, role.role_name) catch role.role_name,
-                .role_key = self.allocator.dupe(u8, role.role_key) catch role.role_key,
-                .sort = role.sort,
-                .status = role.status,
-                .remark = self.allocator.dupe(u8, role.remark) catch role.remark,
-                .data_scope = role.data_scope,
-                .created_at = role.created_at,
-                .updated_at = role.updated_at,
-            };
-            roles.append(self.allocator, role_copy) catch {};
-        }
-    }
+        break :blk role_q.getWithArena(self.allocator) catch |err| return base.send_error(req, err);
+    } else sql.QueryResult(models.SysRole){ .arena = std.heap.ArenaAllocator.init(self.allocator), .models = &.{} };
+    defer role_result.deinit();
+    const roles = role_result.items();
 
     const AdminRow = struct {
         id: ?i32,
@@ -361,7 +339,7 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         defer role_text_builder.deinit(self.allocator);
         for (normalized_role_ids, 0..) |sorted_role_id, idx| {
             owned_role_names[idx] = "";
-            for (roles.items) |role| {
+            for (roles) |role| {
                 if ((role.id orelse 0) == sorted_role_id) {
                     const role_name_owned = self.allocator.dupe(u8, role.role_name) catch role.role_name;
                     owned_role_names[idx] = role_name_owned;
