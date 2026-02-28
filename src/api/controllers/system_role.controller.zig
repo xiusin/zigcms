@@ -37,6 +37,8 @@ const OrmRolePermission = sql.defineWithConfig(models.SysRolePermission, .{
     .primary_key = "id",
 });
 
+const ROLE_CACHE_VERSION_KEY = "sys:role:list:version";
+
 /// 初始化角色扩展控制器。
 pub fn init(allocator: Allocator) Self {
     if (!OrmPermission.hasDb()) {
@@ -56,6 +58,24 @@ pub const button_perms = buttonPermsImpl;
 
 /// 角色权限保存接口。
 pub const role_permissions_save = rolePermissionsSaveImpl;
+
+/// 读取角色列表缓存版本。
+pub fn getRoleCacheVersion(allocator: Allocator) []const u8 {
+    const db = global.get_db();
+    if (db.kv_get(allocator, ROLE_CACHE_VERSION_KEY)) |version| {
+        return version;
+    } else |_| {}
+    return "0";
+}
+
+/// 刷新角色列表缓存版本。
+pub fn bumpRoleCacheVersion(allocator: Allocator) void {
+    const db = global.get_db();
+    const now = std.time.timestamp();
+    const version = std.fmt.allocPrint(allocator, "{d}", .{now}) catch return;
+    defer allocator.free(version);
+    db.kv_set(ROLE_CACHE_VERSION_KEY, version) catch {};
+}
 
 /// 返回按钮权限候选列表。
 fn buttonPermsImpl(self: *Self, req: zap.Request) !void {
@@ -148,6 +168,8 @@ fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
             .permission_id = permission_id,
         }) catch |err| return base.send_error(req, err);
     }
+
+    bumpRoleCacheVersion(self.allocator);
 
     base.send_ok(req, "权限保存成功");
 }

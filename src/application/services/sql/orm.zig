@@ -725,6 +725,32 @@ pub const Database = struct {
     pub fn lastInsertId(self: *Database) u64 {
         return self.last_insert_id;
     }
+
+    /// 简单键值存储 - 获取值
+    /// 用于缓存版本号等轻量级场景
+    pub fn kv_get(self: *Database, allocator: Allocator, key: []const u8) ![]const u8 {
+        const sql = "SELECT value FROM sys_kv_store WHERE key = ?";
+        var result = try self.rawQuery(sql, .{key});
+        defer result.deinit();
+
+        if (result.next()) {
+            const row = result.getCurrentRow() orelse return error.KeyNotFound;
+            const value = row.getString("value") orelse return error.ValueNotFound;
+            return try allocator.dupe(u8, value);
+        }
+        return error.KeyNotFound;
+    }
+
+    /// 简单键值存储 - 设置值
+    /// 用于缓存版本号等轻量级场景
+    pub fn kv_set(self: *Database, key: []const u8, value: []const u8) !void {
+        const sql = switch (self.driver_type) {
+            .mysql => "INSERT INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = UNIX_TIMESTAMP()",
+            .sqlite, .memory => "INSERT OR REPLACE INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, strftime('%s', 'now'))",
+            else => return error.UnsupportedDriver,
+        };
+        _ = try self.exec(sql, .{ key, value });
+    }
 };
 
 // ============================================================================
@@ -1485,11 +1511,11 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         fn updateWith(db: *Database, id: anytype, data: anytype) !u64 {
             const DataType = @TypeOf(data);
             const type_info = @typeInfo(DataType);
-            
+
             if (type_info != .@"struct") {
                 @compileError("UpdateWith requires a struct type");
             }
-            
+
             var sql = std.ArrayListUnmanaged(u8){};
             errdefer sql.deinit(db.allocator);
 
@@ -1509,13 +1535,13 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 if (!is_pk and !is_created_at and !is_updated_at) {
                     const value = @field(data, field.name);
                     const field_type_info = @typeInfo(field.type);
-                    
+
                     // 检查是否应该包含此字段
-                    const should_include = if (comptime field_type_info == .optional) 
-                        value != null 
-                    else 
+                    const should_include = if (comptime field_type_info == .optional)
+                        value != null
+                    else
                         true;
-                    
+
                     if (should_include) {
                         if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
                         try sql.appendSlice(db.allocator, field.name);
@@ -1543,7 +1569,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             try sql.appendSlice(db.allocator, " WHERE ");
             try sql.appendSlice(db.allocator, pk);
             try sql.appendSlice(db.allocator, " = ");
-            
+
             const id_str = try std.fmt.bufPrint(&buf, "{any}", .{id});
             try sql.appendSlice(db.allocator, id_str);
 
@@ -1555,21 +1581,21 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
         /// UpdateBuilder 类型定义
         pub fn UpdateBuilder(comptime ModelType: type, comptime IdType: type) type {
-            _ = ModelType;  // 用于类型推导，不直接使用
+            _ = ModelType; // 用于类型推导，不直接使用
             return struct {
                 const Builder = @This();
-                
+
                 allocator: Allocator,
                 db: *Database,
                 id: IdType,
                 fields: std.StringHashMapUnmanaged(FieldValue),
-                
+
                 const FieldValue = union(enum) {
                     int: i64,
                     string: []const u8,
                     null_value: void,
                 };
-                
+
                 pub fn init(allocator: Allocator, db: *Database, id: IdType) !Builder {
                     return Builder{
                         .allocator = allocator,
@@ -1578,7 +1604,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                         .fields = std.StringHashMapUnmanaged(FieldValue){},
                     };
                 }
-                
+
                 pub fn deinit(self: *Builder) void {
                     // 释放字符串字段
                     var it = self.fields.iterator();
@@ -1590,29 +1616,29 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     }
                     self.fields.deinit(self.allocator);
                 }
-                
+
                 /// 设置整数字段
                 pub fn setInt(self: *Builder, field_name: []const u8, value: anytype) !*Builder {
                     const name_copy = try self.allocator.dupe(u8, field_name);
                     errdefer self.allocator.free(name_copy);
-                    
+
                     try self.fields.put(self.allocator, name_copy, .{ .int = @intCast(value) });
                     return self;
                 }
-                
+
                 /// 设置字符串字段
                 pub fn setString(self: *Builder, field_name: []const u8, value: []const u8) !*Builder {
                     const name_copy = try self.allocator.dupe(u8, field_name);
                     errdefer self.allocator.free(name_copy);
-                    
+
                     const trimmed = std.mem.trim(u8, value, " \t\r\n");
                     const value_copy = try self.allocator.dupe(u8, trimmed);
                     errdefer self.allocator.free(value_copy);
-                    
+
                     try self.fields.put(self.allocator, name_copy, .{ .string = value_copy });
                     return self;
                 }
-                
+
                 /// 设置可选整数字段（null 值会被跳过）
                 pub fn setOptionalInt(self: *Builder, field_name: []const u8, value: ?i64) !*Builder {
                     if (value) |v| {
@@ -1620,7 +1646,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     }
                     return self;
                 }
-                
+
                 /// 设置可选字符串字段（null 值会被跳过）
                 pub fn setOptionalString(self: *Builder, field_name: []const u8, value: ?[]const u8) !*Builder {
                     if (value) |v| {
@@ -1628,40 +1654,40 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     }
                     return self;
                 }
-                
+
                 /// 从 JSON 值设置字段（自动判断类型）
                 pub fn setFromJson(self: *Builder, field_name: []const u8, json_value: std.json.Value) !*Builder {
                     switch (json_value) {
-                        .null => return self,  // 跳过 null
+                        .null => return self, // 跳过 null
                         .integer => |v| return self.setInt(field_name, v),
                         .string => |v| return self.setString(field_name, v),
-                        else => return self,  // 其他类型跳过
+                        else => return self, // 其他类型跳过
                     }
                 }
-                
+
                 /// 执行更新
                 pub fn execute(self: *Builder) !u64 {
                     if (self.fields.count() == 0) {
                         return error.NoFieldsToUpdate;
                     }
-                    
+
                     var sql = std.ArrayListUnmanaged(u8){};
                     errdefer sql.deinit(self.allocator);
-                    
+
                     try sql.appendSlice(self.allocator, "UPDATE ");
                     try sql.appendSlice(self.allocator, tableName());
                     try sql.appendSlice(self.allocator, " SET ");
-                    
+
                     var field_count: usize = 0;
-                    
+
                     // 添加用户设置的字段
                     var it = self.fields.iterator();
                     while (it.next()) |entry| {
                         if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
-                        
+
                         try sql.appendSlice(self.allocator, entry.key_ptr.*);
                         try sql.appendSlice(self.allocator, " = ");
-                        
+
                         switch (entry.value_ptr.*) {
                             .int => |v| {
                                 var buf: [32]u8 = undefined;
@@ -1681,10 +1707,10 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                                 try sql.appendSlice(self.allocator, "NULL");
                             },
                         }
-                        
+
                         field_count += 1;
                     }
-                    
+
                     // 自动添加 updated_at
                     if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
                     try sql.appendSlice(self.allocator, "updated_at = FROM_UNIXTIME(");
@@ -1693,17 +1719,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
                     try sql.appendSlice(self.allocator, ts_str);
                     try sql.appendSlice(self.allocator, ")");
-                    
+
                     try sql.appendSlice(self.allocator, " WHERE ");
                     try sql.appendSlice(self.allocator, primaryKey());
                     try sql.appendSlice(self.allocator, " = ");
-                    
+
                     const id_str = try std.fmt.bufPrint(&buf, "{any}", .{self.id});
                     try sql.appendSlice(self.allocator, id_str);
-                    
+
                     const final_sql = try sql.toOwnedSlice(self.allocator);
                     defer self.allocator.free(final_sql);
-                    
+
                     return self.db.exec(final_sql, .{});
                 }
             };
@@ -2360,14 +2386,14 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                         const value = @field(data, field.name);
                         const type_info = @typeInfo(field.type);
                         const is_updated_at = comptime std.mem.eql(u8, field.name, "updated_at");
-                        
+
                         // 跳过值为 null 的 optional 字段（updated_at 除外，它总是被设置）
                         const should_include = is_updated_at or (if (comptime type_info == .optional) value != null else true);
                         if (should_include) {
                             if (field_count > 0) try sql.appendSlice(allocator, ", ");
                             try sql.appendSlice(allocator, field.name);
                             try sql.appendSlice(allocator, " = ");
-                            
+
                             // 自动设置 updated_at 为当前时间戳（MySQL datetime 格式）
                             if (is_updated_at) {
                                 const now = std.time.timestamp();
@@ -2378,7 +2404,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                             } else {
                                 try appendValue(allocator, &sql, value, field.name);
                             }
-                            
+
                             field_count += 1;
                         }
                     }

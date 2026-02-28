@@ -36,6 +36,7 @@ pub const BizMemberPointLog = integration.BizMemberPointLog;
 pub const OpTask = integration.OpTask;
 pub const OpTaskLog = integration.OpTaskLog;
 pub const OpTaskScheduleLog = integration.OpTaskScheduleLog;
+pub const SysAdminRoleAudit = integration.SysAdminRoleAudit;
 pub const sys_dept = integration.sys_dept;
 pub const sys_position = integration.sys_position;
 pub const sys_role = integration.sys_role;
@@ -55,6 +56,7 @@ pub const biz_member_point_log = integration.biz_member_point_log;
 pub const op_task = integration.op_task;
 pub const op_task_log = integration.op_task_log;
 pub const op_task_schedule_log = integration.op_task_schedule_log;
+pub const sys_admin_role_audit = integration.sys_admin_role_audit;
 
 /// 实体类型枚举，用于泛型操作
 pub const EntityType = enum {

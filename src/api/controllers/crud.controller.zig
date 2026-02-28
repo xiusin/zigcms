@@ -7,6 +7,7 @@ const json_mod = @import("../../application/services/json/json.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const global = @import("../../core/primitives/global.zig");
 const strings = @import("../../core/utils/strings.zig");
+const role_ext = @import("system_role.controller.zig");
 
 /// 生成通用 CRUD 控制器。
 pub fn Crud(comptime T: type, comptime schema: []const u8) type {
@@ -50,6 +51,21 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
         /// 分页查询。
         fn listImpl(self: *Self, req: zap.Request) !void {
             req.parseQuery();
+            if (std.mem.eql(u8, table_name, "sys_role")) {
+                const version = role_ext.getRoleCacheVersion(self.allocator);
+                const need_free_version = !std.mem.eql(u8, version, "0");
+                defer if (need_free_version) self.allocator.free(version);
+                const etag = std.fmt.allocPrint(self.allocator, "\"{s}\"", .{version}) catch return base.send_failed(req, "缓存标签构建失败");
+                defer self.allocator.free(etag);
+                if (req.getHeader("if-none-match")) |if_none_match| {
+                    if (std.mem.eql(u8, std.mem.trim(u8, if_none_match, " \t\r\n"), etag)) {
+                        req.setStatus(.not_modified);
+                        return;
+                    }
+                }
+                req.setHeader("ETag", etag) catch {};
+                req.setHeader("Cache-Control", "private, max-age=60") catch {};
+            }
 
             var page: i32 = 1;
             var limit: i32 = 10;
@@ -121,23 +137,31 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             if (extractId(T, dto)) |id| {
                 if (id > 0) {
                     _ = OrmModel.Update(id, dto) catch |err| return base.send_error(req, err);
+                    if (std.mem.eql(u8, table_name, "sys_role")) {
+                        role_ext.bumpRoleCacheVersion(self.allocator);
+                    }
                     return base.send_ok(req, dto);
                 }
             }
 
             var created = OrmModel.Create(dto) catch |err| return base.send_error(req, err);
             defer OrmModel.freeModel(&created);
+            if (std.mem.eql(u8, table_name, "sys_role")) {
+                role_ext.bumpRoleCacheVersion(self.allocator);
+            }
             base.send_ok(req, created);
         }
 
         /// 删除数据。
         fn deleteImpl(self: *Self, req: zap.Request) !void {
-            _ = self;
             req.parseQuery();
             const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
             const id: usize = strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误");
 
             _ = OrmModel.Destroy(id) catch |err| return base.send_error(req, err);
+            if (std.mem.eql(u8, table_name, "sys_role")) {
+                role_ext.bumpRoleCacheVersion(self.allocator);
+            }
             base.send_ok(req, "删除成功");
         }
 
@@ -176,6 +200,9 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
 
             _ = OrmModel.Update(id, model) catch |err| return base.send_error(req, err);
+            if (std.mem.eql(u8, table_name, "sys_role")) {
+                role_ext.bumpRoleCacheVersion(self.allocator);
+            }
             base.send_ok(req, "更新成功");
         }
 

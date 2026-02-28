@@ -254,6 +254,18 @@ pub const OpTaskScheduleLog = struct {
     created_at: ?i64 = null,
 };
 
+/// 管理员角色分配审计日志模型
+pub const SysAdminRoleAudit = struct {
+    id: ?i32 = null,
+    admin_id: i32 = 0,
+    operator_id: i32 = 0,
+    operator_name: []const u8 = "",
+    old_role_ids: []const u8 = "",
+    new_role_ids: []const u8 = "",
+    request_ip: []const u8 = "",
+    created_at: ?i64 = null,
+};
+
 /// 通用 CRUD 类型别名（用于自动推导表名）
 pub const sys_dept = SysDept;
 pub const sys_position = SysPosition;
@@ -274,3 +286,4 @@ pub const biz_member_point_log = BizMemberPointLog;
 pub const op_task = OpTask;
 pub const op_task_log = OpTaskLog;
 pub const op_task_schedule_log = OpTaskScheduleLog;
+pub const sys_admin_role_audit = SysAdminRoleAudit;

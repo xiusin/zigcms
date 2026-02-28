@@ -34,6 +34,11 @@ const OrmRole = sql.defineWithConfig(models.SysRole, .{
     .primary_key = "id",
 });
 
+const OrmAdminRoleAudit = sql.defineWithConfig(models.SysAdminRoleAudit, .{
+    .table_name = "sys_admin_role_audit",
+    .primary_key = "id",
+});
+
 /// 初始化管理员扩展控制器。
 pub fn init(allocator: Allocator) Self {
     if (!OrmAdmin.hasDb()) {
@@ -45,7 +50,32 @@ pub fn init(allocator: Allocator) Self {
     if (!OrmRole.hasDb()) {
         OrmRole.use(global.get_db());
     }
+    if (!OrmAdminRoleAudit.hasDb()) {
+        OrmAdminRoleAudit.use(global.get_db());
+    }
     return .{ .allocator = allocator };
+}
+
+/// 从请求头解析操作人信息。
+fn parseOperator(req: zap.Request) struct { operator_id: i32, operator_name: []const u8 } {
+    const uid_raw = req.getHeader("x-user-id") orelse req.getHeader("x-admin-id") orelse "";
+    const uname = req.getHeader("x-username") orelse req.getHeader("x-admin-name") orelse "system";
+    const uid = std.fmt.parseInt(i32, uid_raw, 10) catch 0;
+    return .{ .operator_id = uid, .operator_name = uname };
+}
+
+/// 将角色ID列表序列化为逗号分隔字符串。
+fn joinRoleIds(allocator: Allocator, role_ids: []const i32) ![]u8 {
+    if (role_ids.len == 0) return allocator.dupe(u8, "");
+    var buf = std.ArrayListUnmanaged(u8){};
+    errdefer buf.deinit(allocator);
+    for (role_ids, 0..) |rid, idx| {
+        if (idx > 0) try buf.append(allocator, ',');
+        const seg = try std.fmt.allocPrint(allocator, "{d}", .{rid});
+        defer allocator.free(seg);
+        try buf.appendSlice(allocator, seg);
+    }
+    return try buf.toOwnedSlice(allocator);
 }
 
 /// 构造 IN 查询子句。
@@ -769,6 +799,8 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     }
 
     const admin_id: i32 = @intCast(id_val.integer);
+    const operator = parseOperator(req);
+    const request_ip = req.getHeader("x-forwarded-for") orelse "";
 
     var old_q = OrmAdminRole.WhereEq("admin_id", admin_id);
     defer old_q.deinit();
@@ -797,10 +829,9 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     defer valid_role_ids.deinit(self.allocator);
     for (new_norm) |role_id_num| {
         const role_opt = OrmRole.Find(role_id_num) catch |err| return base.send_error(req, err);
-        if (role_opt) |_| {
-            valid_role_ids.append(self.allocator, role_id_num) catch {};
-            OrmRole.freeModel(@constCast(&role_opt.?));
-        }
+        if (role_opt == null) return base.send_failed(req, "存在无效角色ID");
+        valid_role_ids.append(self.allocator, role_id_num) catch {};
+        OrmRole.freeModel(@constCast(&role_opt.?));
     }
 
     const db = global.get_db();
@@ -821,6 +852,23 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
             .role_id = role_id_num,
         }) catch |err| return base.send_error(req, err);
     }
+
+    const old_role_ids_text = joinRoleIds(self.allocator, old_norm) catch return base.send_failed(req, "角色审计数据构建失败");
+    defer self.allocator.free(old_role_ids_text);
+    const new_role_ids_text = joinRoleIds(self.allocator, valid_role_ids.items) catch return base.send_failed(req, "角色审计数据构建失败");
+    defer self.allocator.free(new_role_ids_text);
+
+    _ = OrmAdminRoleAudit.Create(.{
+        .admin_id = admin_id,
+        .operator_id = operator.operator_id,
+        .operator_name = operator.operator_name,
+        .old_role_ids = old_role_ids_text,
+        .new_role_ids = new_role_ids_text,
+        .request_ip = request_ip,
+        .created_at = std.time.timestamp(),
+    }) catch |err| {
+        std.log.err("写入管理员角色审计失败 admin_id={d} err={}", .{ admin_id, err });
+    };
 
     if (tx_started) {
         db.commit() catch |err| return base.send_error(req, err);

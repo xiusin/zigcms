@@ -154,23 +154,23 @@
                 <div class="role-tags-cell">
                   <template v-if="record.role_text">
                     <a-tag
-                      v-for="(tag, index) in record.role_text.split(',').slice(0, 2)"
+                      v-for="(tag, index) in record.role_text.split(',').slice(0, roleTagThreshold)"
                       :key="index"
-                      size="mini"
+                      size="small"
                       class="glass-role-tag"
                     >
                       {{ tag }}
                     </a-tag>
-                    <a-popover v-if="record.role_text.split(',').length > 2" position="top">
-                      <a-tag size="mini" class="glass-role-tag plus-tag">
-                        +{{ record.role_text.split(',').length - 2 }}
+                    <a-popover v-if="record.role_text.split(',').length > roleTagThreshold" position="top">
+                      <a-tag size="small" class="glass-role-tag plus-tag">
+                        {{ roleI18n.morePrefix }}{{ record.role_text.split(',').length - roleTagThreshold }}
                       </a-tag>
                       <template #content>
                         <div class="role-popover-list">
                           <a-tag
-                            v-for="(tag, index) in record.role_text.split(',').slice(2)"
+                            v-for="(tag, index) in record.role_text.split(',').slice(roleTagThreshold)"
                             :key="index"
-                            size="mini"
+                            size="small"
                             class="glass-role-tag"
                             style="margin: 4px"
                           >
@@ -180,7 +180,7 @@
                       </template>
                     </a-popover>
                   </template>
-                  <span v-else class="empty-text">-</span>
+                  <span v-else class="empty-text">{{ roleI18n.empty }}</span>
                 </div>
               </template>
               <template #status="{ record }">
@@ -296,6 +296,7 @@
       :title="isEdit ? '编辑管理员' : '添加管理员'"
       :width="600"
       :unmount-on-close="true"
+      :confirm-loading="saveLoading"
       @ok="handleSave"
     >
       <a-form ref="formRef" :model="formData" :rules="rules" layout="vertical">
@@ -430,6 +431,7 @@
       :width="440"
       :unmount-on-close="true"
       class="glass-modal"
+      :confirm-loading="assignRoleLoading"
       @ok="confirmAssignRole"
     >
       <div v-if="roleVisible" class="modal-content-glass">
@@ -465,8 +467,18 @@
 
 <script setup lang="ts">
   import { ref, reactive, computed, onMounted } from 'vue';
-  import { Message, Modal } from '@arco-design/web-vue';
+  import { Message } from '@arco-design/web-vue';
   import request from '@/api/request';
+
+  const ROLE_CACHE_KEY = 'org_role_list_cache_v1';
+
+  const roleI18n = {
+    empty: '无角色',
+    morePrefix: '+',
+  } as const;
+
+  const isMobile = computed(() => window.innerWidth <= 768);
+  const roleTagThreshold = computed(() => (isMobile.value ? 1 : 2));
 
   // ========== 状态定义与去重控制 ==========
   const roleList = ref<any[]>([]);
@@ -498,6 +510,32 @@
     dept_name: [{ required: true, message: '请输入部门名称' }],
     dept_code: [{ required: true, message: '请输入部门编码' }],
   };
+
+  const persistRoleCache = (list: any[]) => {
+    try {
+      localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(list || []));
+    } catch (_) {}
+  };
+
+  const loadRoleCache = (): any[] => {
+    try {
+      const raw = localStorage.getItem(ROLE_CACHE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  };
+
+  const emitOpLog = (action: string, payload?: Record<string, any>) => {
+    // eslint-disable-next-line no-console
+    console.info('[operation-log]', {
+      action,
+      at: new Date().toISOString(),
+      payload: payload || {},
+    });
+  };
   const deptModalTitle = computed(() =>
     deptForm.id ? '编辑部门' : '添加部门'
   );
@@ -512,6 +550,8 @@
   const filterRoleId = ref<number | undefined>();
   const filterStatus = ref<number | undefined>();
   const refreshTimer = ref<number | null>(null);
+  const saveLoading = ref(false);
+  const assignRoleLoading = ref(false);
 
   const formData = reactive({
     id: 0,
@@ -706,11 +746,31 @@
 
   // ========== 管理员方法 ==========
   const fetchRoleList = () => {
-    safeRequest('获取角色列表', '/api/role/list', { pageSize: 100 }).then(
-      (res: any) => {
-      roleList.value = res.data?.list || [];
-      }
-    );
+    safeRequest('获取角色列表', '/api/role/list', { pageSize: 100 })
+      .then((res: any) => {
+        roleList.value = res.data?.list || [];
+        persistRoleCache(roleList.value);
+      })
+      .catch(() => {
+        Message.warning('获取角色列表失败，2秒后将自动重试');
+        window.setTimeout(() => {
+          safeRequest('重试获取角色列表', '/api/role/list', { pageSize: 100 })
+            .then((res: any) => {
+              roleList.value = res.data?.list || [];
+              persistRoleCache(roleList.value);
+            })
+            .catch(() => {
+              const cached = loadRoleCache();
+              if (cached.length > 0) {
+                roleList.value = cached;
+                Message.warning('角色列表获取失败，已使用本地缓存');
+              } else {
+                roleList.value = [];
+                Message.error('角色列表获取失败，已使用空列表占位');
+              }
+            });
+        }, 2000);
+      });
   };
 
   const handleRefresh = () => {
@@ -756,6 +816,7 @@
   };
 
   const handleSave = async () => {
+    if (saveLoading.value) return;
     const valid = await formRef.value?.validate();
     if (valid) return;
 
@@ -777,14 +838,18 @@
       return;
     }
 
+    saveLoading.value = true;
     safeRequest('保存管理员', '/api/system/admin/save', {
       ...formData,
       dept_id: formData.dept_id ?? selectedDeptId.value,
       role_ids: formData.role_ids?.map(Number) ?? [],
     }).then(() => {
+      emitOpLog('admin_save', { id: formData.id, role_ids: formData.role_ids });
       Message.success(isEdit.value ? '编辑成功' : '添加成功');
       modalVisible.value = false;
       handleRefresh();
+    }).finally(() => {
+      saveLoading.value = false;
     });
   };
 
@@ -875,13 +940,18 @@
   };
 
   const confirmAssignRole = () => {
+    if (assignRoleLoading.value) return;
+    assignRoleLoading.value = true;
     safeRequest('分配管理员角色', '/api/system/admin/assignRoles', {
       id: roleRecord.value.id,
       role_ids: selectedRoles.value.map(Number),
     }).then(() => {
+      emitOpLog('admin_assign_roles', { id: roleRecord.value.id, role_ids: selectedRoles.value.map(Number) });
       Message.success('角色分配成功');
       roleVisible.value = false;
       handleRefresh();
+    }).finally(() => {
+      assignRoleLoading.value = false;
     });
   };
 
@@ -935,12 +1005,28 @@
       :deep(.arco-tree-node) {
         border-radius: 8px;
         margin-bottom: 2px;
-        padding: 4px 8px;
+        padding: 0;
         transition: all 0.2s ease;
+        display: flex !important; // 强制 flex 布局
+        width: 100% !important;   // 强制满宽
+
+        // 核心修正：强制 title 容器占满剩余空间并允许收缩
+        .arco-tree-node-title {
+          flex: 1 !important;
+          min-width: 0 !important;
+          padding: 4px 8px;
+          background-color: transparent !important;
+          display: block;
+          overflow: hidden;
+          
+          &:hover {
+            background-color: transparent !important;
+          }
+        }
 
         &:hover {
           background: rgba(var(--primary-6), 0.04);
-          .node-actions-premium { opacity: 1; transform: translateX(0); }
+          .node-actions-dropdown { opacity: 1; }
         }
 
         &.arco-tree-node-selected {
@@ -967,7 +1053,7 @@
         align-items: center;
         width: 100%;
         gap: 8px;
-        position: relative;
+        position: relative; // 建立绝对定位基准
 
         .node-content-wrapper {
           flex: 1;
@@ -976,6 +1062,7 @@
           align-items: center;
           gap: 6px;
           overflow: hidden;
+          padding-right: 28px; // 强制预留右侧按钮空间
 
           .node-title {
             font-size: 13px;
@@ -998,12 +1085,21 @@
         }
 
         .node-actions-dropdown {
-          flex-shrink: 0;
+          position: absolute; // 脱离文档流，锁定位置
+          right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 10; // 确保置顶
           opacity: 0;
           transition: all 0.2s;
-          margin-left: auto;
           display: flex;
           align-items: center;
+          padding-left: 12px;
+          // 增加更强的右侧遮罩，确保长文本被遮盖时不干扰按钮
+          background: linear-gradient(to left, rgba(255, 255, 255, 1) 40%, rgba(255, 255, 255, 0.8) 70%, transparent 100%);
+          backdrop-filter: blur(4px);
+          height: 100%;
+          border-radius: 0 8px 8px 0;
 
           .more-action-btn {
             width: 22px;
@@ -1205,5 +1301,18 @@
     display: flex;
     flex-wrap: wrap;
     padding: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .role-tags-cell {
+      gap: 2px;
+
+      .glass-role-tag {
+        font-size: 10px;
+        padding: 0 4px;
+        height: 18px;
+        line-height: 17px;
+      }
+    }
   }
 </style>
