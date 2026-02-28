@@ -95,6 +95,8 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
     var status: ?i32 = null;
     var dept_id: ?i32 = null;
     var role_id: ?i32 = null;
+    var sort_field: []const u8 = "";
+    var sort_value: []const u8 = "";
 
     var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
         return base.send_error(req, err);
@@ -117,6 +119,68 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         }
     }
 
+    // 兼容 JSON body 参数
+    req.parseBody() catch {};
+    if (req.body) |body| {
+        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+        defer if (parsed) |*p| p.deinit();
+        if (parsed) |p| {
+            if (p.value == .object) {
+                const obj = p.value.object;
+                if (obj.get("page")) |v| switch (v) {
+                    .integer => page = @intCast(v.integer),
+                    else => {},
+                };
+                if (obj.get("pageSize")) |v| switch (v) {
+                    .integer => limit = @intCast(v.integer),
+                    else => {},
+                };
+                if (obj.get("limit")) |v| switch (v) {
+                    .integer => limit = @intCast(v.integer),
+                    else => {},
+                };
+                if (obj.get("keyword")) |v| switch (v) {
+                    .string => keyword = v.string,
+                    else => {},
+                };
+                if (obj.get("status")) |v| switch (v) {
+                    .integer => status = @intCast(v.integer),
+                    .string => {
+                        if (v.string.len > 0) status = @intCast(strings.to_int(v.string) catch 0);
+                    },
+                    else => {},
+                };
+                if (obj.get("dept_id")) |v| switch (v) {
+                    .integer => dept_id = @intCast(v.integer),
+                    .string => {
+                        if (v.string.len > 0) dept_id = @intCast(strings.to_int(v.string) catch 0);
+                    },
+                    else => {},
+                };
+                if (obj.get("role_id")) |v| switch (v) {
+                    .integer => role_id = @intCast(v.integer),
+                    .string => {
+                        if (v.string.len > 0) role_id = @intCast(strings.to_int(v.string) catch 0);
+                    },
+                    else => {},
+                };
+                if (obj.get("sort")) |v| switch (v) {
+                    .object => {
+                        if (v.object.get("field")) |sf| switch (sf) {
+                            .string => sort_field = sf.string,
+                            else => {},
+                        };
+                        if (v.object.get("value")) |sv| switch (sv) {
+                            .string => sort_value = sv.string,
+                            else => {},
+                        };
+                    },
+                    else => {},
+                };
+            }
+        }
+    }
+
     if (page < 1) page = 1;
     if (limit < 1) limit = 10;
     if (limit > 200) limit = 200;
@@ -134,7 +198,13 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         defer self.allocator.free(keyword_clause);
         _ = q.whereRaw(keyword_clause);
     }
-    _ = q.orderBy("id", .desc);
+    if (sort_field.len > 0 and (std.mem.eql(u8, sort_value, "asc") or std.mem.eql(u8, sort_value, "ASC"))) {
+        _ = q.orderBy(sort_field, .asc);
+    } else if (sort_field.len > 0 and (std.mem.eql(u8, sort_value, "desc") or std.mem.eql(u8, sort_value, "DESC"))) {
+        _ = q.orderBy(sort_field, .desc);
+    } else {
+        _ = q.orderBy("id", .desc);
+    }
 
     var role_filtered_admin_ids = std.ArrayListUnmanaged(i32){};
     defer role_filtered_admin_ids.deinit(self.allocator);
