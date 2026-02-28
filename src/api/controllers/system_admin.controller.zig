@@ -436,12 +436,27 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
 
     var role_id_present = false;
     var target_role_id: i32 = 0;
-    if (obj.get("role_id")) |role_val| {
-        role_id_present = true;
-        if (role_val == .integer) {
-            target_role_id = @intCast(role_val.integer);
-        } else if (role_val != .null) {
-            return base.send_failed(req, "role_id 参数格式错误");
+    
+    // 优先使用 role_ids 数组（如果存在且有值）
+    if (obj.get("role_ids")) |role_ids_val| {
+        if (role_ids_val == .array and role_ids_val.array.items.len > 0) {
+            role_id_present = true;
+            const first_role = role_ids_val.array.items[0];
+            if (first_role == .integer) {
+                target_role_id = @intCast(first_role.integer);
+            }
+        }
+    }
+    
+    // 如果没有 role_ids，则使用 role_id
+    if (!role_id_present) {
+        if (obj.get("role_id")) |role_val| {
+            role_id_present = true;
+            if (role_val == .integer) {
+                target_role_id = @intCast(role_val.integer);
+            } else if (role_val != .null) {
+                return base.send_failed(req, "role_id 参数格式错误");
+            }
         }
     }
 
@@ -468,16 +483,7 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
             }
         }
 
-        // 处理密码字段（需要特殊处理）
-        var temp_obj = std.json.ObjectMap.init(self.allocator);
-        defer temp_obj.deinit();
-        
-        // 复制原始 JSON 对象
-        var it = obj.iterator();
-        while (it.next()) |entry| {
-            try temp_obj.put(entry.key_ptr.*, entry.value_ptr.*);
-        }
-        
+        // 处理密码字段
         if (obj.get("password")) |pwd_val| {
             if (pwd_val == .string and pwd_val.string.len > 0) {
                 var confirm_ok = true;
@@ -490,14 +496,24 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
 
                 const pwd_hash = strings.md5(self.allocator, pwd_val.string) catch return base.send_failed(req, "密码加密失败");
                 dynamic_hash = pwd_hash;
-                
-                // 将加密后的密码添加到临时对象中
-                try temp_obj.put("password_hash", .{ .string = pwd_hash });
             }
         }
 
-        // 使用优雅的 PartialUpdateFromJson API（只更新 JSON 中存在的字段）
-        _ = OrmAdmin.PartialUpdateFromJson(id, temp_obj) catch |err| return base.send_error(req, err);
+        // 使用真正的动态匿名结构体 .{} 更新（Zig 编译时特性）
+        // 只包含需要更新的字段，null 值会被自动跳过
+        _ = OrmAdmin.UpdateWith(id, .{
+            .username = if (obj.get("username")) |v| if (v == .string) v.string else null else null,
+            .nickname = if (obj.get("nickname")) |v| if (v == .string) v.string else null else null,
+            .password_hash = dynamic_hash,
+            .mobile = if (obj.get("mobile")) |v| if (v == .string) v.string else null else null,
+            .email = if (obj.get("email")) |v| if (v == .string) v.string else null else null,
+            .avatar = if (obj.get("avatar")) |v| if (v == .string) v.string else null else null,
+            .gender = if (obj.get("gender")) |v| if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null,
+            .dept_id = if (obj.get("dept_id")) |v| if (v == .null) null else if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null,
+            .position_id = if (obj.get("position_id")) |v| if (v == .null) null else if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null,
+            .status = if (obj.get("status")) |v| if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null,
+            .remark = if (obj.get("remark")) |v| if (v == .string) v.string else null else null,
+        }) catch |err| return base.send_error(req, err);
         admin_id = id;
     } else {
         const username_val = obj.get("username") orelse return base.send_failed(req, "缺少 username 参数");
@@ -540,9 +556,18 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
     if (role_id_present) {
         if (target_role_id > 0) {
             ensureRoleEnabled(target_role_id) catch |err| switch (err) {
-                error.InvalidRole => return base.send_failed(req, "角色不存在"),
-                error.RoleDisabled => return base.send_failed(req, "角色已禁用"),
-                else => return base.send_error(req, err),
+                error.InvalidRole => {
+                    std.log.err("角色不存在: role_id={d}", .{target_role_id});
+                    return base.send_failed(req, "角色不存在");
+                },
+                error.RoleDisabled => {
+                    std.log.err("角色已禁用: role_id={d}", .{target_role_id});
+                    return base.send_failed(req, "角色已禁用");
+                },
+                else => {
+                    std.log.err("角色验证失败: role_id={d}, error={}", .{ target_role_id, err });
+                    return base.send_error(req, err);
+                },
             };
             try replaceAdminRoles(admin_id, &.{target_role_id});
         } else {

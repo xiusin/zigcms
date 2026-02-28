@@ -475,34 +475,74 @@ for (role_result.items()) |role| {
 
 **参考文档**：`knowlages/orm_memory_lifecycle.md`
 
-6) **部分更新优化（PartialUpdateFromJson）**
+6) **部分更新优化**
 
-对于 API 接口场景，推荐使用 `PartialUpdateFromJson` 方法，直接从 JSON 对象更新数据库记录：
+对于 API 接口场景，推荐使用 `UpdateWith` 方法，利用 Zig 的 `comptime` 特性动态构建匿名结构体：
+
+**推荐方案：UpdateWith（真正的 Zig 风格）**
 
 ```zig
-// ✅ 优雅的部分更新方式
-const json_obj = parsed.value.object;
-_ = try OrmAdmin.PartialUpdateFromJson(id, json_obj);
+// 使用匿名结构体 .{} 动态构建更新字段
+_ = try OrmAdmin.UpdateWith(id, .{
+    .username = if (obj.get("username")) |v| if (v == .string) v.string else null else null,
+    .nickname = if (obj.get("nickname")) |v| if (v == .string) v.string else null else null,
+    .status = if (obj.get("status")) |v| if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null,
+    .dept_id = if (obj.get("dept_id")) |v| 
+        if (v == .null) null 
+        else if (v == .integer) @as(?i32, @intCast(v.integer)) else null 
+        else null,
+});
 ```
 
-**特性**：
-- 只更新 JSON 中存在的字段
-- 自动跳过 `null` 值（不更新为 NULL）
-- 自动跳过 `id`、`created_at`
-- 自动设置 `updated_at` 为当前时间
-- 字符串自动 trim 和转义
+**核心优势**：
+- 真正的 Zig 风格：使用原生匿名结构体语法 `.{}`
+- 编译时类型推导：零运行时开销
+- 自动跳过 null：optional 字段值为 `null` 时自动跳过
+- 类型安全：编译时检查字段存在性和类型匹配
+- 简洁优雅：一行代码完成更新
 
-**使用场景**：
-- API 接口更新操作
-- 前端表单提交
-- 部分字段更新
+**辅助函数简化 JSON 提取**：
 
-**不适用场景**：
-- 高频批量更新（使用传统 `Update` 方法）
-- 需要复杂业务逻辑的更新
-- 跨表事务更新
+```zig
+fn getStringOrNull(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
+    if (obj.get(key)) |v| if (v == .string) return v.string;
+    return null;
+}
 
-**参考文档**：`knowlages/orm_partial_update_from_json.md`
+fn getIntOrNull(obj: std.json.ObjectMap, key: []const u8) ?i32 {
+    if (obj.get(key)) |v| if (v == .integer) return @intCast(v.integer);
+    return null;
+}
+
+// 使用
+_ = try OrmAdmin.UpdateWith(id, .{
+    .username = getStringOrNull(obj, "username"),
+    .status = getIntOrNull(obj, "status"),
+    .dept_id = getIntOrNull(obj, "dept_id"),
+});
+```
+
+**备选方案：UpdateBuilder（需要运行时动态构建时）**
+
+```zig
+var builder = try OrmAdmin.updateBuilder(self.allocator, id);
+defer builder.deinit();
+
+var it = obj.iterator();
+while (it.next()) |entry| {
+    _ = try builder.setFromJson(entry.key_ptr.*, entry.value_ptr.*);
+}
+
+_ = try builder.execute();
+```
+
+**选择建议**：
+- 字段已知且数量不多 → 使用 UpdateWith（推荐）
+- 需要运行时动态遍历所有 JSON 字段 → 使用 UpdateBuilder
+
+**参考文档**：
+- `knowlages/orm_update_with_anonymous_struct.md`（UpdateWith 详细文档，推荐）
+- `knowlages/orm_update_builder.md`（UpdateBuilder 详细文档）
 
 ---
 

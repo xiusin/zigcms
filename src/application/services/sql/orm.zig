@@ -1450,6 +1450,265 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return decrement(getDb(), id, field, amount);
         }
 
+        /// UpdateBuilder - 动态构建更新字段的构建器
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var builder = try User.updateBuilder(allocator, id);
+        /// defer builder.deinit();
+        ///
+        /// try builder.set("username", "new_name");
+        /// try builder.set("status", 1);
+        /// try builder.set("dept_id", null);  // 可选字段
+        ///
+        /// _ = try builder.execute();
+        /// ```
+        pub fn updateBuilder(allocator: Allocator, id: anytype) !UpdateBuilder(T, @TypeOf(id)) {
+            return UpdateBuilder(T, @TypeOf(id)).init(allocator, getDb(), id);
+        }
+
+        /// 动态构建匿名结构体并更新（推荐）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// _ = try User.UpdateWith(id, .{
+        ///     .username = "new_name",
+        ///     .status = 1,
+        ///     .dept_id = null,  // null 会被跳过
+        /// });
+        /// ```
+        pub fn UpdateWith(id: anytype, data: anytype) !u64 {
+            return updateWith(getDb(), id, data);
+        }
+
+        /// 动态构建更新（内部实现）
+        fn updateWith(db: *Database, id: anytype, data: anytype) !u64 {
+            const DataType = @TypeOf(data);
+            const type_info = @typeInfo(DataType);
+            
+            if (type_info != .@"struct") {
+                @compileError("UpdateWith requires a struct type");
+            }
+            
+            var sql = std.ArrayListUnmanaged(u8){};
+            errdefer sql.deinit(db.allocator);
+
+            try sql.appendSlice(db.allocator, "UPDATE ");
+            try sql.appendSlice(db.allocator, tableName());
+            try sql.appendSlice(db.allocator, " SET ");
+
+            const fields = std.meta.fields(DataType);
+            var field_count: usize = 0;
+            const pk = primaryKey();
+
+            inline for (fields) |field| {
+                const is_pk = std.mem.eql(u8, field.name, pk);
+                const is_created_at = comptime std.mem.eql(u8, field.name, "created_at");
+                const is_updated_at = comptime std.mem.eql(u8, field.name, "updated_at");
+
+                if (!is_pk and !is_created_at and !is_updated_at) {
+                    const value = @field(data, field.name);
+                    const field_type_info = @typeInfo(field.type);
+                    
+                    // 检查是否应该包含此字段
+                    const should_include = if (comptime field_type_info == .optional) 
+                        value != null 
+                    else 
+                        true;
+                    
+                    if (should_include) {
+                        if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+                        try sql.appendSlice(db.allocator, field.name);
+                        try sql.appendSlice(db.allocator, " = ");
+                        try appendValue(db.allocator, &sql, value, field.name);
+                        field_count += 1;
+                    }
+                }
+            }
+
+            // 自动添加 updated_at
+            if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+            try sql.appendSlice(db.allocator, "updated_at = FROM_UNIXTIME(");
+            const now = std.time.timestamp();
+            var buf: [32]u8 = undefined;
+            const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
+            try sql.appendSlice(db.allocator, ts_str);
+            try sql.appendSlice(db.allocator, ")");
+
+            if (field_count == 0) {
+                sql.deinit(db.allocator);
+                return error.NoFieldsToUpdate;
+            }
+
+            try sql.appendSlice(db.allocator, " WHERE ");
+            try sql.appendSlice(db.allocator, pk);
+            try sql.appendSlice(db.allocator, " = ");
+            
+            const id_str = try std.fmt.bufPrint(&buf, "{any}", .{id});
+            try sql.appendSlice(db.allocator, id_str);
+
+            const final_sql = try sql.toOwnedSlice(db.allocator);
+            defer db.allocator.free(final_sql);
+
+            return db.exec(final_sql, .{});
+        }
+
+        /// UpdateBuilder 类型定义
+        pub fn UpdateBuilder(comptime ModelType: type, comptime IdType: type) type {
+            _ = ModelType;  // 用于类型推导，不直接使用
+            return struct {
+                const Builder = @This();
+                
+                allocator: Allocator,
+                db: *Database,
+                id: IdType,
+                fields: std.StringHashMapUnmanaged(FieldValue),
+                
+                const FieldValue = union(enum) {
+                    int: i64,
+                    string: []const u8,
+                    null_value: void,
+                };
+                
+                pub fn init(allocator: Allocator, db: *Database, id: IdType) !Builder {
+                    return Builder{
+                        .allocator = allocator,
+                        .db = db,
+                        .id = id,
+                        .fields = std.StringHashMapUnmanaged(FieldValue){},
+                    };
+                }
+                
+                pub fn deinit(self: *Builder) void {
+                    // 释放字符串字段
+                    var it = self.fields.iterator();
+                    while (it.next()) |entry| {
+                        if (entry.value_ptr.* == .string) {
+                            self.allocator.free(entry.value_ptr.string);
+                        }
+                        self.allocator.free(entry.key_ptr.*);
+                    }
+                    self.fields.deinit(self.allocator);
+                }
+                
+                /// 设置整数字段
+                pub fn setInt(self: *Builder, field_name: []const u8, value: anytype) !*Builder {
+                    const name_copy = try self.allocator.dupe(u8, field_name);
+                    errdefer self.allocator.free(name_copy);
+                    
+                    try self.fields.put(self.allocator, name_copy, .{ .int = @intCast(value) });
+                    return self;
+                }
+                
+                /// 设置字符串字段
+                pub fn setString(self: *Builder, field_name: []const u8, value: []const u8) !*Builder {
+                    const name_copy = try self.allocator.dupe(u8, field_name);
+                    errdefer self.allocator.free(name_copy);
+                    
+                    const trimmed = std.mem.trim(u8, value, " \t\r\n");
+                    const value_copy = try self.allocator.dupe(u8, trimmed);
+                    errdefer self.allocator.free(value_copy);
+                    
+                    try self.fields.put(self.allocator, name_copy, .{ .string = value_copy });
+                    return self;
+                }
+                
+                /// 设置可选整数字段（null 值会被跳过）
+                pub fn setOptionalInt(self: *Builder, field_name: []const u8, value: ?i64) !*Builder {
+                    if (value) |v| {
+                        return self.setInt(field_name, v);
+                    }
+                    return self;
+                }
+                
+                /// 设置可选字符串字段（null 值会被跳过）
+                pub fn setOptionalString(self: *Builder, field_name: []const u8, value: ?[]const u8) !*Builder {
+                    if (value) |v| {
+                        return self.setString(field_name, v);
+                    }
+                    return self;
+                }
+                
+                /// 从 JSON 值设置字段（自动判断类型）
+                pub fn setFromJson(self: *Builder, field_name: []const u8, json_value: std.json.Value) !*Builder {
+                    switch (json_value) {
+                        .null => return self,  // 跳过 null
+                        .integer => |v| return self.setInt(field_name, v),
+                        .string => |v| return self.setString(field_name, v),
+                        else => return self,  // 其他类型跳过
+                    }
+                }
+                
+                /// 执行更新
+                pub fn execute(self: *Builder) !u64 {
+                    if (self.fields.count() == 0) {
+                        return error.NoFieldsToUpdate;
+                    }
+                    
+                    var sql = std.ArrayListUnmanaged(u8){};
+                    errdefer sql.deinit(self.allocator);
+                    
+                    try sql.appendSlice(self.allocator, "UPDATE ");
+                    try sql.appendSlice(self.allocator, tableName());
+                    try sql.appendSlice(self.allocator, " SET ");
+                    
+                    var field_count: usize = 0;
+                    
+                    // 添加用户设置的字段
+                    var it = self.fields.iterator();
+                    while (it.next()) |entry| {
+                        if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
+                        
+                        try sql.appendSlice(self.allocator, entry.key_ptr.*);
+                        try sql.appendSlice(self.allocator, " = ");
+                        
+                        switch (entry.value_ptr.*) {
+                            .int => |v| {
+                                var buf: [32]u8 = undefined;
+                                const val_str = try std.fmt.bufPrint(&buf, "{d}", .{v});
+                                try sql.appendSlice(self.allocator, val_str);
+                            },
+                            .string => |v| {
+                                try sql.append(self.allocator, '\'');
+                                // 转义单引号
+                                for (v) |c| {
+                                    if (c == '\'') try sql.append(self.allocator, '\'');
+                                    try sql.append(self.allocator, c);
+                                }
+                                try sql.append(self.allocator, '\'');
+                            },
+                            .null_value => {
+                                try sql.appendSlice(self.allocator, "NULL");
+                            },
+                        }
+                        
+                        field_count += 1;
+                    }
+                    
+                    // 自动添加 updated_at
+                    if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
+                    try sql.appendSlice(self.allocator, "updated_at = FROM_UNIXTIME(");
+                    const now = std.time.timestamp();
+                    var buf: [32]u8 = undefined;
+                    const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
+                    try sql.appendSlice(self.allocator, ts_str);
+                    try sql.appendSlice(self.allocator, ")");
+                    
+                    try sql.appendSlice(self.allocator, " WHERE ");
+                    try sql.appendSlice(self.allocator, primaryKey());
+                    try sql.appendSlice(self.allocator, " = ");
+                    
+                    const id_str = try std.fmt.bufPrint(&buf, "{any}", .{self.id});
+                    try sql.appendSlice(self.allocator, id_str);
+                    
+                    const final_sql = try sql.toOwnedSlice(self.allocator);
+                    defer self.allocator.free(final_sql);
+                    
+                    return self.db.exec(final_sql, .{});
+                }
+            };
+        }
+
         /// 克隆模型到指定分配器（只拷贝字符串字段，数值直接赋值）
         pub inline fn cloneModel(allocator: Allocator, src: *const T) !T {
             var dst = src.*;
@@ -1608,151 +1867,6 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             const sql = try buildUpdateSql(db.allocator, tableName(), primaryKey(), id, data);
             defer db.allocator.free(sql);
             return db.exec(sql, .{});
-        }
-
-        /// 从 JSON 对象部分更新记录（只更新提供的字段）
-        ///
-        /// 使用示例：
-        /// ```zig
-        /// const json_obj = parsed.value.object;
-        /// _ = try User.PartialUpdateFromJson(id, json_obj);
-        /// ```
-        ///
-        /// 特性：
-        /// - 只更新 JSON 中存在的字段
-        /// - 自动跳过 id、created_at
-        /// - 自动设置 updated_at 为当前时间
-        /// - null 值会跳过（不更新为 NULL）
-        /// - 字符串自动 trim 空白
-        pub fn PartialUpdateFromJson(id: anytype, json_obj: std.json.ObjectMap) !u64 {
-            return partialUpdateFromJson(getDb(), id, json_obj);
-        }
-
-        fn partialUpdateFromJson(db: *Database, id: anytype, json_obj: std.json.ObjectMap) !u64 {
-            var sql = std.ArrayListUnmanaged(u8){};
-            errdefer sql.deinit(db.allocator);
-
-            try sql.appendSlice(db.allocator, "UPDATE ");
-            try sql.appendSlice(db.allocator, tableName());
-            try sql.appendSlice(db.allocator, " SET ");
-
-            var field_count: usize = 0;
-            const pk = primaryKey();
-
-            // 遍历模型的所有字段
-            inline for (std.meta.fields(T)) |field| {
-                const is_pk = std.mem.eql(u8, field.name, pk);
-                const is_created_at = comptime std.mem.eql(u8, field.name, "created_at");
-                const is_updated_at = comptime std.mem.eql(u8, field.name, "updated_at");
-
-                // 跳过主键和 created_at
-                if (!is_pk and !is_created_at) {
-                    // updated_at 总是自动设置
-                    if (is_updated_at) {
-                        if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
-                        try sql.appendSlice(db.allocator, "updated_at = FROM_UNIXTIME(");
-                        const now = std.time.timestamp();
-                        var buf: [32]u8 = undefined;
-                        const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
-                        try sql.appendSlice(db.allocator, ts_str);
-                        try sql.appendSlice(db.allocator, ")");
-                        field_count += 1;
-                    } else if (json_obj.get(field.name)) |json_value| {
-                        // 只处理 JSON 中存在且非 null 的字段
-                        if (json_value != .null) {
-                            const type_info = @typeInfo(field.type);
-                            var value_added = false;
-                            
-                            // 根据字段类型处理 JSON 值
-                            switch (type_info) {
-                                .int => {
-                                    if (json_value == .integer) {
-                                        if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
-                                        try sql.appendSlice(db.allocator, field.name);
-                                        try sql.appendSlice(db.allocator, " = ");
-                                        var buf: [32]u8 = undefined;
-                                        const val_str = try std.fmt.bufPrint(&buf, "{d}", .{json_value.integer});
-                                        try sql.appendSlice(db.allocator, val_str);
-                                        value_added = true;
-                                    }
-                                },
-                                .pointer => |ptr| {
-                                    if (ptr.size == .slice and ptr.child == u8) {
-                                        if (json_value == .string) {
-                                            if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
-                                            try sql.appendSlice(db.allocator, field.name);
-                                            try sql.appendSlice(db.allocator, " = ");
-                                            const trimmed = std.mem.trim(u8, json_value.string, " \t\r\n");
-                                            try sql.append(db.allocator, '\'');
-                                            // 转义单引号
-                                            for (trimmed) |c| {
-                                                if (c == '\'') try sql.append(db.allocator, '\'');
-                                                try sql.append(db.allocator, c);
-                                            }
-                                            try sql.append(db.allocator, '\'');
-                                            value_added = true;
-                                        }
-                                    }
-                                },
-                                .optional => |opt| {
-                                    switch (@typeInfo(opt.child)) {
-                                        .int => {
-                                            if (json_value == .integer) {
-                                                if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
-                                                try sql.appendSlice(db.allocator, field.name);
-                                                try sql.appendSlice(db.allocator, " = ");
-                                                var buf: [32]u8 = undefined;
-                                                const val_str = try std.fmt.bufPrint(&buf, "{d}", .{json_value.integer});
-                                                try sql.appendSlice(db.allocator, val_str);
-                                                value_added = true;
-                                            }
-                                        },
-                                        .pointer => |ptr| {
-                                            if (ptr.size == .slice and ptr.child == u8) {
-                                                if (json_value == .string) {
-                                                    if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
-                                                    try sql.appendSlice(db.allocator, field.name);
-                                                    try sql.appendSlice(db.allocator, " = ");
-                                                    const trimmed = std.mem.trim(u8, json_value.string, " \t\r\n");
-                                                    try sql.append(db.allocator, '\'');
-                                                    for (trimmed) |c| {
-                                                        if (c == '\'') try sql.append(db.allocator, '\'');
-                                                        try sql.append(db.allocator, c);
-                                                    }
-                                                    try sql.append(db.allocator, '\'');
-                                                    value_added = true;
-                                                }
-                                            }
-                                        },
-                                        else => {},
-                                    }
-                                },
-                                else => {},
-                            }
-                            
-                            if (value_added) field_count += 1;
-                        }
-                    }
-                }
-            }
-
-            if (field_count == 0) {
-                sql.deinit(db.allocator);
-                return error.NoFieldsToUpdate;
-            }
-
-            try sql.appendSlice(db.allocator, " WHERE ");
-            try sql.appendSlice(db.allocator, pk);
-            try sql.appendSlice(db.allocator, " = ");
-            
-            var buf: [32]u8 = undefined;
-            const id_str = try std.fmt.bufPrint(&buf, "{any}", .{id});
-            try sql.appendSlice(db.allocator, id_str);
-
-            const final_sql = try sql.toOwnedSlice(db.allocator);
-            defer db.allocator.free(final_sql);
-
-            return db.exec(final_sql, .{});
         }
 
         /// 删除记录
