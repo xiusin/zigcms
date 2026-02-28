@@ -47,21 +47,23 @@ pub fn init(allocator: Allocator) Self {
     return .{ .allocator = allocator };
 }
 
-/// 读取 keyword 参数（兼容 query/body）。
-fn parseKeywordFromReq(req: zap.Request) []const u8 {
+/// 读取 keyword 参数（兼容 query/body），返回可安全持有的副本。
+fn parseKeywordFromReq(allocator: Allocator, req: zap.Request) []u8 {
     req.parseQuery();
     if (req.getParamSlice("keyword")) |keyword| {
-        return std.mem.trim(u8, keyword, " \t\r\n");
+        const trimmed = std.mem.trim(u8, keyword, " \t\r\n");
+        return allocator.dupe(u8, trimmed) catch allocator.dupe(u8, "") catch unreachable;
     }
 
-    req.parseBody() catch return "";
-    const body = req.body orelse return "";
-    var parsed = std.json.parseFromSlice(std.json.Value, global.get_allocator(), body, .{}) catch return "";
+    req.parseBody() catch return allocator.dupe(u8, "") catch unreachable;
+    const body = req.body orelse return allocator.dupe(u8, "") catch unreachable;
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch return allocator.dupe(u8, "") catch unreachable;
     defer parsed.deinit();
-    if (parsed.value != .object) return "";
-    const keyword_val = parsed.value.object.get("keyword") orelse return "";
-    if (keyword_val != .string) return "";
-    return std.mem.trim(u8, keyword_val.string, " \t\r\n");
+    if (parsed.value != .object) return allocator.dupe(u8, "") catch unreachable;
+    const keyword_val = parsed.value.object.get("keyword") orelse return allocator.dupe(u8, "") catch unreachable;
+    if (keyword_val != .string) return allocator.dupe(u8, "") catch unreachable;
+    const trimmed = std.mem.trim(u8, keyword_val.string, " \t\r\n");
+    return allocator.dupe(u8, trimmed) catch allocator.dupe(u8, "") catch unreachable;
 }
 
 /// ASCII 忽略大小写包含判断。
@@ -95,7 +97,8 @@ pub const dept_delete = deptDeleteImpl;
 
 /// 返回部门树。
 fn deptTreeImpl(self: *Self, req: zap.Request) !void {
-    const keyword = parseKeywordFromReq(req);
+    const keyword = parseKeywordFromReq(self.allocator, req);
+    defer self.allocator.free(keyword);
 
     var q = OrmDept.Query();
     defer q.deinit();

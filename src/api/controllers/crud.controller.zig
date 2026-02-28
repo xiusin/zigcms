@@ -113,10 +113,10 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             req.parseBody() catch return base.send_failed(req, "解析请求体失败");
             const body = req.body orelse return base.send_failed(req, "请求体为空");
 
-            const dto = json_mod.JSON.decode(T, self.allocator, body) catch {
+            var dto = json_mod.JSON.decode(T, self.allocator, body) catch {
                 return base.send_failed(req, "解析数据失败");
             };
-            defer OrmModel.freeModel(&dto);
+            defer json_mod.JSON.free(T, self.allocator, &dto);
 
             if (extractId(T, dto)) |id| {
                 if (id > 0) {

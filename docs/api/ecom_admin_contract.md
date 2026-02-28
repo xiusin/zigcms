@@ -316,6 +316,19 @@
 - 作用：连续执行两次 `ecom_org_full_smoke.sh`，验证重复回归不会造成数据污染或唯一约束冲突。
 - 执行命令：`bash ./scripts/ecom_org_idempotent_regression.sh`
 
+### DB 无污染断言
+
+- 脚本路径：`scripts/ecom_org_db_assert.sh`
+- 作用：校验回归后无 `ITG_` 部门、无 `itg_admin_` 管理员及其关联残留。
+- 默认检查项：
+  - `sys_dept.dept_code LIKE 'ITG_%'`
+  - `sys_admin.username LIKE 'itg_admin_%'`
+  - `sys_admin_role` 与 `itg_admin_` 关联残留
+  - `sys_admin.dept_id` 对 `ITG_` 部门引用残留
+- 执行命令：
+  - `bash ./scripts/ecom_org_db_assert.sh`
+  - 若需指定连接：`DB_HOST=127.0.0.1 DB_PORT=3306 DB_USER=root DB_PASSWORD=*** DB_NAME=zigcms bash ./scripts/ecom_org_db_assert.sh`
+
 ## 开发代理自检
 
 - 命令：`pnpm run dev:proxy-check`

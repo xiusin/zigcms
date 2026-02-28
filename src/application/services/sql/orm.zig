@@ -390,6 +390,7 @@ pub const Database = struct {
     /// 当 pool 不为 null 时，conn 是从 pool 借用的连接
     pool: ?*ConnectionPool = null,
     driver_type: interface.DriverType,
+    last_insert_id: u64 = 0,
     debug: bool = true,
     enable_logging: bool = true,
     logger: ?*logger_mod.Logger = null,
@@ -401,6 +402,7 @@ pub const Database = struct {
             .conn = conn,
             .pool = null,
             .driver_type = conn.getDriverType(),
+            .last_insert_id = 0,
         };
     }
 
@@ -417,6 +419,7 @@ pub const Database = struct {
             .conn = conn,
             .pool = null,
             .driver_type = .sqlite,
+            .last_insert_id = 0,
         };
     }
 
@@ -453,6 +456,7 @@ pub const Database = struct {
             .conn = pooled.conn,
             .pool = pool,
             .driver_type = .mysql,
+            .last_insert_id = 0,
         };
     }
 
@@ -463,6 +467,7 @@ pub const Database = struct {
             .conn = try interface.Driver.memory(allocator),
             .pool = null,
             .driver_type = .memory,
+            .last_insert_id = 0,
         };
     }
 
@@ -473,6 +478,7 @@ pub const Database = struct {
             .conn = try interface.Driver.postgres(allocator, config),
             .pool = null,
             .driver_type = .postgresql,
+            .last_insert_id = 0,
         };
     }
 
@@ -645,6 +651,7 @@ pub const Database = struct {
                 }
                 return err;
             };
+            self.last_insert_id = conn.lastInsertId();
 
             const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
@@ -716,7 +723,7 @@ pub const Database = struct {
 
     /// 获取最后插入的 ID
     pub fn lastInsertId(self: *Database) u64 {
-        return self.conn.lastInsertId();
+        return self.last_insert_id;
     }
 };
 
@@ -1578,10 +1585,22 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             defer db.allocator.free(sql);
 
             _ = try db.exec(sql, .{});
-            const id = db.conn.lastInsertId();
+            const id = db.lastInsertId();
+            if (id > 0) {
+                return (try find(db, id)) orelse error.CreateFailed;
+            }
 
-            // 重新查询返回完整记录
-            return (try find(db, id)) orelse error.CreateFailed;
+            var q = query(db);
+            defer q.deinit();
+            _ = q.orderBy(primaryKey(), .desc);
+            _ = q.limit(1);
+            const rows = try q.get();
+            defer freeModels(rows);
+            if (rows.len > 0) {
+                return rows[0];
+            }
+
+            return error.CreateFailed;
         }
 
         /// 更新记录
