@@ -436,7 +436,7 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
 
     var role_id_present = false;
     var target_role_id: i32 = 0;
-    
+
     // 优先使用 role_ids 数组（如果存在且有值）
     if (obj.get("role_ids")) |role_ids_val| {
         if (role_ids_val == .array and role_ids_val.array.items.len > 0) {
@@ -447,7 +447,7 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
             }
         }
     }
-    
+
     // 如果没有 role_ids，则使用 role_id
     if (!role_id_present) {
         if (obj.get("role_id")) |role_val| {
@@ -793,15 +793,14 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
         return base.send_ok(req, "角色未变更");
     }
 
+    var valid_role_ids = std.ArrayListUnmanaged(i32){};
+    defer valid_role_ids.deinit(self.allocator);
     for (new_norm) |role_id_num| {
         const role_opt = OrmRole.Find(role_id_num) catch |err| return base.send_error(req, err);
-        if (role_opt == null) return base.send_failed(req, "存在无效角色ID");
-        var role_mut = role_opt.?;
-        if (role_mut.status != 1) {
-            OrmRole.freeModel(&role_mut);
-            return base.send_failed(req, "存在禁用角色，无法分配");
+        if (role_opt) |_| {
+            valid_role_ids.append(self.allocator, role_id_num) catch {};
+            OrmRole.freeModel(@constCast(&role_opt.?));
         }
-        OrmRole.freeModel(&role_mut);
     }
 
     const db = global.get_db();
@@ -816,7 +815,7 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     defer delete_q.deinit();
     _ = delete_q.delete() catch |err| return base.send_error(req, err);
 
-    for (new_norm) |role_id_num| {
+    for (valid_role_ids.items) |role_id_num| {
         _ = OrmAdminRole.Create(.{
             .admin_id = admin_id,
             .role_id = role_id_num,
