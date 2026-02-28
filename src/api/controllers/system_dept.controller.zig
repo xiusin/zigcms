@@ -21,6 +21,8 @@ const OrmAdmin = sql.defineWithConfig(models.SysAdmin, .{
     .primary_key = "id",
 });
 
+const max_keyword_len: usize = 256;
+
 const DeptNode = struct {
     id: i32,
     parent_id: i32,
@@ -86,6 +88,13 @@ fn containsAsciiIgnoreCase(haystack: []const u8, needle: []const u8) bool {
     return false;
 }
 
+fn isAsciiSlice(buf: []const u8) bool {
+    for (buf) |c| {
+        if (c & 0x80 != 0) return false;
+    }
+    return true;
+}
+
 /// 部门树接口。
 pub const dept_tree = deptTreeImpl;
 
@@ -99,6 +108,13 @@ pub const dept_delete = deptDeleteImpl;
 fn deptTreeImpl(self: *Self, req: zap.Request) !void {
     const keyword = parseKeywordFromReq(self.allocator, req);
     defer self.allocator.free(keyword);
+
+    if (keyword.len > max_keyword_len) {
+        return base.send_failed(req, "keyword 过长");
+    }
+    if (!isAsciiSlice(keyword)) {
+        return base.send_failed(req, "keyword 非 ASCII");
+    }
 
     var q = OrmDept.Query();
     defer q.deinit();

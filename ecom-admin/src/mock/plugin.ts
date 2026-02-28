@@ -12,7 +12,13 @@ interface MockConfig {
 
 export function viteMockPlugin(config: MockConfig = {}): Plugin {
   const { enable = true, timeout = 300 } = config;
-  const passthroughPrefixes = ['/api/member/', '/be/api/member/'];
+  // 放行代理
+  const passthroughPrefixes = [
+    '/api/member/',
+    '/be/api/member/',
+    '/api/system/admin/',
+    '/api/system/dept/',
+  ];
 
   return {
     name: 'vite-plugin-mock',
