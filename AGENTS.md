@@ -438,6 +438,7 @@ pub fn build(b: *std.Build) void {
 - **禁止浅拷贝**：直接复制查询结果到其他数据结构会导致悬垂指针。
 - **必须深拷贝字符串字段**：如需在 `freeModels()` 后继续使用数据，必须使用 `allocator.dupe()` 深拷贝所有字符串字段。
 - **内存所有权转移**：深拷贝后的数据由调用方负责释放，必须在 defer 中清理。
+- **推荐使用 Arena Allocator**：使用 `getWithArena()` 方法自动管理内存，避免手动深拷贝。
 
 ```zig
 // ❌ 错误示例：浅拷贝导致悬垂指针
@@ -452,35 +453,14 @@ for (role_rows) |role| {
 }
 // 访问 roles.items[0].role_name 会读取到垃圾数据（乱码）
 
-// ✅ 正确示例：深拷贝字符串字段
-var roles = std.ArrayListUnmanaged(models.SysRole){};
-defer {
-    for (roles.items) |role| {
-        allocator.free(role.role_name);
-        allocator.free(role.role_key);
-        allocator.free(role.remark);
-    }
-    roles.deinit(allocator);
-}
+// ✅ 正确示例：使用 Arena Allocator（推荐）
+var role_result = try role_q.getWithArena(allocator);
+defer role_result.deinit();  // 一次性释放所有内存
 
-const role_rows = role_q.get() catch |err| return err;
-defer OrmRole.freeModels(role_rows);
-
-for (role_rows) |role| {
-    const role_copy = models.SysRole{
-        .id = role.id,
-        .role_name = allocator.dupe(u8, role.role_name) catch role.role_name,
-        .role_key = allocator.dupe(u8, role.role_key) catch role.role_key,
-        .sort = role.sort,
-        .status = role.status,
-        .remark = allocator.dupe(u8, role.remark) catch role.remark,
-        .data_scope = role.data_scope,
-        .created_at = role.created_at,
-        .updated_at = role.updated_at,
-    };
-    roles.append(allocator, role_copy) catch {};
+for (role_result.items()) |role| {
+    // 安全访问，无需手动深拷贝
+    std.debug.print("Role: {s}\n", .{role.role_name});
 }
-// 现在可以安全访问 roles.items[0].role_name
 ```
 
 **常见错误表现**：
@@ -494,6 +474,35 @@ for (role_rows) |role| {
 3. 使用 `std.heap.GeneralPurposeAllocator` 的 `.safety = true` 检测内存错误
 
 **参考文档**：`knowlages/orm_memory_lifecycle.md`
+
+6) **部分更新优化（PartialUpdateFromJson）**
+
+对于 API 接口场景，推荐使用 `PartialUpdateFromJson` 方法，直接从 JSON 对象更新数据库记录：
+
+```zig
+// ✅ 优雅的部分更新方式
+const json_obj = parsed.value.object;
+_ = try OrmAdmin.PartialUpdateFromJson(id, json_obj);
+```
+
+**特性**：
+- 只更新 JSON 中存在的字段
+- 自动跳过 `null` 值（不更新为 NULL）
+- 自动跳过 `id`、`created_at`
+- 自动设置 `updated_at` 为当前时间
+- 字符串自动 trim 和转义
+
+**使用场景**：
+- API 接口更新操作
+- 前端表单提交
+- 部分字段更新
+
+**不适用场景**：
+- 高频批量更新（使用传统 `Update` 方法）
+- 需要复杂业务逻辑的更新
+- 跨表事务更新
+
+**参考文档**：`knowlages/orm_partial_update_from_json.md`
 
 ---
 

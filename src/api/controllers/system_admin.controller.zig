@@ -452,49 +452,32 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
     var admin_id: i32 = 0;
 
     if (id > 0) {
+        // 验证管理员是否存在
         const current_opt = OrmAdmin.Find(id) catch |err| return base.send_error(req, err);
         if (current_opt == null) return base.send_failed(req, "管理员不存在");
-        model = current_opt.?;
-        defer OrmAdmin.freeModel(&model);
+        var current = current_opt.?;
+        defer OrmAdmin.freeModel(&current);
 
+        // 验证用户名唯一性
         if (obj.get("username")) |v| {
             if (v == .string) {
                 const username = std.mem.trim(u8, v.string, " \t\r\n");
                 if (username.len == 0) return base.send_failed(req, "用户名不能为空");
                 const unique = ensureUsernameUnique(self, username, id) catch |err| return base.send_error(req, err);
                 if (!unique) return base.send_failed(req, "用户名已存在");
-                model.username = username;
-            }
-        }
-        if (obj.get("nickname")) |v| {
-            if (v == .string) model.nickname = v.string;
-        }
-        if (obj.get("mobile")) |v| {
-            if (v == .string) model.mobile = v.string;
-        }
-        if (obj.get("email")) |v| {
-            if (v == .string) model.email = v.string;
-        }
-        if (obj.get("avatar")) |v| {
-            if (v == .string) model.avatar = v.string;
-        }
-        if (obj.get("remark")) |v| {
-            if (v == .string) model.remark = v.string;
-        }
-        if (obj.get("gender")) |v| {
-            if (v == .integer) model.gender = @intCast(v.integer);
-        }
-        if (obj.get("status")) |v| {
-            if (v == .integer) model.status = @intCast(v.integer);
-        }
-        if (obj.get("dept_id")) |v| {
-            if (v == .null) {
-                model.dept_id = null;
-            } else if (v == .integer) {
-                model.dept_id = @intCast(v.integer);
             }
         }
 
+        // 处理密码字段（需要特殊处理）
+        var temp_obj = std.json.ObjectMap.init(self.allocator);
+        defer temp_obj.deinit();
+        
+        // 复制原始 JSON 对象
+        var it = obj.iterator();
+        while (it.next()) |entry| {
+            try temp_obj.put(entry.key_ptr.*, entry.value_ptr.*);
+        }
+        
         if (obj.get("password")) |pwd_val| {
             if (pwd_val == .string and pwd_val.string.len > 0) {
                 var confirm_ok = true;
@@ -507,11 +490,14 @@ fn saveAdminImpl(self: *Self, req: zap.Request) !void {
 
                 const pwd_hash = strings.md5(self.allocator, pwd_val.string) catch return base.send_failed(req, "密码加密失败");
                 dynamic_hash = pwd_hash;
-                model.password_hash = pwd_hash;
+                
+                // 将加密后的密码添加到临时对象中
+                try temp_obj.put("password_hash", .{ .string = pwd_hash });
             }
         }
 
-        _ = OrmAdmin.Update(id, model) catch |err| return base.send_error(req, err);
+        // 使用优雅的 PartialUpdateFromJson API（只更新 JSON 中存在的字段）
+        _ = OrmAdmin.PartialUpdateFromJson(id, temp_obj) catch |err| return base.send_error(req, err);
         admin_id = id;
     } else {
         const username_val = obj.get("username") orelse return base.send_failed(req, "缺少 username 参数");
