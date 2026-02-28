@@ -2013,9 +2013,6 @@ export const mockData: Record<
     '测试成功'
   ),
 
-  // 管理员
-  '/api/system/admin/resetPassword': success(null, '密码重置成功'),
-
   // 报表统计
   '/api/report/statistics/export': success(
     { url: '/downloads/statistics_export.xlsx' },

@@ -58,11 +58,11 @@ const RouterConfig: AppRouteRecordRaw = {
       },
     },
     {
-      path: 'dept-position',
-      name: 'dept-position',
-      component: () => import('@/views/system/dept-position/index.vue'),
+      path: 'position-manage',
+      name: 'position-manage',
+      component: () => import('@/views/system/position/index.vue'),
       meta: {
-        locale: '部门职位',
+        locale: '职位管理',
         requiresAuth: true,
         icon: 'icon-branch',
         roles: ['*'],
