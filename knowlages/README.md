@@ -6,3 +6,5 @@
 - `allocator_deep_dive.md`：内存管理器（Allocator）深度专题，含选型、生命周期分层、性能与踩坑清单。
 - `concurrency_memory_model.md`：并发与内存模型专题，聚焦共享状态、所有权和并发释放风险。
 - `error_resource_safety.md`：错误处理与资源安全专题，覆盖 defer/errdefer 与回滚模式。
+- `orm_memory_lifecycle.md`：ORM 查询结果的内存生命周期管理，深拷贝字符串字段防止悬垂指针。
+

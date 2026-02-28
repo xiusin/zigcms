@@ -433,6 +433,68 @@ pub fn build(b: *std.Build) void {
 - 查询条件使用 QueryBuilder 链式 API。
 - 参数化优先，避免注入风险。
 
+5) **ORM 查询结果内存管理（关键）**
+- ORM 查询返回的对象由 ORM 内部分配器管理，使用 `defer freeModels()` 释放。
+- **禁止浅拷贝**：直接复制查询结果到其他数据结构会导致悬垂指针。
+- **必须深拷贝字符串字段**：如需在 `freeModels()` 后继续使用数据，必须使用 `allocator.dupe()` 深拷贝所有字符串字段。
+- **内存所有权转移**：深拷贝后的数据由调用方负责释放，必须在 defer 中清理。
+
+```zig
+// ❌ 错误示例：浅拷贝导致悬垂指针
+var roles = std.ArrayListUnmanaged(models.SysRole){};
+defer roles.deinit(allocator);
+
+const role_rows = role_q.get() catch |err| return err;
+defer OrmRole.freeModels(role_rows);  // 释放 ORM 内存
+
+for (role_rows) |role| {
+    roles.append(allocator, role) catch {};  // ❌ 浅拷贝，role.role_name 指向已释放内存
+}
+// 访问 roles.items[0].role_name 会读取到垃圾数据（乱码）
+
+// ✅ 正确示例：深拷贝字符串字段
+var roles = std.ArrayListUnmanaged(models.SysRole){};
+defer {
+    for (roles.items) |role| {
+        allocator.free(role.role_name);
+        allocator.free(role.role_key);
+        allocator.free(role.remark);
+    }
+    roles.deinit(allocator);
+}
+
+const role_rows = role_q.get() catch |err| return err;
+defer OrmRole.freeModels(role_rows);
+
+for (role_rows) |role| {
+    const role_copy = models.SysRole{
+        .id = role.id,
+        .role_name = allocator.dupe(u8, role.role_name) catch role.role_name,
+        .role_key = allocator.dupe(u8, role.role_key) catch role.role_key,
+        .sort = role.sort,
+        .status = role.status,
+        .remark = allocator.dupe(u8, role.remark) catch role.remark,
+        .data_scope = role.data_scope,
+        .created_at = role.created_at,
+        .updated_at = role.updated_at,
+    };
+    roles.append(allocator, role_copy) catch {};
+}
+// 现在可以安全访问 roles.items[0].role_name
+```
+
+**常见错误表现**：
+- 字符串字段显示为乱码（如 `\udcaa\udcaa...`）
+- 随机崩溃或段错误
+- 内存检测工具报告 use-after-free
+
+**排查方法**：
+1. 检查是否在 `defer freeModels()` 后使用了查询结果
+2. 确认所有字符串字段是否已深拷贝
+3. 使用 `std.heap.GeneralPurposeAllocator` 的 `.safety = true` 检测内存错误
+
+**参考文档**：`knowlages/orm_memory_lifecycle.md`
+
 ---
 
 ### 5. 缓存封装标准
@@ -484,7 +546,10 @@ pub fn build(b: *std.Build) void {
 - [ ] 数据访问仅使用 ORM/QueryBuilder。
 - [ ] 缓存键命名、TTL、失效策略已定义。
 - [ ] 所有新增对象有明确生命周期与释放路径。
+- [ ] **ORM 查询结果已正确深拷贝字符串字段**（防止悬垂指针）。
+- [ ] 所有深拷贝的内存已在 defer 中释放。
 - [ ] `zig build` 通过。
+- [ ] 接口测试通过，无乱码或内存错误。
 
 ---
 
@@ -505,3 +570,178 @@ src/
 ```
 
 按此模板生成，能保证模块职责清晰、可测试、可替换实现，并与当前 ZigCMS 架构保持一致。
+
+---
+
+## 关键注意事项与常见陷阱
+
+### 1. 内存管理陷阱
+
+#### 1.1 ORM 查询结果的悬垂指针
+**问题**：ORM 查询返回的对象在 `freeModels()` 后内存被释放，浅拷贝会导致悬垂指针。
+
+**症状**：
+- 字符串字段显示乱码（`\udcaa\udcaa...`）
+- 随机崩溃或段错误
+- 数据库数据正常但接口返回异常
+
+**解决方案**：
+```zig
+// 必须深拷贝所有字符串字段
+const copy = Model{
+    .name = try allocator.dupe(u8, original.name),
+    .description = try allocator.dupe(u8, original.description),
+    // ... 其他字段
+};
+// 记得在 defer 中释放
+defer {
+    allocator.free(copy.name);
+    allocator.free(copy.description);
+}
+```
+
+**参考**：`knowlages/orm_memory_lifecycle.md`
+
+#### 1.2 字符串切片的生命周期
+**问题**：`[]const u8` 只是指针+长度，不拥有内存。
+
+**规则**：
+- 如果字符串来自临时对象（如 ORM 查询结果），必须 `dupe`
+- 如果字符串来自常量或长生命周期对象，可以直接引用
+- 跨作用域传递字符串时，明确所有权归属
+
+#### 1.3 结构体浅拷贝陷阱
+```zig
+const User = struct {
+    id: i32,
+    name: []const u8,  // 切片类型
+};
+
+const user1 = User{ .id = 1, .name = "Alice" };
+const user2 = user1;  // ❌ 浅拷贝，user2.name 和 user1.name 指向同一内存
+```
+
+### 2. 错误处理规范
+
+#### 2.1 资源释放顺序
+```zig
+// ✅ 正确：使用 defer 确保释放顺序
+const file = try openFile();
+defer file.close();
+
+const buffer = try allocator.alloc(u8, 1024);
+defer allocator.free(buffer);
+
+// ❌ 错误：手动释放容易遗漏
+const file = try openFile();
+const buffer = try allocator.alloc(u8, 1024);
+file.close();  // 如果 alloc 失败，file 不会关闭
+allocator.free(buffer);
+```
+
+#### 2.2 errdefer 使用场景
+```zig
+pub fn createUser(allocator: Allocator, name: []const u8) !*User {
+    const user = try allocator.create(User);
+    errdefer allocator.destroy(user);  // 后续错误时自动释放
+    
+    user.name = try allocator.dupe(u8, name);
+    errdefer allocator.free(user.name);
+    
+    try saveToDatabase(user);  // 如果失败，自动清理 user 和 user.name
+    return user;
+}
+```
+
+### 3. 并发与线程安全
+
+#### 3.1 全局状态访问
+**规则**：
+- 全局数据库连接、缓存连接等由系统级管理
+- 应用层不得擅自销毁全局资源
+- 多线程访问全局资源需要同步机制
+
+#### 3.2 分配器线程安全
+```zig
+// ✅ 线程安全分配器
+var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+
+// ❌ 非线程安全分配器在多线程环境下使用会导致数据竞争
+var arena = std.heap.ArenaAllocator.init(allocator);
+```
+
+### 4. 性能优化注意点
+
+#### 4.1 避免不必要的深拷贝
+```zig
+// ❌ 低效：每次都深拷贝
+for (items) |item| {
+    const copy = try allocator.dupe(u8, item.name);
+    defer allocator.free(copy);
+    process(copy);
+}
+
+// ✅ 高效：只在需要时深拷贝
+for (items) |item| {
+    if (needsOwnership(item)) {
+        const copy = try allocator.dupe(u8, item.name);
+        defer allocator.free(copy);
+        process(copy);
+    } else {
+        process(item.name);  // 直接使用引用
+    }
+}
+```
+
+#### 4.2 使用 Arena 分配器简化批量释放
+```zig
+// ✅ 批量操作使用 Arena
+var arena = std.heap.ArenaAllocator.init(allocator);
+defer arena.deinit();  // 一次性释放所有内存
+const arena_allocator = arena.allocator();
+
+for (items) |item| {
+    const copy = try arena_allocator.dupe(u8, item.name);
+    // 不需要单独 free
+}
+```
+
+### 5. 调试技巧
+
+#### 5.1 启用内存安全检查
+```zig
+var gpa = std.heap.GeneralPurposeAllocator(.{
+    .safety = true,  // 检测 double-free、use-after-free
+    .verbose_log = true,  // 详细日志
+}){};
+```
+
+#### 5.2 打印调试信息
+```zig
+std.debug.print("role_name: {s} (ptr: {*})\n", .{ role.role_name, role.role_name.ptr });
+```
+
+#### 5.3 使用断言验证假设
+```zig
+std.debug.assert(user.name.len > 0);
+std.debug.assert(user.id != null);
+```
+
+### 6. 代码审查要点
+
+审查代码时重点检查：
+1. 所有 `allocator.alloc/create/dupe` 是否有对应的 `free/destroy`
+2. ORM 查询结果是否在 `freeModels()` 后使用
+3. 字符串字段是否正确深拷贝
+4. `defer` 和 `errdefer` 的使用是否正确
+5. 全局资源是否被意外销毁
+6. 多线程环境下的分配器是否线程安全
+
+---
+
+## 参考资源
+
+- **知识库**：`knowlages/` 目录包含详细的内存管理、错误处理等专题文档
+- **ORM 内存管理**：`knowlages/orm_memory_lifecycle.md`
+- **内存泄漏防范**：`knowlages/memory_leak_basics.md`
+- **错误处理**：`knowlages/error_resource_safety.md`

@@ -255,7 +255,14 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
     }
 
     var roles = std.ArrayListUnmanaged(models.SysRole){};
-    defer roles.deinit(self.allocator);
+    defer {
+        for (roles.items) |role| {
+            self.allocator.free(role.role_name);
+            self.allocator.free(role.role_key);
+            self.allocator.free(role.remark);
+        }
+        roles.deinit(self.allocator);
+    }
     if (role_ids.items.len > 0) {
         var role_q = OrmRole.Query();
         defer role_q.deinit();
@@ -264,7 +271,20 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         _ = role_q.whereRaw(role_in_clause);
         const role_rows = role_q.get() catch |err| return base.send_error(req, err);
         defer OrmRole.freeModels(role_rows);
-        for (role_rows) |role| roles.append(self.allocator, role) catch {};
+        for (role_rows) |role| {
+            const role_copy = models.SysRole{
+                .id = role.id,
+                .role_name = self.allocator.dupe(u8, role.role_name) catch role.role_name,
+                .role_key = self.allocator.dupe(u8, role.role_key) catch role.role_key,
+                .sort = role.sort,
+                .status = role.status,
+                .remark = self.allocator.dupe(u8, role.remark) catch role.remark,
+                .data_scope = role.data_scope,
+                .created_at = role.created_at,
+                .updated_at = role.updated_at,
+            };
+            roles.append(self.allocator, role_copy) catch {};
+        }
     }
 
     const AdminRow = struct {
@@ -286,6 +306,11 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
 
     var rows = std.ArrayListUnmanaged(AdminRow){};
     defer rows.deinit(self.allocator);
+    var username_owners = std.ArrayListUnmanaged([]const u8){};
+    var nickname_owners = std.ArrayListUnmanaged([]const u8){};
+    var mobile_owners = std.ArrayListUnmanaged([]const u8){};
+    var email_owners = std.ArrayListUnmanaged([]const u8){};
+    var avatar_owners = std.ArrayListUnmanaged([]const u8){};
     var role_ids_owners = std.ArrayListUnmanaged([]i32){};
     var role_names_owners = std.ArrayListUnmanaged([][]const u8){};
     var role_text_owners = std.ArrayListUnmanaged([]u8){};
@@ -296,6 +321,16 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         role_names_owners.deinit(self.allocator);
         for (role_text_owners.items) |owner| self.allocator.free(owner);
         role_text_owners.deinit(self.allocator);
+        for (username_owners.items) |owner| self.allocator.free(owner);
+        username_owners.deinit(self.allocator);
+        for (nickname_owners.items) |owner| self.allocator.free(owner);
+        nickname_owners.deinit(self.allocator);
+        for (mobile_owners.items) |owner| self.allocator.free(owner);
+        mobile_owners.deinit(self.allocator);
+        for (email_owners.items) |owner| self.allocator.free(owner);
+        email_owners.deinit(self.allocator);
+        for (avatar_owners.items) |owner| self.allocator.free(owner);
+        avatar_owners.deinit(self.allocator);
     }
 
     for (admins) |admin| {
@@ -328,12 +363,13 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
             owned_role_names[idx] = "";
             for (roles.items) |role| {
                 if ((role.id orelse 0) == sorted_role_id) {
-                    owned_role_names[idx] = role.role_name;
-                    if (role_name.len == 0) role_name = role.role_name;
+                    const role_name_owned = self.allocator.dupe(u8, role.role_name) catch role.role_name;
+                    owned_role_names[idx] = role_name_owned;
+                    if (role_name.len == 0) role_name = role_name_owned;
                     if (role_text_builder.items.len > 0) {
                         role_text_builder.appendSlice(self.allocator, ",") catch {};
                     }
-                    role_text_builder.appendSlice(self.allocator, role.role_name) catch {};
+                    role_text_builder.appendSlice(self.allocator, role_name_owned) catch {};
                     break;
                 }
             }
@@ -344,13 +380,24 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
             role_text_owners.append(self.allocator, @constCast(role_text_owned)) catch {};
         }
 
+        const username_owned = self.allocator.dupe(u8, admin.username) catch admin.username;
+        const nickname_owned = self.allocator.dupe(u8, admin.nickname) catch admin.nickname;
+        const mobile_owned = self.allocator.dupe(u8, admin.mobile) catch admin.mobile;
+        const email_owned = self.allocator.dupe(u8, admin.email) catch admin.email;
+        const avatar_owned = self.allocator.dupe(u8, admin.avatar) catch admin.avatar;
+        username_owners.append(self.allocator, username_owned) catch {};
+        nickname_owners.append(self.allocator, nickname_owned) catch {};
+        mobile_owners.append(self.allocator, mobile_owned) catch {};
+        email_owners.append(self.allocator, email_owned) catch {};
+        avatar_owners.append(self.allocator, avatar_owned) catch {};
+
         rows.append(self.allocator, .{
             .id = admin.id,
-            .username = admin.username,
-            .nickname = admin.nickname,
-            .mobile = admin.mobile,
-            .email = admin.email,
-            .avatar = admin.avatar,
+            .username = username_owned,
+            .nickname = nickname_owned,
+            .mobile = mobile_owned,
+            .email = email_owned,
+            .avatar = avatar_owned,
             .gender = admin.gender,
             .status = admin.status,
             .dept_id = admin.dept_id,
