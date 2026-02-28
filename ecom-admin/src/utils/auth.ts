@@ -4,7 +4,8 @@ const { VITE_TOKEN_KEY, VITE_TOKEN_EXPIRED_KEY, VITE_USER_KEY } = import.meta
 export { VITE_TOKEN_KEY, VITE_TOKEN_EXPIRED_KEY, VITE_USER_KEY };
 
 export const getToken = (): string => {
-  const token: string = localStorage.getItem(VITE_TOKEN_KEY) || '';
+  const stored: string = localStorage.getItem(VITE_TOKEN_KEY) || '';
+  const token = stored.startsWith('Bearer ') ? stored.slice(7) : stored;
   const expireTime = localStorage.getItem(VITE_TOKEN_EXPIRED_KEY);
   if (expireTime) {
     if (parseInt(expireTime, 10) > Date.now()) {
@@ -24,7 +25,7 @@ export const setToken = (
   token: string,
   expireTime = 7 * 24 * 60 * 60 * 1000
 ) => {
-  localStorage.setItem(VITE_TOKEN_KEY, `Bearer ${token}`);
+  localStorage.setItem(VITE_TOKEN_KEY, token);
   localStorage.setItem(VITE_TOKEN_EXPIRED_KEY, String(Date.now() + expireTime));
 };
 

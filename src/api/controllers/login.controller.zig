@@ -244,16 +244,38 @@ fn resolveAuthContext(self: *Self, req: zap.Request) !struct {
     if (std.mem.startsWith(u8, authorization, "Bearer ")) {
         token = authorization[7..];
     }
+
     if (token.len == 0) return error.Unauthorized;
+
+    // 去除前后空白，避免粘贴/换行导致 JWT 解析失败
+    token = std.mem.trim(u8, token, " \t\r\n");
+
+    // 使用注入的日志服务打印授权头，便于排查令牌问题
+    self.logger.info("[auth] resolveAuthContext token={s} token len = {d}", .{ token, token.len });
+
+    // 记录调用方信息，方便排查来源
+    const method = req.method orelse "";
+    const path = req.path orelse "";
+    const client_ip = req.getHeader("x-forwarded-for") orelse req.getHeader("x-real-ip") orelse "";
+    const ua = req.getHeader("user-agent") orelse "";
+    self.logger.info("[auth] resolveAuthContext caller method={s} path={s} ip={s} ua={s}", .{ method, path, client_ip, ua });
 
     const payload = jwt.decode(self.allocator, token, .{
         .secret = global.JwtTokenSecret,
         .verify_signature = true,
-    }) catch return error.Unauthorized;
+    }) catch |err| {
+        self.logger.err("[auth] resolveAuthContext decode failed err={any} token_len={d}", .{ err, token.len });
+
+        return error.Unauthorized;
+    };
+
     defer {
         if (payload.username.len > 0) self.allocator.free(payload.username);
         if (payload.email.len > 0) self.allocator.free(payload.email);
     }
+
+    // 使用注入的日志服务打印JWT载荷，便于排查令牌问题
+    self.logger.info("[auth] resolveAuthContext payload.user_id={d} payload.exp={d}", .{ payload.user_id, payload.exp });
 
     if (payload.user_id <= 0) return error.Unauthorized;
 
@@ -261,6 +283,14 @@ fn resolveAuthContext(self: *Self, req: zap.Request) !struct {
     const expires_in: i64 = if (payload.exp > now) payload.exp - now else 0;
 
     const user_opt = OrmSysAdmin.Find(@as(i32, @intCast(payload.user_id))) catch |err| return err;
+
+    // 使用注入的日志服务打印用户信息，便于排查用户问题
+    if (user_opt != null) {
+        self.logger.info("[auth] resolveAuthContext user_opt.user_id={any} user_opt.username={s}", .{ user_opt.?.id, user_opt.?.username });
+    } else {
+        self.logger.warn("[auth] resolveAuthContext user_opt is null for payload.user_id={any}", .{payload.user_id});
+    }
+
     if (user_opt == null) return error.Unauthorized;
 
     return .{

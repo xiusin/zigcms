@@ -2,6 +2,9 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
+const global = @import("../primitives/global.zig");
+const json = std.json;
+
 pub const Algorithm = enum {
     HS256,
 };
@@ -73,37 +76,19 @@ pub const TokenPayload = struct {
 
 pub fn decode(allocator: Allocator, token: []const u8, options: DecodeOptions) !TokenPayload {
     var parts = std.mem.splitScalar(u8, token, '.');
-    const header_b64 = parts.first();
-    const payload_b64 = parts.rest();
-
-    _ = parts.next();
+    const header_b64 = parts.next() orelse return error.InvalidCharacter;
+    const payload_b64 = parts.next() orelse return error.InvalidCharacter;
+    const signature_b64 = parts.next() orelse return error.InvalidCharacter;
+    // 额外的分段表示格式错误
+    if (parts.next()) |_| return error.InvalidCharacter;
 
     const payload_json = try base64UrlDecode(allocator, payload_b64);
     defer allocator.free(payload_json);
 
-    var token_payload = TokenPayload{};
-
-    if (std.mem.indexOf(u8, payload_json, "\"user_id\":")) |idx| {
-        const start = idx + 9;
-        var end = start;
-        while (end < payload_json.len and payload_json[end] != ',' and payload_json[end] != '}') : (end += 1) {}
-        const num_str = payload_json[start..end];
-        token_payload.user_id = std.fmt.parseInt(i32, num_str, 10) catch 0;
-    }
-
-    if (std.mem.indexOf(u8, payload_json, "\"username\":\"")) |idx| {
-        const start = idx + 12;
-        var end = start;
-        while (end < payload_json.len and !(payload_json[end] == '"' and (end + 1 < payload_json.len and payload_json[end + 1] == ',' or payload_json[end + 1] == '}'))) : (end += 1) {}
-        token_payload.username = try allocator.dupe(u8, payload_json[start..end]);
-    }
-
-    if (std.mem.indexOf(u8, payload_json, "\"email\":\"")) |idx| {
-        const start = idx + 9;
-        var end = start;
-        while (end < payload_json.len and !(payload_json[end] == '"' and (end + 1 < payload_json.len and payload_json[end + 1] == ',' or payload_json[end + 1] == '}'))) : (end += 1) {}
-        token_payload.email = try allocator.dupe(u8, payload_json[start..end]);
-    }
+    // 解析 JSON 到 TokenPayload
+    var parsed = try json.parseFromSlice(TokenPayload, allocator, payload_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    const token_payload = parsed.value;
 
     if (options.verify_signature) {
         const data_to_sign = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ header_b64, payload_b64 });
@@ -111,11 +96,6 @@ pub fn decode(allocator: Allocator, token: []const u8, options: DecodeOptions) !
 
         var expected_mac: [std.crypto.auth.hmac.sha2.HmacSha256.mac_length]u8 = undefined;
         std.crypto.auth.hmac.sha2.HmacSha256.create(&expected_mac, data_to_sign, options.secret);
-
-        var token_parts = std.mem.splitScalar(u8, token, '.');
-        _ = token_parts.first();
-        _ = token_parts.rest();
-        const signature_b64 = token_parts.rest();
 
         const signature = try base64UrlDecode(allocator, signature_b64);
         defer allocator.free(signature);
@@ -134,6 +114,8 @@ pub fn decode(allocator: Allocator, token: []const u8, options: DecodeOptions) !
             return error.InvalidSignature;
         }
     }
+
+    global.getServiceManager().?.getLoggerService().info("[jwt] decode token payload json={any}", .{token_payload});
 
     return token_payload;
 }
