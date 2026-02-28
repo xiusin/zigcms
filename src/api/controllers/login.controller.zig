@@ -47,6 +47,7 @@ const sql = @import("../../application/services/sql/orm.zig");
 const models = @import("../../domain/entities/mod.zig");
 
 const Self = @This();
+const replacement_marker = "\xEF\xBF\xBD";
 
 // ORM 模型别名
 const Admin = orm_models.Admin;
@@ -144,8 +145,17 @@ pub fn memberLogin(self: *Self, req: zap.Request) !void {
     const admin_id = user.id orelse 0;
     const role_info = try self.resolveRoleInfo(admin_id);
     defer if (role_info.role_ids_owner) |owner| self.allocator.free(owner);
+    defer if (role_info.role_text_owner) |owner| self.allocator.free(owner);
 
     const dept_info = try self.resolveDeptInfo(user.dept_id);
+    defer if (dept_info.department_name_owner) |owner| self.allocator.free(owner);
+
+    self.warnReplacementIfNeeded(&.{
+        .{ .field = "username", .value = user.username },
+        .{ .field = "nickname", .value = user.nickname },
+        .{ .field = "department_name", .value = dept_info.department_name },
+        .{ .field = "role_text", .value = role_info.role_text },
+    });
 
     base.send_ok(req, .{
         .token = token,
@@ -316,6 +326,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     role_ids_owner: ?[]i32,
     primary_role_id: i32,
     role_text: []const u8,
+    role_text_owner: ?[]u8,
 } {
     var q = OrmAdminRole.WhereEq("admin_id", admin_id);
     defer q.deinit();
@@ -327,6 +338,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
             .role_ids_owner = null,
             .primary_role_id = 1,
             .role_text = "超级管理员",
+            .role_text_owner = null,
         };
     }
 
@@ -340,13 +352,16 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
 
     const primary = owned_ids[0];
     var role_text: []const u8 = "超级管理员";
+    var role_text_owner: ?[]u8 = null;
 
     const role_opt = OrmSysRole.Find(primary) catch null;
     if (role_opt) |role| {
         var role_mut = role;
         defer OrmSysRole.freeModel(&role_mut);
         if (role_mut.role_name.len > 0) {
-            role_text = role_mut.role_name;
+            const copied = try self.allocator.dupe(u8, role_mut.role_name);
+            role_text = copied;
+            role_text_owner = copied;
         }
     }
 
@@ -355,6 +370,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
         .role_ids_owner = owned_ids,
         .primary_role_id = primary,
         .role_text = role_text,
+        .role_text_owner = role_text_owner,
     };
 }
 
@@ -362,23 +378,33 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
 fn resolveDeptInfo(self: *Self, dept_id_opt: ?i32) !struct {
     department_id: i32,
     department_name: []const u8,
+    department_name_owner: ?[]u8,
 } {
-    _ = self;
     if (dept_id_opt) |dept_id| {
         const dept_opt = OrmSysDept.Find(dept_id) catch null;
         if (dept_opt) |dept| {
             var dept_mut = dept;
             defer OrmSysDept.freeModel(&dept_mut);
+            if (dept_mut.dept_name.len > 0) {
+                const copied = try self.allocator.dupe(u8, dept_mut.dept_name);
+                return .{
+                    .department_id = dept_id,
+                    .department_name = copied,
+                    .department_name_owner = copied,
+                };
+            }
             return .{
                 .department_id = dept_id,
                 .department_name = dept_mut.dept_name,
+                .department_name_owner = null,
             };
         }
     }
 
     return .{
         .department_id = 0,
-        .department_name = "总部",
+        .department_name = "",
+        .department_name_owner = null,
     };
 }
 
@@ -390,6 +416,18 @@ fn defaultPages() []const []const u8 {
 /// 返回默认按钮权限。
 fn defaultButtons() []const []const u8 {
     return &.{ "btn:add", "btn:edit", "btn:delete", "btn:export", "btn:import", "btn:query" };
+}
+
+fn warnReplacementIfNeeded(self: *Self, list: []const struct { field: []const u8, value: []const u8 }) void {
+    for (list) |item| {
+        if (item.value.len == 0) continue;
+        if (std.mem.indexOf(u8, item.value, replacement_marker) != null) {
+            self.logger.warn(
+                "[auth][utf8_guard] field={s} contains replacement char, raw={s}",
+                .{ item.field, item.value },
+            );
+        }
+    }
 }
 
 /// 用户注册

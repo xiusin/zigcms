@@ -51,7 +51,7 @@ setup: ## 初始化项目环境
 
 dev: ## 启动开发服务器
 	@echo "$(GREEN)🔥 启动开发服务器...$(NC)"
-	@$(SCRIPTS_DIR)/dev.sh
+	@$(SCRIPTS_DIR)/dev.sh --watch
 
 run: ## 运行项目（调试模式）
 	@echo "$(GREEN)▶️  运行项目...$(NC)"
