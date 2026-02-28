@@ -301,7 +301,7 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     }
 
     const rows = rels.?;
-    defer Admin.freeModel(&rows);
+    defer OrmAdminRole.freeModels(rows);
 
     const owned_ids = try self.allocator.alloc(i32, rows.len);
     for (rows, 0..) |rel, idx| {

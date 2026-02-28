@@ -174,7 +174,7 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         defer self.allocator.free(rel_in_clause);
         _ = rel_q.whereRaw(rel_in_clause);
         const rel_rows = rel_q.get() catch |err| return base.send_error(req, err);
-        defer OrmAdminRole.freeModels(self.allocator, rel_rows);
+        defer OrmAdminRole.freeModels(rel_rows);
         for (rel_rows) |rel| all_rels.append(self.allocator, rel) catch {};
     }
 
@@ -193,7 +193,7 @@ fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
         defer self.allocator.free(role_in_clause);
         _ = role_q.whereRaw(role_in_clause);
         const role_rows = role_q.get() catch |err| return base.send_error(req, err);
-        defer OrmRole.freeModels(self.allocator, role_rows);
+        defer OrmRole.freeModels(role_rows);
         for (role_rows) |role| roles.append(self.allocator, role) catch {};
     }
 
@@ -413,10 +413,10 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
         if (role_opt == null) return base.send_failed(req, "存在无效角色ID");
         var role_mut = role_opt.?;
         if (role_mut.status != 1) {
-            OrmRole.freeModel(self.allocator, &role_mut);
+            OrmRole.freeModel(&role_mut);
             return base.send_failed(req, "存在禁用角色，无法分配");
         }
-        OrmRole.freeModel(self.allocator, &role_mut);
+        OrmRole.freeModel(&role_mut);
     }
 
     const db = global.get_db();
@@ -447,6 +447,7 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
 
 /// 返回当前用户基础信息（联调兼容）。
 fn userInfoImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
     const id: i32 = if (req.getParamSlice("id")) |id_str|
         @intCast(strings.to_int(id_str) catch 1)

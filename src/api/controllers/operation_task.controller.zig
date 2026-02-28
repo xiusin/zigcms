@@ -45,7 +45,7 @@ fn runImpl(self: *Self, req: zap.Request) !void {
     var task = (OrmTask.Find(dto.id) catch |err| return base.send_error(req, err)) orelse {
         return base.send_failed(req, "任务不存在");
     };
-    defer OrmTask.freeModel(self.allocator, &task);
+    defer OrmTask.freeModel(&task);
 
     const now = std.time.timestamp();
     task.last_run_time = now;
@@ -89,7 +89,7 @@ fn logsImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("id", .desc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmTaskLog.freeModels(self.allocator, rows);
+    defer OrmTaskLog.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(models.OpTaskLog){};
     defer items.deinit(self.allocator);
@@ -123,7 +123,7 @@ fn scheduleLogsImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("id", .desc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmTaskScheduleLog.freeModels(self.allocator, rows);
+    defer OrmTaskScheduleLog.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(models.OpTaskScheduleLog){};
     defer items.deinit(self.allocator);

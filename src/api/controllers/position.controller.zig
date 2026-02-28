@@ -205,7 +205,7 @@ fn selectImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(self.allocator, items_slice);
+    defer OrmPosition.freeModels(items_slice);
 
     var items = std.ArrayListUnmanaged(models.Position){};
     defer items.deinit(self.allocator);
@@ -229,7 +229,7 @@ fn byDepartmentImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(self.allocator, items_slice);
+    defer OrmPosition.freeModels(items_slice);
 
     var items = std.ArrayListUnmanaged(models.Position){};
     defer items.deinit(self.allocator);

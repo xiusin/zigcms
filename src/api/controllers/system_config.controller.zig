@@ -53,7 +53,7 @@ fn exportImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmConfig.freeModels(self.allocator, rows);
+    defer OrmConfig.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(models.SysConfig){};
     defer items.deinit(self.allocator);
@@ -125,7 +125,7 @@ fn backupImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmConfig.freeModels(self.allocator, rows);
+    defer OrmConfig.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(models.SysConfig){};
     defer items.deinit(self.allocator);

@@ -72,7 +72,7 @@ fn treeImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmMenu.freeModels(self.allocator, rows);
+    defer OrmMenu.freeModels(rows);
 
     var tree_data = std.ArrayListUnmanaged(MenuNode){};
     defer tree_data.deinit(self.allocator);
@@ -104,7 +104,7 @@ fn permissionsImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmPermission.freeModels(global.get_allocator(), rows);
+    defer OrmPermission.freeModels(rows);
 
     var perms = std.ArrayListUnmanaged([]const u8){};
     defer perms.deinit(global.get_allocator());

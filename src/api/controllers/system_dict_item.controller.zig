@@ -71,7 +71,7 @@ fn itemsImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmDictItem.freeModels(self.allocator, rows);
+    defer OrmDictItem.freeModels(rows);
 
     var list = std.ArrayListUnmanaged(models.SysDictItem){};
     defer list.deinit(self.allocator);
@@ -103,7 +103,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     }
 
     var created = OrmDictItem.Create(dto) catch |err| return base.send_error(req, err);
-    defer OrmDictItem.freeModel(self.allocator, &created);
+    defer OrmDictItem.freeModel(&created);
 
     base.send_ok(req, created);
 }
@@ -147,7 +147,7 @@ fn setImpl(self: *Self, req: zap.Request) !void {
     var model = (OrmDictItem.Find(id) catch |err| return base.send_error(req, err)) orelse {
         return base.send_failed(req, "记录不存在");
     };
-    defer OrmDictItem.freeModel(self.allocator, &model);
+    defer OrmDictItem.freeModel(&model);
 
     if (std.mem.eql(u8, field, "status")) {
         if (value_val != .integer) return base.send_failed(req, "status 类型错误");

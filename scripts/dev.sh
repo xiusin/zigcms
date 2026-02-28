@@ -179,7 +179,7 @@ main() {
     init_script
     
     # 显示标题
-    title "启动 ZigCMS 开发环境"
+    title "                 Running ZigCMS service"
     
     # 检查环境
     check_zig

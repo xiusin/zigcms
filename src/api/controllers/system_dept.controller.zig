@@ -59,7 +59,7 @@ fn deptTreeImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const items = q.get() catch |err| return base.send_error(req, err);
-    defer OrmDept.freeModels(self.allocator, items);
+    defer OrmDept.freeModels(items);
 
     var tree = std.ArrayListUnmanaged(DeptNode){};
     defer tree.deinit(self.allocator);
@@ -88,7 +88,7 @@ fn deptAllImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const items = q.get() catch |err| return base.send_error(req, err);
-    defer OrmDept.freeModels(self.allocator, items);
+    defer OrmDept.freeModels(items);
 
     var list = std.ArrayListUnmanaged(models.SysDept){};
     defer list.deinit(self.allocator);

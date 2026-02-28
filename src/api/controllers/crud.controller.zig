@@ -80,7 +80,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             _ = q.page(@intCast(page), @intCast(limit));
 
             const rows = q.get() catch |err| return base.send_error(req, err);
-            defer OrmModel.freeModels(self.allocator, rows);
+            defer OrmModel.freeModels(rows);
 
             var items = std.ArrayListUnmanaged(T){};
             defer items.deinit(self.allocator);
@@ -185,7 +185,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             _ = q.limit(100);
 
             const rows = q.get() catch |err| return base.send_error(req, err);
-            defer OrmModel.freeModels(self.allocator, rows);
+            defer OrmModel.freeModels(rows);
 
             var items = std.ArrayListUnmanaged(T){};
             defer items.deinit(self.allocator);

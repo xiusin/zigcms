@@ -76,7 +76,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     _ = q.page(@intCast(page), @intCast(limit));
 
     const rows = q.get() catch |e| return base.send_error(req, e);
-    defer OrmConfig.freeModels(self.allocator, rows);
+    defer OrmConfig.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(PaymentPayload){};
     defer items.deinit(self.allocator);

@@ -193,7 +193,7 @@ fn exportImpl(self: *Self, req: zap.Request) !void {
     _ = q.limit(5000);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmMember.freeModels(self.allocator, rows);
+    defer OrmMember.freeModels(rows);
 
     var items = std.ArrayListUnmanaged(models.BizMember){};
     defer items.deinit(self.allocator);

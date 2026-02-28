@@ -41,7 +41,7 @@ pub fn init(allocator: Allocator) Self {
 pub fn get(self: Self, req: zap.Request) !void {
     // 使用 ORM 获取所有设置
     const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
-    defer Setting.freeModels(self.allocator, settings_slice);
+    defer Setting.freeModels(settings_slice);
 
     var config = std.StringHashMap([]const u8).init(self.allocator);
     defer config.deinit();
@@ -76,7 +76,7 @@ pub fn save(self: Self, req: zap.Request) !void {
                 .key = entity.key_ptr.*,
                 .value = val,
             }) catch continue;
-            Setting.freeModel(self.allocator, &new_setting);
+            Setting.freeModel(&new_setting);
         }
     }
 
@@ -89,7 +89,7 @@ pub fn save(self: Self, req: zap.Request) !void {
 pub fn get_upload_config(self: Self, req: zap.Request) !void {
     // 获取所有设置
     const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
-    defer Setting.freeModels(self.allocator, settings_slice);
+    defer Setting.freeModels(settings_slice);
 
     // 构建配置映射
     var config_map = std.StringHashMap([]const u8).init(self.allocator);
@@ -197,6 +197,7 @@ pub fn test_upload_config(self: Self, req: zap.Request) !void {
 
 /// 保存单个设置项的辅助方法
 fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
+    _ = self;
     // 先删除已存在的 key
     var del_q = Setting.WhereEq("key", key);
     defer del_q.deinit();
@@ -207,14 +208,14 @@ fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
         .key = key,
         .value = value,
     }) catch return;
-    Setting.freeModel(self.allocator, &new_setting);
+    Setting.freeModel(&new_setting);
 }
 
 /// 发送测试邮件
 pub fn send_mail(self: Self, req: zap.Request) !void {
     // 获取所有设置
     const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
-    defer Setting.freeModels(self.allocator, settings_slice);
+    defer Setting.freeModels(settings_slice);
 
     // 构建配置映射
     var config_map = std.StringHashMap([]const u8).init(self.allocator);

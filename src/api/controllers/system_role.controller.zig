@@ -65,7 +65,7 @@ fn buttonPermsImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmPermission.freeModels(self.allocator, rows);
+    defer OrmPermission.freeModels(rows);
 
     if (rows.len == 0) {
         return base.send_ok(req, defaultPerms());
