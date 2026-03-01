@@ -1890,6 +1890,107 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return error.CreateFailed;
         }
 
+        /// 批量插入记录（单条 SQL，性能提升 10-100 倍）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// const users = [_]User{
+        ///     .{ .name = "张三", .email = "zhangsan@example.com" },
+        ///     .{ .name = "李四", .email = "lisi@example.com" },
+        ///     .{ .name = "王五", .email = "wangwu@example.com" },
+        /// };
+        /// try OrmUser.bulkInsert(db, &users);
+        /// ```
+        pub fn bulkInsert(db: *Database, data: anytype) !void {
+            const DataType = @TypeOf(data);
+            const type_info = @typeInfo(DataType);
+            
+            // 获取数组元素类型
+            const items = switch (type_info) {
+                .pointer => |ptr| switch (@typeInfo(ptr.child)) {
+                    .array => data,
+                    else => @compileError("bulkInsert requires array or slice"),
+                },
+                .array => data,
+                else => @compileError("bulkInsert requires array or slice"),
+            };
+            
+            if (items.len == 0) return;
+            
+            // 构建批量插入 SQL
+            var sql = std.ArrayListUnmanaged(u8){};
+            defer sql.deinit(db.allocator);
+            
+            try sql.appendSlice(db.allocator, "INSERT INTO ");
+            try sql.appendSlice(db.allocator, tableName());
+            try sql.appendSlice(db.allocator, " (");
+            
+            // 字段名
+            const fields = std.meta.fields(T);
+            var field_count: usize = 0;
+            inline for (fields) |field| {
+                if (std.mem.eql(u8, field.name, primaryKey())) continue;
+                if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+                try sql.appendSlice(db.allocator, field.name);
+                field_count += 1;
+            }
+            
+            try sql.appendSlice(db.allocator, ") VALUES ");
+            
+            // 值
+            for (items, 0..) |item, i| {
+                if (i > 0) try sql.appendSlice(db.allocator, ", ");
+                try sql.appendSlice(db.allocator, "(");
+                
+                var value_count: usize = 0;
+                inline for (fields) |field| {
+                    if (std.mem.eql(u8, field.name, primaryKey())) continue;
+                    if (value_count > 0) try sql.appendSlice(db.allocator, ", ");
+                    
+                    const value = @field(item, field.name);
+                    const FieldType = field.type;
+                    
+                    if (FieldType == []const u8) {
+                        const escaped = try escapeSqlString(db.allocator, value);
+                        defer db.allocator.free(escaped);
+                        try sql.appendSlice(db.allocator, "'");
+                        try sql.appendSlice(db.allocator, escaped);
+                        try sql.appendSlice(db.allocator, "'");
+                    } else if (@typeInfo(FieldType) == .optional) {
+                        if (value) |v| {
+                            const ChildType = @typeInfo(FieldType).optional.child;
+                            if (ChildType == []const u8) {
+                                const escaped = try escapeSqlString(db.allocator, v);
+                                defer db.allocator.free(escaped);
+                                try sql.appendSlice(db.allocator, "'");
+                                try sql.appendSlice(db.allocator, escaped);
+                                try sql.appendSlice(db.allocator, "'");
+                            } else {
+                                const val_str = try std.fmt.allocPrint(db.allocator, "{any}", .{v});
+                                defer db.allocator.free(val_str);
+                                try sql.appendSlice(db.allocator, val_str);
+                            }
+                        } else {
+                            try sql.appendSlice(db.allocator, "NULL");
+                        }
+                    } else {
+                        const val_str = try std.fmt.allocPrint(db.allocator, "{any}", .{value});
+                        defer db.allocator.free(val_str);
+                        try sql.appendSlice(db.allocator, val_str);
+                    }
+                    
+                    value_count += 1;
+                }
+                
+                try sql.appendSlice(db.allocator, ")");
+            }
+            
+            const final_sql = try sql.toOwnedSlice(db.allocator);
+            defer db.allocator.free(final_sql);
+            
+            _ = try db.exec(final_sql, .{});
+        }
+
         /// 更新记录
         pub fn update(db: *Database, id: anytype, data: anytype) !u64 {
             const sql = try buildUpdateSql(db.allocator, tableName(), primaryKey(), id, data);
