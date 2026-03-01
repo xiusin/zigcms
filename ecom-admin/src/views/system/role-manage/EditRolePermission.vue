@@ -238,16 +238,11 @@
     }
     loading.value = true;
     try {
-      const roleRes: any = await request('/api/system/role/save', {
+      // 统一调用单个接口，带上 menu_ids
+      await request('/api/system/role/save', {
         ...info.value,
-        status: info.value.status ?? 1,
-      });
-      const roleId = info.value.id || roleRes?.data?.id || roleRes?.data?.data?.id;
-      
-      await request('/api/system/role/permissions/save', {
-        role_id: Number(roleId),
         menu_ids: info.value.menu_ids.map(Number),
-        button_perms: [],
+        status: info.value.status ?? 1,
       });
 
       emits('refresh');

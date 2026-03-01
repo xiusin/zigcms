@@ -54,8 +54,8 @@ pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
     };
 }
 
-/// 角色权限保存接口。
-pub const role_permissions_save = rolePermissionsSaveImpl;
+/// 角色信息与权限统一保存接口。
+pub const save = saveImpl;
 
 /// 角色权限查询接口。
 pub const role_permissions_get = rolePermissionsGetImpl;
@@ -84,8 +84,8 @@ pub fn bumpRoleCacheVersion(allocator: Allocator) void {
     db.kv_set(ROLE_CACHE_VERSION_KEY, version) catch {};
 }
 
-/// 保存角色菜单权限 (包含按钮)。
-fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
+/// 保存角色信息及其权限关联。
+fn saveImpl(self: *Self, req: zap.Request) !void {
     req.parseBody() catch return base.send_failed(req, "解析请求体失败");
     const body = req.body orelse return base.send_failed(req, "请求体为空");
 
@@ -96,30 +96,65 @@ fn rolePermissionsSaveImpl(self: *Self, req: zap.Request) !void {
 
     if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
 
-    const role_id_val = parsed.value.object.get("role_id") orelse return base.send_failed(req, "缺少 role_id 参数");
-    const menu_ids_val = parsed.value.object.get("menu_ids") orelse return base.send_failed(req, "缺少 menu_ids 参数");
+    const data = parsed.value.object;
+    
+    // 1. 提取角色基础信息
+    const id_val = data.get("id");
+    const role_name = if (data.get("role_name")) |v| v.string else "";
+    const role_key = if (data.get("role_key")) |v| v.string else "";
+    const sort = if (data.get("sort")) |v| @as(i32, @intCast(v.integer)) else 0;
+    const remark = if (data.get("remark")) |v| v.string else "";
+    const status = if (data.get("status")) |v| @as(i32, @intCast(v.integer)) else 1;
 
-    if (role_id_val != .integer or menu_ids_val != .array) {
-        return base.send_failed(req, "参数格式错误");
+    if (role_name.len == 0) return base.send_failed(req, "角色名称不能为空");
+
+    var role_id: i32 = 0;
+
+    // 2. 创建或更新 sys_role 表
+    if (id_val != null and id_val.? != .null) {
+        role_id = @intCast(id_val.?.integer);
+        _ = OrmSysRole.Update(role_id, .{
+            .role_name = role_name,
+            .role_key = role_key,
+            .sort = sort,
+            .remark = remark,
+            .status = status,
+        }) catch |err| return base.send_error(req, err);
+    } else {
+        var created = OrmSysRole.Create(.{
+            .role_name = role_name,
+            .role_key = role_key,
+            .sort = sort,
+            .remark = remark,
+            .status = status,
+        }) catch |err| return base.send_error(req, err);
+        defer OrmSysRole.freeModel(&created);
+        role_id = created.id orelse 0;
     }
 
-    const role_id: i32 = @intCast(role_id_val.integer);
+    if (role_id <= 0) return base.send_failed(req, "保存角色失败");
 
-    // 开启事务清理并重建关联
-    var delete_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
-    defer delete_menu_q.deinit();
-    _ = delete_menu_q.delete() catch |err| return base.send_error(req, err);
+    // 3. 更新权限关联 (如果有 menu_ids 参数)
+    if (data.get("menu_ids")) |menu_ids_val| {
+        if (menu_ids_val == .array) {
+            // 清理旧关联
+            var delete_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
+            defer delete_menu_q.deinit();
+            _ = delete_menu_q.delete() catch |err| return base.send_error(req, err);
 
-    for (menu_ids_val.array.items) |menu_id_val| {
-        if (menu_id_val != .integer) continue;
-        _ = OrmRoleMenu.Create(.{
-            .role_id = role_id,
-            .menu_id = @as(i32, @intCast(menu_id_val.integer)),
-        }) catch |err| return base.send_error(req, err);
+            // 写入新关联
+            for (menu_ids_val.array.items) |m_id_val| {
+                if (m_id_val != .integer) continue;
+                _ = OrmRoleMenu.Create(.{
+                    .role_id = role_id,
+                    .menu_id = @as(i32, @intCast(m_id_val.integer)),
+                }) catch |err| return base.send_error(req, err);
+            }
+        }
     }
 
     bumpRoleCacheVersion(self.allocator);
-    base.send_ok(req, "权限保存成功");
+    base.send_ok(req, .{ .id = role_id });
 }
 
 /// 查询角色已分配的菜单 ID 列表。
