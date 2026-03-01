@@ -719,6 +719,83 @@ pub const Database = struct {
         try self.commit();
     }
 
+    /// 执行事务并返回结果（自动管理）
+    /// 
+    /// 使用示例：
+    /// ```zig
+    /// const result = try db.transactionWithResult(struct {
+    ///     pub fn run(tx: *Database) !User {
+    ///         const user = try OrmUser.create(tx, .{ .name = "张三" });
+    ///         try OrmOrder.create(tx, .{ .user_id = user.id });
+    ///         return user;
+    ///     }
+    /// }.run, .{});
+    /// ```
+    pub fn transactionWithResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        const ReturnType = @typeInfo(@TypeOf(func)).@"fn".return_type.?;
+        _ = ReturnType;
+        
+        // MySQL：使用连接池事务
+        if (self.pool) |pool| {
+            var tx = try Transaction.init(pool);
+            defer tx.deinit();
+
+            const result = @call(.auto, func, .{&tx} ++ args) catch |err| {
+                try tx.rollback();
+                return err;
+            };
+
+            try tx.commit();
+            return result;
+        }
+
+        // PostgreSQL/SQLite：使用简单事务
+        try self.beginTransaction();
+
+        const result = @call(.auto, func, .{self} ++ args) catch |err| {
+            try self.rollback();
+            return err;
+        };
+
+        try self.commit();
+        return result;
+    }
+
+    /// Savepoint 支持（嵌套事务）
+    /// 
+    /// 使用示例：
+    /// ```zig
+    /// try db.beginTransaction();
+    /// defer db.rollback() catch {};
+    /// 
+    /// try OrmUser.create(db, .{ .name = "张三" });
+    /// 
+    /// try db.savepoint("sp1");
+    /// try OrmOrder.create(db, .{ .user_id = 1 });
+    /// try db.rollbackTo("sp1");  // 只回滚订单
+    /// 
+    /// try db.commit();
+    /// ```
+    pub fn savepoint(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
+    /// 回滚到 Savepoint
+    pub fn rollbackTo(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "ROLLBACK TO SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
+    /// 释放 Savepoint
+    pub fn releaseSavepoint(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "RELEASE SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
     /// 获取驱动类型
     pub fn getDriverType(self: *const Database) interface.DriverType {
         return self.driver_type;
