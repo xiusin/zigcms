@@ -48,6 +48,7 @@ const Allocator = std.mem.Allocator;
 const datetime = @import("../datetime/datetime.zig");
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
+const soft_deletes = @import("soft_deletes.zig");
 const logger_mod = @import("../logger/logger.zig");
 const ParamBuilder = @import("param_builder.zig").ParamBuilder;
 const sql_errors = @import("sql_errors.zig");
@@ -1896,10 +1897,35 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             return db.exec(sql, .{});
         }
 
-        /// 删除记录
+        /// 删除记录（支持软删除）
+        /// 如果模型启用软删除，则只标记 deleted_at，否则物理删除
         pub fn destroy(db: *Database, id: anytype) !u64 {
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            
+            if (has_soft_deletes and has_deleted_at) {
+                // 软删除：设置 deleted_at
+                const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+                const now = std.time.timestamp();
+                
+                var buf: [512]u8 = undefined;
+                const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = {d} WHERE {s} = {any}", 
+                    .{ tableName(), deleted_at_col, now, primaryKey(), id });
+                return db.exec(sql, .{});
+            } else {
+                // 物理删除
+                var buf: [256]u8 = undefined;
+                const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", 
+                    .{ tableName(), primaryKey(), id });
+                return db.exec(sql, .{});
+            }
+        }
+
+        /// 物理删除记录（忽略软删除设置）
+        pub fn forceDestroy(db: *Database, id: anytype) !u64 {
             var buf: [256]u8 = undefined;
-            const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
+            const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", 
+                .{ tableName(), primaryKey(), id });
             return db.exec(sql, .{});
         }
 
@@ -1990,7 +2016,18 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
         /// 恢复软删除
         pub fn restore(db: *Database, id: anytype) !u64 {
-            return update(db, id, .{ .deleted_at = null });
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            
+            if (!has_soft_deletes or !has_deleted_at) {
+                return error.SoftDeletesNotEnabled;
+            }
+            
+            const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+            var buf: [512]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = NULL WHERE {s} = {any}", 
+                .{ tableName(), deleted_at_col, primaryKey(), id });
+            return db.exec(sql, .{});
         }
 
         /// 查找或创建
@@ -2520,6 +2557,7 @@ pub fn ModelQuery(comptime T: type) type {
         distinct_flag: bool = false,
         bind_params: std.ArrayListUnmanaged(query_mod.Value), // 参数绑定
         eager_loader: EagerLoader, // 关系预加载器
+        soft_delete_mode: soft_deletes.SoftDeleteMode, // 软删除模式
 
         pub fn init(db: *Database, table: []const u8) Self {
             return Self{
@@ -2532,6 +2570,7 @@ pub fn ModelQuery(comptime T: type) type {
                 .join_clauses = .{},
                 .bind_params = .{},
                 .eager_loader = EagerLoader.init(db.allocator),
+                .soft_delete_mode = .exclude_trashed, // 默认排除已删除
             };
         }
 
@@ -2589,6 +2628,32 @@ pub fn ModelQuery(comptime T: type) type {
             for (relations) |rel| {
                 self.eager_loader.add(rel) catch {};
             }
+            return self;
+        }
+
+        /// 包含已软删除的记录
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmUser.Query();
+        /// _ = q.withTrashed();
+        /// const users = try q.get();  // 包含已删除的记录
+        /// ```
+        pub fn withTrashed(self: *Self) *Self {
+            self.soft_delete_mode = .with_trashed;
+            return self;
+        }
+
+        /// 只查询已软删除的记录
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmUser.Query();
+        /// _ = q.onlyTrashed();
+        /// const users = try q.get();  // 只返回已删除的记录
+        /// ```
+        pub fn onlyTrashed(self: *Self) *Self {
+            self.soft_delete_mode = .only_trashed;
             return self;
         }
 
@@ -4018,8 +4083,54 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         fn appendWhere(self: *Self, sql: *std.ArrayListUnmanaged(u8)) !void {
+            // 检查是否需要添加软删除条件
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            const should_add_soft_delete = has_soft_deletes and has_deleted_at;
+            
+            var has_where = self.where_clauses.items.len > 0;
+            
+            // 添加软删除条件
+            if (should_add_soft_delete) {
+                const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+                
+                switch (self.soft_delete_mode) {
+                    .exclude_trashed => {
+                        // 默认：排除已删除（deleted_at IS NULL）
+                        if (!has_where) {
+                            try sql.appendSlice(self.db.allocator, " WHERE ");
+                            has_where = true;
+                        } else {
+                            try sql.appendSlice(self.db.allocator, " AND ");
+                        }
+                        try sql.appendSlice(self.db.allocator, deleted_at_col);
+                        try sql.appendSlice(self.db.allocator, " IS NULL");
+                    },
+                    .only_trashed => {
+                        // 只查询已删除（deleted_at IS NOT NULL）
+                        if (!has_where) {
+                            try sql.appendSlice(self.db.allocator, " WHERE ");
+                            has_where = true;
+                        } else {
+                            try sql.appendSlice(self.db.allocator, " AND ");
+                        }
+                        try sql.appendSlice(self.db.allocator, deleted_at_col);
+                        try sql.appendSlice(self.db.allocator, " IS NOT NULL");
+                    },
+                    .with_trashed => {
+                        // 包含已删除：不添加任何条件
+                    },
+                }
+            }
+            
+            // 添加用户定义的 WHERE 条件
             if (self.where_clauses.items.len > 0) {
-                try sql.appendSlice(self.db.allocator, " WHERE ");
+                if (!has_where) {
+                    try sql.appendSlice(self.db.allocator, " WHERE ");
+                } else {
+                    try sql.appendSlice(self.db.allocator, " AND ");
+                }
+                
                 for (self.where_clauses.items, 0..) |clause, i| {
                     if (i > 0) try sql.appendSlice(self.db.allocator, " AND ");
                     try sql.appendSlice(self.db.allocator, clause);
