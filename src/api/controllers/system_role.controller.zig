@@ -57,6 +57,9 @@ pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
 /// 角色信息与权限统一保存接口。
 pub const save = saveImpl;
 
+/// 角色列表查询接口。
+pub const list = listImpl;
+
 /// 角色权限查询接口。
 pub const role_permissions_get = rolePermissionsGetImpl;
 
@@ -211,6 +214,13 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
         return base.send_ok(req, .{ .id = role_id });
     };
     base.send_ok(req, saved_role);
+}
+
+/// 角色列表查询（使用通用 CRUD 控制器）
+fn listImpl(self: *Self, req: zap.Request) !void {
+    const CrudController = @import("crud.controller.zig").Crud(models.SysRole, "zigcms");
+    var ctrl = CrudController.init(self.allocator);
+    return ctrl.list(req);
 }
 
 /// 查询角色已分配的菜单 ID 列表。

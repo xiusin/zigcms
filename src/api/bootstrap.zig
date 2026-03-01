@@ -364,13 +364,10 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
 
         try registerWithAlias(self.app, "/system/role/save", role, &controllers.system_ext.Role.save);
+        try registerWithAlias(self.app, "/system/role/list", role, &controllers.system_ext.Role.list);
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
         try registerWithAlias(self.app, "/system/role/permissions/info", role, &controllers.system_ext.Role.role_permissions_info);
         try registerWithAlias(self.app, "/system/role/delete", role, &controllers.system_ext.Role.delete);
-
-        // 角色列表使用通用 CRUD（只注册 list 相关路由）
-        try self.app.crud("system/role", models.SysRole);
-        try self.app.crud("api/system/role", models.SysRole);
 
         try registerWithAlias(self.app, "/system/config/refresh-cache", config_ctrl, &controllers.system_ext.Config.refresh_cache);
         try registerWithAlias(self.app, "/system/config/export", config_ctrl, &controllers.system_ext.Config.config_export);
