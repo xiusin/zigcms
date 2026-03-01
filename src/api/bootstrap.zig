@@ -367,6 +367,7 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/role/button-perms", role, &controllers.system_ext.Role.button_perms);
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
         try registerWithAlias(self.app, "/system/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);
+        try registerWithAlias(self.app, "/system/role/delete", role, &controllers.system_ext.Role.delete);
 
         try registerWithAlias(self.app, "/system/config/refresh-cache", config_ctrl, &controllers.system_ext.Config.refresh_cache);
         try registerWithAlias(self.app, "/system/config/export", config_ctrl, &controllers.system_ext.Config.config_export);

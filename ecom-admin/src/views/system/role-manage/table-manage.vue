@@ -29,7 +29,7 @@
         :get-default-form-data="generateFormModel"
         :search-rules="searchRules"
         :base-search-rules="baseSearchRules"
-        placeholder="请输入供应商名称"
+        placeholder="请输入角色名称"
         @hand-submit="handleSubmit"
       ></SearchForm>
 
@@ -59,11 +59,12 @@
           </a-link>
           <a-divider direction="vertical" />
           <a-popconfirm
-            :content="`确定要删除这条数据吗?`"
+            :content="record.role_key === 'admin' || record.id === 1 ? '系统内置角色不可删除' : `确定要删除这条数据吗?`"
             position="left"
+            :ok-button-props="{ disabled: record.role_key === 'admin' || record.id === 1 }"
             @ok="deleteItem(record)"
           >
-            <a-link> <icon-delete />删除 </a-link>
+            <a-link :disabled="record.role_key === 'admin' || record.id === 1"> <icon-delete />删除 </a-link>
           </a-popconfirm>
         </template>
       </BaseTable>
@@ -128,28 +129,18 @@
   const generateFormModel = () => {
     return {
       // 基础查询条件
-      name: '',
-      user_id: '',
-      is_open_saas: '',
-      is_open_saas_d: '',
-      user_name: '',
+      role_name: '',
     };
   };
   const baseSearchRules: any = ref([
     {
-      field: 'name',
-      label: '供应商名称',
+      field: 'role_name',
+      label: '角色名称',
       value: null,
       width: '100px',
     },
   ]);
   const searchRules: any = ref([
-    {
-      field: 'user_name',
-      label: '账户',
-      value: null,
-      component_name: 'base-input',
-    },
   ]);
 
   const formModel: any = ref(generateFormModel());

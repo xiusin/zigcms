@@ -37,6 +37,23 @@ const OrmRolePermission = sql.defineWithConfig(models.SysRolePermission, .{
     .primary_key = "id",
 });
 
+const AdminRole = struct {
+    id: ?i32 = null,
+    admin_id: i32,
+    role_id: i32,
+    created_at: ?i64 = null,
+};
+
+const OrmAdminRole = sql.defineWithConfig(AdminRole, .{
+    .table_name = "sys_admin_role",
+    .primary_key = "id",
+});
+
+const OrmSysRole = sql.defineWithConfig(models.SysRole, .{
+    .table_name = "sys_role",
+    .primary_key = "id",
+});
+
 const ROLE_CACHE_VERSION_KEY = "sys:role:list:version";
 
 /// 初始化角色扩展控制器。
@@ -50,6 +67,12 @@ pub fn init(allocator: Allocator) Self {
     if (!OrmRolePermission.hasDb()) {
         OrmRolePermission.use(global.get_db());
     }
+    if (!OrmAdminRole.hasDb()) {
+        OrmAdminRole.use(global.get_db());
+    }
+    if (!OrmSysRole.hasDb()) {
+        OrmSysRole.use(global.get_db());
+    }
     return .{ .allocator = allocator };
 }
 
@@ -61,6 +84,9 @@ pub const role_permissions_save = rolePermissionsSaveImpl;
 
 /// 角色权限查询接口。
 pub const role_permissions_get = rolePermissionsGetImpl;
+
+/// 角色删除接口。
+pub const delete = deleteImpl;
 
 /// 读取角色列表缓存版本。
 pub fn getRoleCacheVersion(allocator: Allocator) []const u8 {
@@ -248,6 +274,52 @@ fn rolePermissionsGetImpl(self: *Self, req: zap.Request) !void {
         .menu_ids = menu_ids.items,
         .button_perms = button_perm_codes.items,
     });
+}
+
+/// 删除角色，包含限制检查。
+fn deleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    req.parseQuery();
+    const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
+    const id: i32 = std.fmt.parseInt(i32, id_str, 10) catch return base.send_failed(req, "id 格式错误");
+
+    // 1. 获取角色详情检查是否为系统角色
+    const role_opt = OrmSysRole.Find(id) catch |err| return base.send_error(req, err);
+    if (role_opt) |role| {
+        var role_mut = role;
+        defer OrmSysRole.freeModel(&role_mut);
+        // 系统管理员角色通常 key 为 'super_admin' 且 ID 为 1
+        if (std.mem.eql(u8, role_mut.role_key, "super_admin") or id == 1) {
+            return base.send_failed(req, "系统内置角色，不可删除");
+        }
+    } else {
+        return base.send_failed(req, "该角色记录不存在");
+    }
+
+    // 2. 检查是否有用户关联此角色
+    var user_role_q = OrmAdminRole.WhereEq("role_id", id);
+    defer user_role_q.deinit();
+    const count = user_role_q.count() catch 0;
+    if (count > 0) {
+        return base.send_failed(req, "该角色下仍有关联用户，请先解除关联后再尝试删除");
+    }
+
+    // 3. 执行删除操作
+    _ = OrmSysRole.Destroy(@as(usize, @intCast(id))) catch |err| return base.send_error(req, err);
+
+    // 4. 清理关联表
+    var rm_q = OrmRoleMenu.WhereEq("role_id", id);
+    defer rm_q.deinit();
+    _ = rm_q.delete() catch {};
+
+    var rp_q = OrmRolePermission.WhereEq("role_id", id);
+    defer rp_q.deinit();
+    _ = rp_q.delete() catch {};
+
+    // 5. 刷新缓存版本
+    bumpRoleCacheVersion(global.get_allocator());
+
+    base.send_ok(req, "角色已成功删除");
 }
 
 /// 默认按钮权限列表。

@@ -77,6 +77,10 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             };
             defer params.deinit();
 
+            var q = OrmModel.Query();
+            defer q.deinit();
+
+            // 1. 处理 Query 参数
             for (params.items) |param| {
                 if (strings.eql(param.key, "page")) {
                     page = @intCast(strings.to_int(param.value) catch 1);
@@ -85,11 +89,46 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
                 } else if (strings.starts_with(param.key, "sort[")) {
                     sort_field = base.get_sort_field(param.key) orelse "id";
                     sort_dir = param.value;
+                } else if (param.value.len > 0 and !std.mem.eql(u8, param.key, "_")) {
+                    applyFilter(self.allocator, &q, T, param.key, param.value);
                 }
             }
 
-            var q = OrmModel.Query();
-            defer q.deinit();
+            // 2. 处理 JSON Body 参数 (POST 请求常见)
+            req.parseBody() catch {};
+            if (req.body) |body| {
+                if (body.len > 0 and body[0] == '{') {
+                    var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+                    defer if (parsed) |*p| p.deinit();
+                    if (parsed) |p| {
+                        if (p.value == .object) {
+                            var iter = p.value.object.iterator();
+                            while (iter.next()) |entry| {
+                                const key = entry.key_ptr.*;
+                                if (std.mem.eql(u8, key, "page")) {
+                                    if (entry.value_ptr.* == .integer) page = @intCast(entry.value_ptr.integer);
+                                } else if (std.mem.eql(u8, key, "limit")) {
+                                    if (entry.value_ptr.* == .integer) limit = @intCast(entry.value_ptr.integer);
+                                } else if (std.mem.eql(u8, key, "sort")) {
+                                    // 处理复杂的 sort 对象或字符串
+                                } else {
+                                    // 转换为字符串进行统一过滤处理
+                                    var val_buf: [128]u8 = undefined;
+                                    const val_str = switch (entry.value_ptr.*) {
+                                        .string => entry.value_ptr.string,
+                                        .integer => std.fmt.bufPrint(&val_buf, "{d}", .{entry.value_ptr.integer}) catch "",
+                                        .bool => if (entry.value_ptr.bool) "1" else "0",
+                                        else => "",
+                                    };
+                                    if (val_str.len > 0) {
+                                        applyFilter(self.allocator, &q, T, key, val_str);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             const total = q.count() catch |err| return base.send_error(req, err);
             _ = q.orderBy(sort_field, if (strings.eql(sort_dir, "asc")) sql.OrderDir.asc else sql.OrderDir.desc);
@@ -105,6 +144,27 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
             }
 
             base.send_layui_table_response(req, items.items, total, .{});
+        }
+
+        /// 应用自动筛选逻辑。
+        fn applyFilter(allocator: Allocator, q: *sql.ModelQuery(T), comptime Model: type, key: []const u8, value: []const u8) void {
+            inline for (std.meta.fields(Model)) |field| {
+                if (std.mem.eql(u8, field.name, key)) {
+                    const info = @typeInfo(field.type);
+                    // 字符串字段使用 LIKE 模糊查询
+                    if (field.type == []const u8 or (info == .optional and info.optional.child == []const u8)) {
+                        const pattern = std.fmt.allocPrint(allocator, "%{s}%", .{value}) catch return;
+                        defer allocator.free(pattern);
+                        _ = q.whereLike(field.name, pattern);
+                    }
+                    // 数值字段使用 = 精确查询
+                    else if (info == .int or (info == .optional and @typeInfo(info.optional.child) == .int)) {
+                        if (std.fmt.parseInt(i64, value, 10)) |val| {
+                            _ = q.whereEq(field.name, val);
+                        } else |_| {}
+                    }
+                }
+            }
         }
 
         /// 获取详情。
