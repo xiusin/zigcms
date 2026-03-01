@@ -48,20 +48,20 @@ fn refreshCacheImpl(self: *Self, req: zap.Request) !void {
 
 /// 导出配置列表。
 fn exportImpl(self: *Self, req: zap.Request) !void {
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
     var q = OrmConfig.Query();
     defer q.deinit();
     _ = q.orderBy("sort", .asc);
 
-    const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmConfig.freeModels(rows);
+    // 使用 getWithArena 自动管理 ORM 内存
+    var result = try q.getWithArena(arena_alloc);
+    const rows = result.items();
 
-    var items = std.ArrayListUnmanaged(models.SysConfig){};
-    defer items.deinit(self.allocator);
-    for (rows) |row| {
-        items.append(self.allocator, row) catch {};
-    }
-
-    base.send_ok(req, .{ .list = items.items, .total = items.items.len });
+    base.send_ok(req, .{ .list = rows, .total = rows.len });
 }
 
 /// 导入配置列表并按 config_key 覆盖。
@@ -121,20 +121,20 @@ fn importImpl(self: *Self, req: zap.Request) !void {
 
 /// 备份当前配置快照。
 fn backupImpl(self: *Self, req: zap.Request) !void {
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
     var q = OrmConfig.Query();
     defer q.deinit();
     _ = q.orderBy("sort", .asc);
 
-    const rows = q.get() catch |err| return base.send_error(req, err);
-    defer OrmConfig.freeModels(rows);
+    // 使用 getWithArena 自动管理 ORM 内存
+    var result = try q.getWithArena(arena_alloc);
+    const rows = result.items();
 
-    var items = std.ArrayListUnmanaged(models.SysConfig){};
-    defer items.deinit(self.allocator);
-    for (rows) |row| {
-        items.append(self.allocator, row) catch {};
-    }
-
-    base.send_ok(req, .{ .snapshot_time = std.time.timestamp(), .list = items.items });
+    base.send_ok(req, .{ .snapshot_time = std.time.timestamp(), .list = rows });
 }
 
 /// 解析字符串字段。

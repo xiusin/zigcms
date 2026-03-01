@@ -115,16 +115,15 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     _ = q.orderBy(sort_field, order_dir);
     _ = q.page(page, limit);
 
-    const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(items_slice);
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
+    var result = try q.getWithArena(arena_alloc);
+    const items = result.items();
 
-    var items = std.ArrayListUnmanaged(models.SysPosition){};
-    defer items.deinit(self.allocator);
-    for (items_slice) |item| {
-        items.append(self.allocator, item) catch {};
-    }
-
-    base.send_layui_table_response(req, items.items, total, .{});
+    base.send_layui_table_response(req, items, total, .{});
 }
 
 /// 获取单条记录实现
@@ -205,20 +204,19 @@ fn deleteImpl(self: *Self, req: zap.Request) !void {
 
 /// 下拉选择列表实现
 fn selectImpl(self: *Self, req: zap.Request) !void {
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
     var q = OrmPosition.Where("status", .eq, @as(i32, 1));
     defer q.deinit();
     _ = q.orderBy("sort", .asc);
 
-    const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(items_slice);
+    var result = try q.getWithArena(arena_alloc);
+    const items = result.items();
 
-    var items = std.ArrayListUnmanaged(models.SysPosition){};
-    defer items.deinit(self.allocator);
-    for (items_slice) |item| {
-        items.append(self.allocator, item) catch {};
-    }
-
-    base.send_ok(req, items.items);
+    base.send_ok(req, items);
 }
 
 fn parseIdFromReq(req: zap.Request) ?i32 {
@@ -243,19 +241,18 @@ fn byDepartmentImpl(self: *Self, req: zap.Request) !void {
     const dept_id_str = req.getParamSlice("dept_id") orelse req.getParamSlice("department_id") orelse return base.send_failed(req, "缺少部门ID");
     const dept_id: i32 = @intCast(strings.to_int(dept_id_str) catch return base.send_failed(req, "部门ID格式错误"));
 
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
     var q = OrmPosition.Where("dept_id", .eq, dept_id);
     defer q.deinit();
     _ = q.where("status", .eq, @as(i32, 1));
     _ = q.orderBy("sort", .asc);
 
-    const items_slice = q.get() catch |e| return base.send_error(req, e);
-    defer OrmPosition.freeModels(items_slice);
+    var result = try q.getWithArena(arena_alloc);
+    const items = result.items();
 
-    var items = std.ArrayListUnmanaged(models.SysPosition){};
-    defer items.deinit(self.allocator);
-    for (items_slice) |item| {
-        items.append(self.allocator, item) catch {};
-    }
-
-    base.send_ok(req, items.items);
+    base.send_ok(req, items);
 }
