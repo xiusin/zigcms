@@ -49,6 +49,7 @@ const datetime = @import("../datetime/datetime.zig");
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
 const logger_mod = @import("../logger/logger.zig");
+const ParamBuilder = @import("param_builder.zig").ParamBuilder;
 const sql_errors = @import("sql_errors.zig");
 
 pub const OrderDir = query_mod.OrderDir;
@@ -2878,8 +2879,9 @@ pub fn ModelQuery(comptime T: type) type {
         /// WHERE 原始 SQL
         /// 原生 SQL WHERE 条件（支持占位符）
         /// 使用: 
-        ///   .whereRaw("age > 18")  // 无参数
-        ///   .whereRaw("age > ? AND status = ?", .{18, 1})  // 有参数
+        ///   .whereRaw("age > 18", {})  // 无参数
+        ///   .whereRaw("age > ? AND status = ?", .{18, 1})  // 元组参数
+        ///   .whereRaw("age > ? AND status = ?", param_builder)  // ParamBuilder
         pub fn whereRaw(self: *Self, raw_sql: []const u8, params: anytype) *Self {
             const clause = self.db.allocator.dupe(u8, raw_sql) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
@@ -2887,8 +2889,19 @@ pub fn ModelQuery(comptime T: type) type {
                 return self;
             };
             
-            // 如果 params 是 void，不处理参数
             const ParamsType = @TypeOf(params);
+            
+            // 如果是 ParamBuilder，直接使用其参数
+            if (ParamsType == ParamBuilder or ParamsType == *ParamBuilder or ParamsType == *const ParamBuilder) {
+                const builder_params = if (ParamsType == ParamBuilder) params.items() else params.items();
+                for (builder_params) |p| {
+                    // ParamBuilder 已经深拷贝，直接添加
+                    self.bind_params.append(self.db.allocator, p) catch {};
+                }
+                return self;
+            }
+            
+            // 如果 params 是 void，不处理参数
             if (ParamsType == void) return self;
             
             // 添加参数（深拷贝字符串）

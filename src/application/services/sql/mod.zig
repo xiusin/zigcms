@@ -49,6 +49,7 @@ pub const sql_errors = @import("sql_errors.zig");
 pub const Config = core.Config;
 pub const Value = core.Value;
 pub const PreparedStatement = core.PreparedStatement;
+pub const ParamBuilder = @import("param_builder.zig").ParamBuilder;
 pub const DB = core.DB;
 pub const Tx = core.Tx;
 pub const Result = core.Result;
