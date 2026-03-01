@@ -119,9 +119,9 @@ pub fn EagerLoader(comptime Model: type) type {
                 .has_many => try self.loadHasMany(db, models, relation_name, relation),
                 .has_one => try self.loadHasOne(db, models, relation_name, relation),
                 .belongs_to => try self.loadBelongsTo(db, models, relation_name, relation),
+                else => {}, // 未知关系类型，跳过
             }
         }
-        
         /// 加载多对多关系
         fn loadManyToMany(
             self: *Self,
@@ -133,19 +133,19 @@ pub fn EagerLoader(comptime Model: type) type {
             if (models.len == 0) return;
             
             const RelatedModel = relation.model;
-            const through_table = relation.through orelse return error.MissingThroughTable;
+            const through_table = relation.through;
             const foreign_key = relation.foreign_key;
-            const related_key = relation.related_key orelse return error.MissingRelatedKey;
-            const local_key = relation.local_key orelse "id";
+            const related_key = relation.related_key;
+            const local_key = if (@hasField(@TypeOf(relation), "local_key") and relation.local_key != null) relation.local_key.? else "id";
             
             // 1. 收集所有主键 ID
-            var ids = std.ArrayList(i32).init(self.allocator);
-            defer ids.deinit();
+            var ids = std.ArrayListUnmanaged(i32){};
+            defer ids.deinit(self.allocator);
             
             for (models) |model| {
                 const id_field = @field(model, local_key);
                 if (id_field) |id| {
-                    try ids.append(id);
+                    try ids.append(self.allocator, id);
                 }
             }
             
@@ -159,45 +159,46 @@ pub fn EagerLoader(comptime Model: type) type {
             );
             defer self.allocator.free(pivot_sql);
             
-            var pivot_query = std.ArrayList(u8).init(self.allocator);
-            defer pivot_query.deinit();
+            var pivot_query = std.ArrayListUnmanaged(u8){};
+            defer pivot_query.deinit(self.allocator);
             
-            try pivot_query.appendSlice(pivot_sql);
+            try pivot_query.appendSlice(self.allocator, pivot_sql);
             for (ids.items, 0..) |id, i| {
-                if (i > 0) try pivot_query.appendSlice(", ");
+                if (i > 0) try pivot_query.appendSlice(self.allocator, ", ");
                 const id_str = try std.fmt.allocPrint(self.allocator, "{d}", .{id});
                 defer self.allocator.free(id_str);
-                try pivot_query.appendSlice(id_str);
+                try pivot_query.appendSlice(self.allocator, id_str);
             }
-            try pivot_query.appendSlice(")");
+            try pivot_query.appendSlice(self.allocator, ")");
             
-            const pivot_result = try db.rawQuery(pivot_query.items, .{});
-            defer db.freeResult(pivot_result);
+            var pivot_result = try db.rawQuery(pivot_query.items, .{});
+            defer pivot_result.deinit();
             
             // 3. 收集关联模型 ID
-            var related_ids = std.ArrayList(i32).init(self.allocator);
-            defer related_ids.deinit();
+            var related_ids = std.ArrayListUnmanaged(i32){};
+            defer related_ids.deinit(self.allocator);
             
-            var pivot_map = std.AutoHashMap(i32, std.ArrayList(i32)).init(self.allocator);
+            var pivot_map = std.AutoHashMap(i32, std.ArrayListUnmanaged(i32)).init(self.allocator);
             defer {
                 var it = pivot_map.iterator();
                 while (it.next()) |entry| {
-                    entry.value_ptr.deinit();
+                    entry.value_ptr.deinit(self.allocator);
                 }
                 pivot_map.deinit();
             }
             
-            for (pivot_result.rows) |row| {
-                const fk = try row.getInt(foreign_key);
-                const rk = try row.getInt(related_key);
+            while (pivot_result.next()) {
+                const row = pivot_result.getCurrentRow() orelse continue;
+                const fk = row.getInt(foreign_key) orelse continue;
+                const rk = row.getInt(related_key) orelse continue;
                 
-                try related_ids.append(rk);
+                try related_ids.append(self.allocator, @intCast(rk));
                 
-                var entry = try pivot_map.getOrPut(fk);
+                var entry = try pivot_map.getOrPut(@intCast(fk));
                 if (!entry.found_existing) {
-                    entry.value_ptr.* = std.ArrayList(i32).init(self.allocator);
+                    entry.value_ptr.* = std.ArrayListUnmanaged(i32){};
                 }
-                try entry.value_ptr.append(rk);
+                try entry.value_ptr.append(self.allocator, @intCast(rk));
             }
             
             if (related_ids.items.len == 0) return;
@@ -224,15 +225,15 @@ pub fn EagerLoader(comptime Model: type) type {
                 const model_id = @field(model.*, local_key) orelse continue;
                 
                 if (pivot_map.get(model_id)) |rids| {
-                    var related_list = std.ArrayList(RelatedModel).init(self.allocator);
+                    var related_list = std.ArrayListUnmanaged(RelatedModel){};
                     
                     for (rids.items) |rid| {
                         if (related_map.get(rid)) |rm| {
-                            try related_list.append(rm);
+                            try related_list.append(self.allocator, rm);
                         }
                     }
                     
-                    const related_slice = try related_list.toOwnedSlice();
+                    const related_slice = try related_list.toOwnedSlice(self.allocator);
                     @field(model.*, relation_name) = related_slice;
                 }
             }
@@ -250,16 +251,16 @@ pub fn EagerLoader(comptime Model: type) type {
             
             const RelatedModel = relation.model;
             const foreign_key = relation.foreign_key;
-            const local_key = relation.local_key orelse "id";
+            const local_key = if (@hasField(@TypeOf(relation), "local_key") and relation.local_key != null) relation.local_key.? else "id";
             
             // 1. 收集所有主键 ID
-            var ids = std.ArrayList(i32).init(self.allocator);
-            defer ids.deinit();
+            var ids = std.ArrayListUnmanaged(i32){};
+            defer ids.deinit(self.allocator);
             
             for (models) |model| {
                 const id_field = @field(model, local_key);
                 if (id_field) |id| {
-                    try ids.append(id);
+                    try ids.append(self.allocator, id);
                 }
             }
             
@@ -274,11 +275,11 @@ pub fn EagerLoader(comptime Model: type) type {
             const related_models = try related_q.get();
             
             // 3. 按外键分组
-            var grouped = std.AutoHashMap(i32, std.ArrayList(RelatedModel)).init(self.allocator);
+            var grouped = std.AutoHashMap(i32, std.ArrayListUnmanaged(RelatedModel)).init(self.allocator);
             defer {
                 var it = grouped.iterator();
                 while (it.next()) |entry| {
-                    entry.value_ptr.deinit();
+                    entry.value_ptr.deinit(self.allocator);
                 }
                 grouped.deinit();
             }
@@ -288,9 +289,9 @@ pub fn EagerLoader(comptime Model: type) type {
                 
                 var entry = try grouped.getOrPut(fk);
                 if (!entry.found_existing) {
-                    entry.value_ptr.* = std.ArrayList(RelatedModel).init(self.allocator);
+                    entry.value_ptr.* = std.ArrayListUnmanaged(RelatedModel){};
                 }
-                try entry.value_ptr.append(rm);
+                try entry.value_ptr.append(self.allocator, rm);
             }
             
             // 4. 组装数据到模型
@@ -298,7 +299,7 @@ pub fn EagerLoader(comptime Model: type) type {
                 const model_id = @field(model.*, local_key) orelse continue;
                 
                 if (grouped.get(model_id)) |list| {
-                    const slice = try list.toOwnedSlice();
+                    const slice = try list.toOwnedSlice(self.allocator);
                     @field(model.*, relation_name) = slice;
                 }
             }
@@ -316,16 +317,16 @@ pub fn EagerLoader(comptime Model: type) type {
             
             const RelatedModel = relation.model;
             const foreign_key = relation.foreign_key;
-            const local_key = relation.local_key orelse "id";
+            const local_key = if (@hasField(@TypeOf(relation), "local_key") and relation.local_key != null) relation.local_key.? else "id";
             
             // 1. 收集所有主键 ID
-            var ids = std.ArrayList(i32).init(self.allocator);
-            defer ids.deinit();
+            var ids = std.ArrayListUnmanaged(i32){};
+            defer ids.deinit(self.allocator);
             
             for (models) |model| {
                 const id_field = @field(model, local_key);
                 if (id_field) |id| {
-                    try ids.append(id);
+                    try ids.append(self.allocator, id);
                 }
             }
             
@@ -370,16 +371,16 @@ pub fn EagerLoader(comptime Model: type) type {
             
             const RelatedModel = relation.model;
             const foreign_key = relation.foreign_key;
-            const owner_key = relation.local_key orelse "id";
+            const owner_key = if (@hasField(@TypeOf(relation), "local_key") and relation.local_key != null) relation.local_key.? else "id";
             
             // 1. 收集所有外键 ID
-            var ids = std.ArrayList(i32).init(self.allocator);
-            defer ids.deinit();
+            var ids = std.ArrayListUnmanaged(i32){};
+            defer ids.deinit(self.allocator);
             
             for (models) |model| {
                 const fk_field = @field(model, foreign_key);
                 if (fk_field) |fk| {
-                    try ids.append(fk);
+                    try ids.append(self.allocator, fk);
                 }
             }
             

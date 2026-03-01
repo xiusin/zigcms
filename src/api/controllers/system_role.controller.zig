@@ -237,19 +237,20 @@ const RoleWithPermissions = struct {
     menu_names: []const []const u8,
 };
 
-/// 角色列表查询（增强版：包含权限信息）
+/// 角色列表查询（增强版：使用关系预加载）
 fn listImpl(self: *Self, req: zap.Request) !void {
     // 解析分页参数
     req.parseQuery();
     const page = if (req.getParamSlice("page")) |p| std.fmt.parseInt(u32, p, 10) catch 1 else 1;
     const page_size = if (req.getParamSlice("pageSize")) |p| std.fmt.parseInt(u32, p, 10) catch 10 else 10;
     
-    // 查询角色列表
+    // 查询角色列表（使用关系预加载）
     var q = OrmSysRole.Query();
     defer q.deinit();
     _ = q.orderBy("id", .desc);
     _ = q.limit(page_size);
     _ = q.offset((page - 1) * page_size);
+    _ = q.with(&.{"menus"});  // 预加载菜单关系
     
     const roles = q.get() catch |err| return base.send_error(req, err);
     defer OrmSysRole.freeModels(roles);
@@ -261,67 +262,19 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     defer arena.deinit();
     const arena_alloc = arena.allocator();
     
-    // 收集所有角色 ID
-    var role_ids = try arena_alloc.alloc(i32, roles.len);
-    for (roles, 0..) |role, i| {
-        role_ids[i] = role.id orelse 0;
-    }
-    
-    // 一次性查询所有角色的菜单关联
-    var menu_q = OrmRoleMenu.Query();
-    defer menu_q.deinit();
-    _ = menu_q.whereIn("role_id", role_ids);
-    const all_menus = menu_q.get() catch &[_]models.SysRoleMenu{};
-    defer if (all_menus.len > 0) OrmRoleMenu.freeModels(@constCast(all_menus));
-    
-    // 收集所有唯一的 menu_id
-    var menu_id_set = std.AutoHashMap(i32, void).init(arena_alloc);
-    for (all_menus) |m| {
-        try menu_id_set.put(m.menu_id, {});
-    }
-    
-    // 一次性查询所有菜单信息
-    var menu_ids_list = try arena_alloc.alloc(i32, menu_id_set.count());
-    var iter = menu_id_set.keyIterator();
-    var idx: usize = 0;
-    while (iter.next()) |key| : (idx += 1) {
-        menu_ids_list[idx] = key.*;
-    }
-    
-    var all_menu_q = OrmSysMenu.Query();
-    defer all_menu_q.deinit();
-    _ = all_menu_q.whereIn("id", menu_ids_list);
-    const menu_infos = all_menu_q.get() catch &[_]models.SysMenu{};
-    defer if (menu_infos.len > 0) OrmSysMenu.freeModels(@constCast(menu_infos));
-    
-    // 构建 menu_id -> menu_name 映射
-    var menu_map = std.AutoHashMap(i32, []const u8).init(arena_alloc);
-    for (menu_infos) |menu| {
-        if (menu.id) |id| {
-            try menu_map.put(id, try arena_alloc.dupe(u8, menu.menu_name));
-        }
-    }
-    
-    // 构建 role_id -> []menu_id 映射
-    var role_menu_map = std.AutoHashMap(i32, std.ArrayList(i32)).init(arena_alloc);
-    for (all_menus) |m| {
-        var entry = try role_menu_map.getOrPut(m.role_id);
-        if (!entry.found_existing) {
-            entry.value_ptr.* = .{};
-        }
-        try entry.value_ptr.append(arena_alloc, m.menu_id);
-    }
-    
     // 构建带权限信息的角色列表
     var roles_with_perms = try arena_alloc.alloc(RoleWithPermissions, roles.len);
     
     for (roles, 0..) |role, i| {
-        const rid = role.id orelse 0;
-        const menu_ids = if (role_menu_map.get(rid)) |arr| arr.items else &[_]i32{};
+        // 菜单已预加载，直接使用
+        const menus = role.menus orelse &[_]models.SysMenu{};
         
-        var menu_names = try arena_alloc.alloc([]const u8, menu_ids.len);
-        for (menu_ids, 0..) |mid, j| {
-            menu_names[j] = menu_map.get(mid) orelse "";
+        var menu_ids = try arena_alloc.alloc(i32, menus.len);
+        var menu_names = try arena_alloc.alloc([]const u8, menus.len);
+        
+        for (menus, 0..) |menu, j| {
+            menu_ids[j] = menu.id orelse 0;
+            menu_names[j] = try arena_alloc.dupe(u8, menu.menu_name);
         }
         
         roles_with_perms[i] = .{
@@ -334,7 +287,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
             .data_scope = role.data_scope,
             .created_at = role.created_at,
             .updated_at = role.updated_at,
-            .menu_count = menu_ids.len,
+            .menu_count = menus.len,
             .menu_ids = menu_ids,
             .menu_names = menu_names,
         };

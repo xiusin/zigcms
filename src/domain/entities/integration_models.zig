@@ -109,6 +109,20 @@ pub const SysRole = struct {
     data_scope: i32 = 1,
     created_at: ?i64 = null,
     updated_at: ?i64 = null,
+    
+    // 关联数据字段（可选）
+    menus: ?[]SysMenu = null,
+    
+    // 定义关系
+    pub const relations = .{
+        .menus = .{
+            .type = .many_to_many,
+            .model = SysMenu,
+            .through = "sys_role_menu",
+            .foreign_key = "role_id",
+            .related_key = "menu_id",
+        },
+    };
 };
 
 /// 系统菜单模型
