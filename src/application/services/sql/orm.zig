@@ -49,6 +49,7 @@ const datetime = @import("../datetime/datetime.zig");
 const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
 const soft_deletes = @import("soft_deletes.zig");
+const query_scopes = @import("query_scopes.zig");
 const logger_mod = @import("../logger/logger.zig");
 const ParamBuilder = @import("param_builder.zig").ParamBuilder;
 const sql_errors = @import("sql_errors.zig");
@@ -2755,6 +2756,68 @@ pub fn ModelQuery(comptime T: type) type {
         /// ```
         pub fn onlyTrashed(self: *Self) *Self {
             self.soft_delete_mode = .only_trashed;
+            return self;
+        }
+
+        /// 应用查询作用域（无参数）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// // 模型定义
+        /// pub const User = struct {
+        ///     pub const scopes = .{
+        ///         .active = struct {
+        ///             pub fn apply(query: anytype) void {
+        ///                 _ = query.where("status", "=", 1);
+        ///             }
+        ///         },
+        ///     };
+        /// };
+        /// 
+        /// // 使用
+        /// var q = OrmUser.Query();
+        /// _ = q.scope("active");
+        /// const users = try q.get();
+        /// ```
+        pub fn scope(self: *Self, comptime name: []const u8) *Self {
+            if (comptime query_scopes.hasScopes(T)) {
+                const scopes_value = T.scopes;
+                if (@hasField(@TypeOf(scopes_value), name)) {
+                    const scope_def = @field(scopes_value, name);
+                    scope_def.apply(self);
+                }
+            }
+            return self;
+        }
+
+        /// 应用查询作用域（带参数）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// // 模型定义
+        /// pub const User = struct {
+        ///     pub const scopes = .{
+        ///         .byRole = struct {
+        ///             pub fn apply(query: anytype, role_id: i32) void {
+        ///                 _ = query.where("role_id", "=", role_id);
+        ///             }
+        ///         },
+        ///     };
+        /// };
+        /// 
+        /// // 使用
+        /// var q = OrmUser.Query();
+        /// _ = q.scopeWith("byRole", .{1});
+        /// const users = try q.get();
+        /// ```
+        pub fn scopeWith(self: *Self, comptime name: []const u8, args: anytype) *Self {
+            if (comptime query_scopes.hasScopes(T)) {
+                const scopes_value = T.scopes;
+                if (@hasField(@TypeOf(scopes_value), name)) {
+                    const scope_def = @field(scopes_value, name);
+                    @call(.auto, scope_def.apply, .{self} ++ args);
+                }
+            }
             return self;
         }
 
