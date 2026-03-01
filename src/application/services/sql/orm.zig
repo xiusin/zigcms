@@ -2884,90 +2884,28 @@ pub fn ModelQuery(comptime T: type) type {
         ///   .whereRaw("age > ? AND status = ?", param_builder)  // ParamBuilder
         pub fn whereRaw(self: *Self, raw_sql: []const u8, params: anytype) *Self {
             const clause = self.db.allocator.dupe(u8, raw_sql) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+                return self;
+            };
             
             const ParamsType = @TypeOf(params);
-            
-            // 计算占位符数量
-            var placeholder_count: usize = 0;
-            for (raw_sql) |c| {
-                if (c == '?') placeholder_count += 1;
-            }
-            
-            // 计算参数数量
-            var param_count: usize = 0;
             
             // 如果是 ParamBuilder，直接使用其参数
             if (ParamsType == ParamBuilder or ParamsType == *ParamBuilder or ParamsType == *const ParamBuilder) {
                 const builder_params = if (ParamsType == ParamBuilder) params.items() else params.items();
-                param_count = builder_params.len;
-                
-                // 校验参数数量
-                if (placeholder_count != param_count) {
-                    self.db.allocator.free(clause);
-                    std.log.err("Parameter count mismatch: SQL has {d} placeholders but got {d} parameters", .{ placeholder_count, param_count });
-                    return self;
-                }
-                
-                self.where_clauses.append(self.db.allocator, clause) catch {
-                    self.db.allocator.free(clause);
-                    return self;
-                };
-                
                 for (builder_params) |p| {
-                    // ParamBuilder 已经深拷贝，直接添加
                     self.bind_params.append(self.db.allocator, p) catch {};
                 }
                 return self;
             }
             
             // 如果 params 是 void，不处理参数
-            if (ParamsType == void) {
-                if (placeholder_count > 0) {
-                    self.db.allocator.free(clause);
-                    std.log.err("Parameter count mismatch: SQL has {d} placeholders but got 0 parameters", .{placeholder_count});
-                    return self;
-                }
-                self.where_clauses.append(self.db.allocator, clause) catch {
-                    self.db.allocator.free(clause);
-                };
-                return self;
-            }
-            
-            // 计算其他类型参数数量
-            const type_info = @typeInfo(ParamsType);
-            
-            switch (type_info) {
-                .pointer => |ptr| {
-                    if (ptr.size == .slice) {
-                        param_count = params.len;
-                    } else if (@typeInfo(ptr.child) == .array) {
-                        param_count = @typeInfo(ptr.child).array.len;
-                    }
-                },
-                .array => |arr| {
-                    param_count = arr.len;
-                },
-                .@"struct" => |s| {
-                    if (s.is_tuple) {
-                        param_count = s.fields.len;
-                    }
-                },
-                else => {},
-            }
-            
-            // 校验参数数量
-            if (placeholder_count != param_count) {
-                self.db.allocator.free(clause);
-                std.log.err("Parameter count mismatch: SQL has {d} placeholders but got {d} parameters", .{ placeholder_count, param_count });
-                return self;
-            }
-            
-            self.where_clauses.append(self.db.allocator, clause) catch {
-                self.db.allocator.free(clause);
-                return self;
-            };
+            if (ParamsType == void) return self;
             
             // 添加参数（深拷贝字符串）
+            const type_info = @typeInfo(ParamsType);
+            
             switch (type_info) {
                 .pointer => |ptr| {
                     if (ptr.size == .slice or @typeInfo(ptr.child) == .array) {
@@ -3971,6 +3909,24 @@ pub fn ModelQuery(comptime T: type) type {
         
         /// 替换 SQL 中的 ? 占位符为实际参数值（安全转义）
         fn replacePlaceholders(self: *Self, sql: []const u8) ![]u8 {
+            // 先计算占位符数量
+            var placeholder_count: usize = 0;
+            for (sql) |c| {
+                if (c == '?') placeholder_count += 1;
+            }
+            
+            // 校验参数数量
+            if (placeholder_count != self.bind_params.items.len) {
+                std.log.err("Parameter count mismatch in SQL:\n  SQL: {s}\n  Placeholders: {d}\n  Parameters: {d}", 
+                    .{ sql, placeholder_count, self.bind_params.items.len });
+                
+                if (placeholder_count > self.bind_params.items.len) {
+                    return error.TooFewParameters;
+                } else {
+                    return error.TooManyParameters;
+                }
+            }
+            
             var result = std.ArrayListUnmanaged(u8){};
             errdefer result.deinit(self.db.allocator);
             
@@ -3979,10 +3935,6 @@ pub fn ModelQuery(comptime T: type) type {
             
             while (i < sql.len) : (i += 1) {
                 if (sql[i] == '?') {
-                    if (param_idx >= self.bind_params.items.len) {
-                        return error.TooFewParameters;
-                    }
-                    
                     const param = self.bind_params.items[param_idx];
                     param_idx += 1;
                     
@@ -4027,10 +3979,6 @@ pub fn ModelQuery(comptime T: type) type {
                 } else {
                     try result.append(self.db.allocator, sql[i]);
                 }
-            }
-            
-            if (param_idx != self.bind_params.items.len) {
-                return error.TooManyParameters;
             }
             
             return result.toOwnedSlice(self.db.allocator);
