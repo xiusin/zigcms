@@ -20,6 +20,16 @@
       </div>
       <div class="toolbar-right">
         <a-space>
+          <!-- WebSocket状态指示器 -->
+          <a-tooltip :content="store.wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'">
+            <a-badge :count="store.wsNotifications.length" :max-count="99" :dot="false">
+              <a-button size="small" :status="store.wsConnected ? 'success' : 'normal'" @click="showWsNotifications = true">
+                <template #icon><icon-notification /></template>
+              </a-button>
+            </a-badge>
+          </a-tooltip>
+          <!-- AI分析入口 -->
+          <AIAnalysisPanel default-type="quality_overview" module="dashboard" />
           <a-button size="small" @click="handleRefresh" :loading="isRefreshing">
             <template #icon><icon-refresh /></template>
             刷新
@@ -31,6 +41,19 @@
             :bug-distribution="store.bugDistribution as unknown as Record<string, unknown>[]"
             :feedback-distribution="store.feedbackDistribution as unknown as Record<string, unknown>[]"
           />
+          <a-dropdown @select="handleNavDropdown">
+            <a-button size="small">
+              <template #icon><icon-apps /></template>
+              更多功能
+              <icon-down />
+            </a-button>
+            <template #content>
+              <a-doption value="scheduled-reports"><icon-calendar /> 定时报表</a-doption>
+              <a-doption value="report-templates"><icon-file /> 报表模板</a-doption>
+              <a-doption value="email-templates"><icon-email /> 邮件模板</a-doption>
+              <a-doption value="mindmap"><icon-mind-mapping /> 脑图分析</a-doption>
+            </template>
+          </a-dropdown>
           <a-button size="small" @click="showLayoutConfig = true">
             <template #icon><icon-settings /></template>
             自定义布局
@@ -38,6 +61,33 @@
         </a-space>
       </div>
     </div>
+
+    <!-- WebSocket实时报表状态通知 -->
+    <a-alert v-if="store.wsReportStatus" type="info" closable class="ws-report-alert" @close="store.wsReportStatus = null as any">
+      <template #title>报表执行状态更新</template>
+      报表「{{ store.wsReportStatus.report_name }}」{{ wsStatusText(store.wsReportStatus.status) }}
+      <span v-if="store.wsReportStatus.progress !== undefined"> — 进度 {{ store.wsReportStatus.progress }}%</span>
+    </a-alert>
+
+    <!-- WebSocket通知抽屉 -->
+    <a-drawer v-model:visible="showWsNotifications" title="实时通知" :width="400" unmount-on-close>
+      <div v-if="!store.wsNotifications.length" style="text-align:center;padding:40px">
+        <a-empty description="暂无通知" />
+      </div>
+      <a-list v-else :data="store.wsNotifications" size="small">
+        <template #item="{ item }">
+          <a-list-item>
+            <a-list-item-meta :title="item.title" :description="item.content" />
+            <template #actions>
+              <a-tag :color="item.level === 'error' ? 'red' : item.level === 'warning' ? 'orange' : 'blue'" size="small">{{ item.level }}</a-tag>
+            </template>
+          </a-list-item>
+        </template>
+      </a-list>
+      <template #footer>
+        <a-button long @click="store.clearNotifications(); showWsNotifications = false">清除所有通知</a-button>
+      </template>
+    </a-drawer>
 
     <!-- 顶部统计卡片区域 -->
     <a-row :gutter="16" class="stat-cards">
@@ -408,7 +458,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { Message } from '@arco-design/web-vue';
 import { useQualityCenterStore } from '@/store/modules/quality-center';
@@ -419,8 +469,10 @@ import FeedbackDistributionChart from '../components/FeedbackDistributionChart.v
 import DashboardSkeleton from '../components/DashboardSkeleton.vue';
 import ExportToolbar from '../components/ExportToolbar.vue';
 import LayoutConfig from '../components/LayoutConfig.vue';
+import AIAnalysisPanel from '../components/AIAnalysisPanel.vue';
 import type { DashboardCardConfig } from '../components/LayoutConfig.vue';
 import type { AIQualityInsight } from '@/types/quality-center';
+import type { ReportStatusPayload } from '@/utils/websocket';
 
 const router = useRouter();
 const store = useQualityCenterStore();
@@ -432,6 +484,7 @@ const trendPeriod = ref<'week' | 'month' | 'quarter'>('week');
 const activityFilter = ref<string | undefined>(undefined);
 const showFeedbackToTaskModal = ref(false);
 const showLayoutConfig = ref(false);
+const showWsNotifications = ref(false);
 const dashboardContentRef = ref<HTMLElement | null>(null);
 
 // ========== 计算属性 ==========
@@ -586,19 +639,50 @@ function handleLayoutSave(config: { cards: DashboardCardConfig[]; statCards: str
   Message.success('布局已更新，刷新页面后生效');
 }
 
+/** 更多功能导航 */
+function handleNavDropdown(value: string | number | Record<string, unknown> | undefined) {
+  const routes: Record<string, string> = {
+    'scheduled-reports': '/quality-center/scheduled-reports',
+    'report-templates': '/quality-center/report-templates',
+    'email-templates': '/quality-center/email-templates',
+    'mindmap': '/quality-center/mindmap',
+  };
+  const route = routes[String(value)];
+  if (route) router.push(route);
+}
+
+/** WebSocket报表状态文本 */
+function wsStatusText(status: string): string {
+  const map: Record<string, string> = {
+    running: '正在执行中',
+    success: '已完成',
+    completed: '已完成',
+    failed: '执行失败',
+    pending: '等待执行',
+  };
+  return map[status] || status;
+}
+
 // ========== 生命周期 ==========
 onMounted(async () => {
   try {
     await store.fetchDashboardAll();
+    // 初始化WebSocket实时推送
+    store.initWebSocket();
+    console.log('[质量中心][Dashboard][WebSocket已启动]');
   } catch (error) {
     console.error('[质量中心][Dashboard加载失败]', error);
     Message.error('Dashboard数据加载失败，请刷新重试');
   } finally {
-    // 延迟隐藏骨架屏，确保平滑过渡
     setTimeout(() => {
       isInitialLoading.value = false;
     }, 300);
   }
+});
+
+onBeforeUnmount(() => {
+  store.disconnectWebSocket();
+  console.log('[质量中心][Dashboard][WebSocket已断开]');
 });
 </script>
 

@@ -57,6 +57,29 @@
                   <template #icon><icon-delete /></template>
                   删除
                 </a-button>
+                <!-- 质量中心联动 -->
+                <a-divider direction="vertical" />
+                <a-dropdown @select="handleQualityAction">
+                  <a-button size="small" type="outline" status="success">
+                    <template #icon><icon-shield-check /></template>
+                    质量中心
+                    <icon-down />
+                  </a-button>
+                  <template #content>
+                    <a-doption value="toTask">
+                      <icon-swap /> 转为测试任务
+                    </a-doption>
+                    <a-doption value="linkBug">
+                      <icon-bug /> 关联到Bug
+                    </a-doption>
+                    <a-doption value="viewDashboard">
+                      <icon-dashboard /> 查看质量面板
+                    </a-doption>
+                    <a-doption value="viewMindmap">
+                      <icon-mind-mapping /> 反馈分类脑图
+                    </a-doption>
+                  </template>
+                </a-dropdown>
               </div>
             </div>
           </div>
@@ -293,10 +316,12 @@
     getCurrentUserId,
   } from '../utils/permission';
   import { FeedbackPermissions } from '../constants/permissions';
+  import { useQualityCenterStore } from '@/store/modules/quality-center';
 
   const route = useRoute();
   const router = useRouter();
   const feedbackId = computed(() => Number(route.params.id));
+  const qcStore = useQualityCenterStore();
 
   // Markdown 渲染器
   const md = new MarkdownIt({
@@ -566,6 +591,66 @@
         }
       },
     });
+  };
+
+  // 质量中心联动操作
+  const handleQualityAction = async (value: string | number | Record<string, unknown> | undefined) => {
+    const key = String(value);
+    if (!feedback.value) return;
+    console.log(`[反馈详情][质量中心联动][${key}][反馈#${feedback.value.id}]`);
+
+    switch (key) {
+      case 'toTask': {
+        Modal.confirm({
+          title: '转为测试任务',
+          content: `确定将反馈 #${feedback.value.id}「${feedback.value.title}」转为测试任务？`,
+          okText: '确认转换',
+          async onOk() {
+            try {
+              await qcStore.convertFeedbackToTask({
+                feedback_id: feedback.value!.id,
+                title: `[反馈] ${feedback.value!.title}`,
+                priority: 'medium',
+                assigned_to: 'auto',
+              });
+              Message.success('已成功转为测试任务');
+            } catch {
+              Message.error('转换失败，请重试');
+            }
+          },
+        });
+        break;
+      }
+      case 'linkBug': {
+        Modal.confirm({
+          title: '关联到Bug',
+          content: `确定将反馈 #${feedback.value.id}「${feedback.value.title}」关联到Bug追踪？`,
+          okText: '确认关联',
+          async onOk() {
+            try {
+              await qcStore.convertBugToFeedback({
+                bug_id: feedback.value!.id,
+                feedback_id: feedback.value!.id,
+                link_type: 'feedback_to_bug',
+                description: `反馈关联: ${feedback.value!.title}`,
+              });
+              Message.success('已关联到Bug追踪');
+            } catch {
+              Message.error('关联失败，请重试');
+            }
+          },
+        });
+        break;
+      }
+      case 'viewDashboard':
+        router.push('/quality-center/dashboard');
+        break;
+      case 'viewMindmap':
+        router.push('/quality-center/mindmap');
+        break;
+      default:
+        break;
+    }
   };
 
   // 提交评论

@@ -39,8 +39,9 @@
           </a-space>
         </template>
         <template #content>
-          <a-doption value="mindmap_svg">SVG格式</a-doption>
-          <a-doption value="mindmap_png">PNG格式</a-doption>
+          <a-doption value="mindmap_quality">模块质量脑图</a-doption>
+          <a-doption value="mindmap_bug">Bug关联脑图</a-doption>
+          <a-doption value="mindmap_feedback">反馈分类脑图</a-doption>
         </template>
       </a-dsubmenu>
     </template>
@@ -58,9 +59,12 @@
       <div class="mindmap-toolbar">
         <a-space>
           <a-radio-group v-model="mindmapType" type="button" size="small">
-            <a-radio value="quality">模块质量脑图</a-radio>
-            <a-radio value="cases">测试用例脑图</a-radio>
+            <a-radio value="quality">模块质量</a-radio>
+            <a-radio value="bug-link">Bug关联</a-radio>
+            <a-radio value="feedback">反馈分类</a-radio>
+            <a-radio value="cases">测试用例</a-radio>
           </a-radio-group>
+          <a-checkbox v-model="exportWatermark" style="margin-left: 8px">水印</a-checkbox>
           <a-button size="small" @click="handleMindmapExport('svg')">
             <icon-download /> SVG
           </a-button>
@@ -92,7 +96,10 @@ import {
   generateMindMapSVG,
   buildTestCaseMindMap,
   buildQualityMindMap,
+  buildBugLinkMindMap,
+  buildFeedbackMindMap,
 } from '@/utils/export';
+import { useQualityCenterStore } from '@/store/modules/quality-center';
 import type { ModuleQualityItem } from '@/types/quality-center';
 
 const props = defineProps<{
@@ -110,25 +117,45 @@ const props = defineProps<{
   feedbackDistribution?: Array<Record<string, unknown>>;
 }>();
 
+const qcStore = useQualityCenterStore();
+
 // ========== 脑图预览 ==========
 const mindmapPreviewVisible = ref(false);
-const mindmapType = ref<'quality' | 'cases'>('quality');
+const mindmapType = ref<'quality' | 'bug-link' | 'feedback' | 'cases'>('quality');
 const mindmapSVG = ref('');
 const mindmapContainer = ref<HTMLElement | null>(null);
+const exportWatermark = ref(true);
 
 // 监听脑图类型切换
 watch(mindmapType, () => {
   updateMindmapPreview();
 });
 
-function updateMindmapPreview() {
-  if (mindmapType.value === 'quality') {
-    const root = buildQualityMindMap(props.moduleQuality);
-    mindmapSVG.value = generateMindMapSVG(root);
-  } else {
-    const mockCases = props.testCases || generateMockTestCases();
-    const root = buildTestCaseMindMap(mockCases);
-    mindmapSVG.value = generateMindMapSVG(root);
+async function updateMindmapPreview() {
+  switch (mindmapType.value) {
+    case 'quality': {
+      const root = buildQualityMindMap(props.moduleQuality);
+      mindmapSVG.value = generateMindMapSVG(root);
+      break;
+    }
+    case 'bug-link': {
+      if (!qcStore.bugLinks.length) await qcStore.fetchBugLinks();
+      const root = buildBugLinkMindMap(qcStore.bugLinks);
+      mindmapSVG.value = generateMindMapSVG(root);
+      break;
+    }
+    case 'feedback': {
+      if (!qcStore.feedbackClassification.length) await qcStore.fetchFeedbackClassification();
+      const root = buildFeedbackMindMap(qcStore.feedbackClassification);
+      mindmapSVG.value = generateMindMapSVG(root);
+      break;
+    }
+    case 'cases': {
+      const mockCases = props.testCases || generateMockTestCases();
+      const root = buildTestCaseMindMap(mockCases);
+      mindmapSVG.value = generateMindMapSVG(root);
+      break;
+    }
   }
 }
 
@@ -151,8 +178,18 @@ async function handleExport(value: string | number | Record<string, unknown> | u
       case 'cases_json':
         handleExportCasesJSON();
         break;
-      case 'mindmap_svg':
-      case 'mindmap_png':
+      case 'mindmap_quality':
+        mindmapType.value = 'quality';
+        mindmapPreviewVisible.value = true;
+        updateMindmapPreview();
+        break;
+      case 'mindmap_bug':
+        mindmapType.value = 'bug-link';
+        mindmapPreviewVisible.value = true;
+        updateMindmapPreview();
+        break;
+      case 'mindmap_feedback':
+        mindmapType.value = 'feedback';
         mindmapPreviewVisible.value = true;
         updateMindmapPreview();
         break;
@@ -176,6 +213,7 @@ async function handleExportPDF() {
     title: '质量中心总览报表',
     orientation: 'landscape',
     scale: 1.5,
+    watermark: exportWatermark.value ? undefined : false,
   });
   Message.success({ content: 'PDF导出成功', id: 'export-pdf' });
 }
@@ -271,18 +309,35 @@ function handleExportCasesJSON() {
 
 /** 脑图导出 */
 function handleMindmapExport(format: 'svg' | 'png') {
-  const root = mindmapType.value === 'quality'
-    ? buildQualityMindMap(props.moduleQuality)
-    : buildTestCaseMindMap(props.testCases || generateMockTestCases());
+  const suffixMap: Record<string, string> = {
+    'quality': '模块质量', 'bug-link': 'Bug关联', 'feedback': '反馈分类', 'cases': '测试用例',
+  };
+  const suffix = suffixMap[mindmapType.value] || '';
 
-  const suffix = mindmapType.value === 'quality' ? '模块质量' : '测试用例';
+  let root;
+  switch (mindmapType.value) {
+    case 'quality':
+      root = buildQualityMindMap(props.moduleQuality);
+      break;
+    case 'bug-link':
+      root = buildBugLinkMindMap(qcStore.bugLinks);
+      break;
+    case 'feedback':
+      root = buildFeedbackMindMap(qcStore.feedbackClassification);
+      break;
+    case 'cases':
+    default:
+      root = buildTestCaseMindMap(props.testCases || generateMockTestCases());
+      break;
+  }
 
   if (format === 'svg') {
     exportMindMapSVG(root, `${suffix}脑图_${formatDate()}.svg`);
   } else {
-    exportMindMapPNG(root, `${suffix}脑图_${formatDate()}.png`);
+    exportMindMapPNG(root, `${suffix}脑图_${formatDate()}.png`, exportWatermark.value ? undefined : false);
   }
   Message.success(`脑图${format.toUpperCase()}导出成功`);
+  console.log(`[质量中心][脑图导出][${format}][${suffix}][水印:${exportWatermark.value}]`);
 }
 
 // ========== 工具方法 ==========

@@ -16,6 +16,17 @@ import type {
   LinkRecord,
   ActivityRecord,
   AIQualityInsight,
+  ScheduledReport,
+  ScheduledReportParams,
+  ReportHistory,
+  BugLinkData,
+  FeedbackClassification,
+  ReportTemplate,
+  ReportTemplateParams,
+  EmailTemplate,
+  EmailTemplateParams,
+  AIAnalysisRequest,
+  AIAnalysisResponse,
 } from '@/types/quality-center';
 
 /** 通用响应类型 */
@@ -91,4 +102,123 @@ export function getRecentActivities(
 /** 获取AI质量洞察 */
 export function getAIInsights(): Promise<ApiResponse<{ list: AIQualityInsight[] }>> {
   return request.get('/api/quality-center/ai-insights');
+}
+
+// ==================== 定时报表 API ====================
+
+/** 获取定时报表列表 */
+export function getScheduledReports(): Promise<ApiResponse<{ list: ScheduledReport[]; total: number }>> {
+  return request.get('/api/quality-center/scheduled-reports');
+}
+
+/** 创建定时报表 */
+export function createScheduledReport(
+  data: ScheduledReportParams
+): Promise<ApiResponse<ScheduledReport>> {
+  return request.post('/api/quality-center/scheduled-reports', data);
+}
+
+/** 更新定时报表 */
+export function updateScheduledReport(
+  id: number,
+  data: Partial<ScheduledReportParams>
+): Promise<ApiResponse<ScheduledReport>> {
+  return request.put(`/api/quality-center/scheduled-reports/${id}`, data);
+}
+
+/** 删除定时报表 */
+export function deleteScheduledReport(id: number): Promise<ApiResponse<null>> {
+  return request.delete(`/api/quality-center/scheduled-reports/${id}`);
+}
+
+/** 切换报表启用状态 */
+export function toggleScheduledReport(id: number, enabled: boolean): Promise<ApiResponse<null>> {
+  return request.put(`/api/quality-center/scheduled-reports/${id}/toggle`, { enabled });
+}
+
+/** 手动触发一次报表 */
+export function triggerScheduledReport(id: number): Promise<ApiResponse<ReportHistory>> {
+  return request.post(`/api/quality-center/scheduled-reports/${id}/trigger`);
+}
+
+/** 获取报表执行历史 */
+export function getReportHistory(
+  params?: { report_id?: number; page?: number; pageSize?: number }
+): Promise<ApiResponse<{ list: ReportHistory[]; total: number }>> {
+  return request.get('/api/quality-center/report-history', { params });
+}
+
+// ==================== Bug关联分析 API ====================
+
+/** 获取Bug关联数据（脑图用） */
+export function getBugLinkData(): Promise<ApiResponse<{ list: BugLinkData[] }>> {
+  return request.get('/api/quality-center/bug-links');
+}
+
+// ==================== 反馈分类分析 API ====================
+
+/** 获取反馈分类数据（脑图用） */
+export function getFeedbackClassification(): Promise<ApiResponse<{ list: FeedbackClassification[] }>> {
+  return request.get('/api/quality-center/feedback-classification');
+}
+
+// ==================== 报表模板 API ====================
+
+/** 获取报表模板列表 */
+export function getReportTemplates(): Promise<ApiResponse<{ list: ReportTemplate[] }>> {
+  return request.get('/api/quality-center/report-templates');
+}
+
+/** 创建报表模板 */
+export function createReportTemplate(data: ReportTemplateParams): Promise<ApiResponse<ReportTemplate>> {
+  return request.post('/api/quality-center/report-templates', data);
+}
+
+/** 更新报表模板 */
+export function updateReportTemplate(id: number, data: Partial<ReportTemplateParams>): Promise<ApiResponse<ReportTemplate>> {
+  return request.put(`/api/quality-center/report-templates/${id}`, data);
+}
+
+/** 删除报表模板 */
+export function deleteReportTemplate(id: number): Promise<ApiResponse<null>> {
+  return request.delete(`/api/quality-center/report-templates/${id}`);
+}
+
+// ==================== 邮件模板 API ====================
+
+/** 获取邮件模板列表 */
+export function getEmailTemplates(): Promise<ApiResponse<{ list: EmailTemplate[] }>> {
+  return request.get('/api/quality-center/email-templates');
+}
+
+/** 创建邮件模板 */
+export function createEmailTemplate(data: EmailTemplateParams): Promise<ApiResponse<EmailTemplate>> {
+  return request.post('/api/quality-center/email-templates', data);
+}
+
+/** 更新邮件模板 */
+export function updateEmailTemplate(id: number, data: Partial<EmailTemplateParams>): Promise<ApiResponse<EmailTemplate>> {
+  return request.put(`/api/quality-center/email-templates/${id}`, data);
+}
+
+/** 删除邮件模板 */
+export function deleteEmailTemplate(id: number): Promise<ApiResponse<null>> {
+  return request.delete(`/api/quality-center/email-templates/${id}`);
+}
+
+/** 预览邮件模板 */
+export function previewEmailTemplate(id: number): Promise<ApiResponse<{ html: string }>> {
+  return request.get(`/api/quality-center/email-templates/${id}/preview`);
+}
+
+// ==================== AI分析 API ====================
+
+/** 发起AI分析 */
+export function requestAIAnalysis(data: AIAnalysisRequest): Promise<ApiResponse<AIAnalysisResponse>> {
+  return request.post('/api/quality-center/ai-analysis', data);
+}
+
+/** 获取AI分析历史 */
+export function getAIAnalysisHistory(params?: { type?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: AIAnalysisResponse[]; total: number }>> {
+  return request.get('/api/quality-center/ai-analysis/history', { params });
 }

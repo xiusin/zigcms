@@ -1,12 +1,12 @@
 /**
  * Dashboard自定义布局配置组件
- * 【高级特性】拖拽排序、显隐控制、布局持久化到localStorage
+ * 【高级特性】vuedraggable真实拖拽排序、显隐控制、布局持久化到localStorage
  */
 <template>
   <a-drawer
     :visible="visible"
     title="自定义Dashboard布局"
-    :width="400"
+    :width="420"
     @cancel="handleClose"
   >
     <template #footer>
@@ -41,41 +41,38 @@
 
       <a-divider />
 
-      <!-- 排序控制 -->
+      <!-- 拖拽排序控制 (vuedraggable) -->
       <div class="config-section">
-        <div class="config-title">排列顺序</div>
-        <div class="config-desc">拖拽调整卡片在Dashboard中的显示顺序</div>
-        <div class="card-sort-list">
-          <div
-            v-for="(card, index) in visibleCards"
-            :key="card.key"
-            class="card-sort-item"
-          >
-            <a-space>
-              <span class="sort-index">{{ index + 1 }}</span>
-              <span class="card-icon-sm" :style="{ color: card.color }">
-                <component :is="card.icon" />
-              </span>
-              <span>{{ card.label }}</span>
-            </a-space>
-            <a-space size="mini">
-              <a-button
-                size="mini"
-                :disabled="index === 0"
-                @click="moveCard(index, -1)"
-              >
-                <icon-up />
-              </a-button>
-              <a-button
-                size="mini"
-                :disabled="index === visibleCards.length - 1"
-                @click="moveCard(index, 1)"
-              >
-                <icon-down />
-              </a-button>
-            </a-space>
-          </div>
+        <div class="config-title">
+          排列顺序
+          <a-tag size="small" color="arcoblue" style="margin-left: 8px">拖拽排序</a-tag>
         </div>
+        <div class="config-desc">按住拖拽手柄调整卡片在Dashboard中的显示顺序</div>
+        <draggable
+          v-model="dragSortList"
+          item-key="key"
+          handle=".drag-handle"
+          ghost-class="drag-ghost"
+          chosen-class="drag-chosen"
+          animation="200"
+          @end="onDragEnd"
+        >
+          <template #item="{ element, index }">
+            <div class="card-sort-item">
+              <a-space>
+                <span class="drag-handle" title="拖拽排序">
+                  <icon-drag-dot-vertical />
+                </span>
+                <span class="sort-index">{{ index + 1 }}</span>
+                <span class="card-icon-sm" :style="{ color: element.color }">
+                  <component :is="element.icon" />
+                </span>
+                <span>{{ element.label }}</span>
+              </a-space>
+              <a-tag v-if="!element.visible" size="small" color="gray">已隐藏</a-tag>
+            </div>
+          </template>
+        </draggable>
       </div>
 
       <a-divider />
@@ -104,6 +101,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
+import draggable from 'vuedraggable';
 
 /** 卡片配置项 */
 export interface DashboardCardConfig {
@@ -162,31 +160,29 @@ const defaultStatCardKeys = allStatCards.map(s => s.key);
 const localCards = ref<DashboardCardConfig[]>(loadFromStorage()?.cards || deepCopy(defaultCards));
 const localStatCards = ref<string[]>(loadFromStorage()?.statCards || [...defaultStatCardKeys]);
 
+/** 拖拽排序用的列表（按order排序） */
+const dragSortList = computed({
+  get: () => [...localCards.value].sort((a, b) => a.order - b.order),
+  set: (newList: DashboardCardConfig[]) => {
+    newList.forEach((card, idx) => {
+      const target = localCards.value.find(c => c.key === card.key);
+      if (target) target.order = idx;
+    });
+  },
+});
+
 const visibleCards = computed(() =>
   localCards.value
     .filter(c => c.visible)
     .sort((a, b) => a.order - b.order)
 );
 
-// ========== 方法 ==========
-function moveCard(index: number, direction: -1 | 1) {
-  const visible = visibleCards.value;
-  const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= visible.length) return;
-
-  const currentKey = visible[index].key;
-  const targetKey = visible[targetIndex].key;
-
-  const currentCard = localCards.value.find(c => c.key === currentKey);
-  const targetCard = localCards.value.find(c => c.key === targetKey);
-
-  if (currentCard && targetCard) {
-    const tempOrder = currentCard.order;
-    currentCard.order = targetCard.order;
-    targetCard.order = tempOrder;
-  }
+// ========== 拖拽事件 ==========
+function onDragEnd() {
+  console.log('[质量中心][布局配置][拖拽排序完成]');
 }
 
+// ========== 方法 ==========
 function handleSave() {
   const config = {
     cards: localCards.value,
@@ -253,6 +249,8 @@ defineExpose({
       font-weight: 600;
       color: var(--color-text-1);
       margin-bottom: 4px;
+      display: flex;
+      align-items: center;
     }
     .config-desc {
       font-size: 12px;
@@ -283,33 +281,60 @@ defineExpose({
   }
 }
 
-.card-sort-list {
-  .card-sort-item {
+.card-sort-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: var(--color-fill-1);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  cursor: default;
+  user-select: none;
+  &:hover {
+    background: var(--color-fill-2);
+    border-color: var(--color-border-2);
+  }
+  .drag-handle {
+    cursor: grab;
+    color: var(--color-text-4);
+    font-size: 16px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    background: var(--color-fill-1);
-    border-radius: 6px;
-    transition: background 0.2s;
     &:hover {
-      background: var(--color-fill-2);
-    }
-    .sort-index {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--color-fill-3);
-      font-size: 11px;
       color: var(--color-text-2);
     }
-    .card-icon-sm {
-      font-size: 14px;
+    &:active {
+      cursor: grabbing;
     }
   }
+  .sort-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-fill-3);
+    font-size: 11px;
+    color: var(--color-text-2);
+  }
+  .card-icon-sm {
+    font-size: 14px;
+  }
+}
+
+// vuedraggable 拖拽样式
+.drag-ghost {
+  opacity: 0.4;
+  background: var(--color-primary-light-1) !important;
+  border: 1px dashed var(--color-primary-6) !important;
+}
+.drag-chosen {
+  background: var(--color-fill-3) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
 }
 </style>

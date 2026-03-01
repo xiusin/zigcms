@@ -44,6 +44,58 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:link',
       },
     },
+    // 3. 定时报表
+    {
+      path: 'scheduled-reports',
+      name: 'quality-center-scheduled-reports',
+      component: () => import('@/views/quality-center/scheduled-reports/index.vue'),
+      meta: {
+        locale: '定时报表',
+        requiresAuth: true,
+        icon: 'icon-calendar',
+        roles: ['super_admin', 'admin'],
+        permission: 'quality:center:report',
+      },
+    },
+    // 4. 脑图分析
+    {
+      path: 'mindmap',
+      name: 'quality-center-mindmap',
+      component: () => import('@/views/quality-center/mindmap/index.vue'),
+      meta: {
+        locale: '脑图分析',
+        requiresAuth: true,
+        icon: 'icon-mind-mapping',
+        roles: ['*'],
+        permission: 'quality:center:mindmap',
+      },
+    },
+    // 5. 报表模板编辑器
+    {
+      path: 'report-templates',
+      name: 'quality-center-report-templates',
+      component: () => import('@/views/quality-center/report-templates/index.vue'),
+      meta: {
+        locale: '报表模板',
+        requiresAuth: true,
+        icon: 'icon-file',
+        roles: ['super_admin', 'admin'],
+        permission: 'quality:center:report-template',
+      },
+    },
+    // 6. 邮件模板管理
+    {
+      path: 'email-templates',
+      name: 'quality-center-email-templates',
+      component: () => import('@/views/quality-center/email-templates/index.vue'),
+      meta: {
+        locale: '邮件模板',
+        requiresAuth: true,
+        icon: 'icon-email',
+        roles: ['super_admin', 'admin'],
+        permission: 'quality:center:email-template',
+      },
+    },
   ],
 };
 
