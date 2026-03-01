@@ -18,6 +18,11 @@ const OrmRoleMenu = sql.defineWithConfig(models.SysRoleMenu, .{
     .primary_key = "id",
 });
 
+const OrmSysMenu = sql.defineWithConfig(models.SysMenu, .{
+    .table_name = "sys_menu",
+    .primary_key = "id",
+});
+
 const AdminRole = struct {
     id: ?i32 = null,
     admin_id: i32,
@@ -229,6 +234,7 @@ const RoleWithPermissions = struct {
     updated_at: ?i64,
     menu_count: usize,
     menu_ids: []const i32,
+    menu_names: []const []const u8,
 };
 
 /// 角色列表查询（增强版：包含权限信息）
@@ -265,10 +271,24 @@ fn listImpl(self: *Self, req: zap.Request) !void {
         const menus = menu_q.get() catch &[_]models.SysRoleMenu{};
         defer if (menus.len > 0) OrmRoleMenu.freeModels(@constCast(menus));
         
-        // 收集 menu_ids
+        // 收集 menu_ids 和查询菜单名称
         var menu_ids = try arena_alloc.alloc(i32, menus.len);
+        var menu_names = try arena_alloc.alloc([]const u8, menus.len);
+        
         for (menus, 0..) |m, j| {
             menu_ids[j] = m.menu_id;
+            
+            // 查询菜单名称
+            var name_q = OrmSysMenu.WhereEq("id", m.menu_id);
+            defer name_q.deinit();
+            const menu = name_q.first() catch null;
+            if (menu) |mn| {
+                menu_names[j] = try arena_alloc.dupe(u8, mn.menu_name);
+                var menu_mut = mn;
+                OrmSysMenu.freeModel(&menu_mut);
+            } else {
+                menu_names[j] = "";
+            }
         }
         
         roles_with_perms[i] = .{
@@ -283,6 +303,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
             .updated_at = role.updated_at,
             .menu_count = menus.len,
             .menu_ids = menu_ids,
+            .menu_names = menu_names,
         };
     }
     
