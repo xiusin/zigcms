@@ -3852,8 +3852,8 @@ pub fn ModelQuery(comptime T: type) type {
                     try sql.append(allocator, '\'');
                 } else {
                     var buf: [32]u8 = undefined;
-                    const len = std.fmt.formatIntBuf(&buf, v, 10, .lower, .{});
-                    try sql.appendSlice(allocator, buf[0..len]);
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
+                    try sql.appendSlice(allocator, str);
                 }
             }
 
@@ -3878,8 +3878,8 @@ pub fn ModelQuery(comptime T: type) type {
                     try sql.append(allocator, '\'');
                 } else {
                     var buf: [32]u8 = undefined;
-                    const len = std.fmt.formatIntBuf(&buf, v, 10, .lower, .{});
-                    try sql.appendSlice(allocator, buf[0..len]);
+                    const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
+                    try sql.appendSlice(allocator, str);
                 }
             }
 

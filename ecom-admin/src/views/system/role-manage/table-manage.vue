@@ -45,9 +45,24 @@
             {{ record.business_user_name || '-' }}
           </div>
         </template>
-        <template #pages="{ record }">
-          <div>
-            {{ record.pages ? record.pages.join('，') : '-' }}
+        <template #menu_names="{ record }">
+          <a-tooltip v-if="!record.menu_names || record.menu_names.length === 0" :content="'-'">
+            <span>-</span>
+          </a-tooltip>
+          <div v-else class="menu-tags">
+            <a-tag v-for="(name, index) in record.menu_names.slice(0, 3)" :key="index" color="blue" size="small">
+              {{ name }}
+            </a-tag>
+            <a-tooltip v-if="record.menu_names.length > 3">
+              <template #content>
+                <div class="menu-tooltip">
+                  <a-tag v-for="(name, index) in record.menu_names" :key="index" color="blue" size="small">
+                    {{ name }}
+                  </a-tag>
+                </div>
+              </template>
+              <a-link class="expand-link"> +{{ record.menu_names.length - 3 }} </a-link>
+            </a-tooltip>
           </div>
         </template>
 
@@ -109,9 +124,9 @@
     },
     {
       title: '授权功能',
-      dataIndex: 'pages',
+      dataIndex: 'menu_names',
       align: 'left',
-      slotName: 'pages',
+      slotName: 'menu_names',
       maxWidth: 400,
     },
     {
@@ -173,4 +188,24 @@
   };
 </script>
 
-<style lang="less" scoped></style>
+<style lang="less" scoped>
+.menu-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+
+  .expand-link {
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 4px;
+  }
+}
+
+.menu-tooltip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 300px;
+}
+</style>
