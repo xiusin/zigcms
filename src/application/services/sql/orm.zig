@@ -3305,6 +3305,59 @@ pub fn ModelQuery(comptime T: type) type {
             return self;
         }
 
+        /// 游标分页（解决大数据集 OFFSET 性能问题）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// // 第一页（cursor = null）
+        /// var q = OrmUser.Query();
+        /// defer q.deinit();
+        /// _ = q.cursorPaginate(null, 20, .forward);
+        /// const users = try q.get();
+        /// 
+        /// // 下一页（使用最后一条的 ID）
+        /// const last_id = users[users.len - 1].id;
+        /// var q2 = OrmUser.Query();
+        /// defer q2.deinit();
+        /// _ = q2.cursorPaginate(last_id, 20, .forward);
+        /// const next_users = try q2.get();
+        /// ```
+        /// 
+        /// 优势：
+        /// - 避免 OFFSET 性能问题（大数据集）
+        /// - 适合无限滚动
+        /// - 性能稳定（不随页数增加而变慢）
+        pub fn cursorPaginate(self: *Self, cursor: ?i64, page_size: u64, direction: CursorDirection) *Self {
+            const pk = comptime blk: {
+                if (@hasDecl(T, "primary_key")) {
+                    break :blk T.primary_key;
+                }
+                break :blk "id";
+            };
+            
+            if (cursor) |c| {
+                switch (direction) {
+                    .forward => _ = self.where(pk, ">", c),
+                    .backward => _ = self.where(pk, "<", c),
+                }
+            }
+            
+            _ = self.limit(page_size);
+            
+            switch (direction) {
+                .forward => _ = self.orderBy(pk, .asc),
+                .backward => _ = self.orderBy(pk, .desc),
+            }
+            
+            return self;
+        }
+
+        /// 游标方向
+        pub const CursorDirection = enum {
+            forward,   // 向前（下一页）
+            backward,  // 向后（上一页）
+        };
+
         /// GROUP BY
         pub fn groupBy(self: *Self, fields: []const []const u8) *Self {
             for (fields) |f| {
