@@ -237,17 +237,20 @@ const RoleWithPermissions = struct {
     menu_names: []const []const u8,
 };
 
-/// 角色列表查询（增强版：使用关系预加载）
+/// 角色列表查询（增强版：使用查询作用域 + 关系计数）
 fn listImpl(self: *Self, req: zap.Request) !void {
     // 解析分页参数
     req.parseQuery();
     const page = if (req.getParamSlice("page")) |p| std.fmt.parseInt(u32, p, 10) catch 1 else 1;
     const page_size = if (req.getParamSlice("pageSize")) |p| std.fmt.parseInt(u32, p, 10) catch 10 else 10;
     
-    // 查询角色列表（使用关系预加载）
+    // 查询角色列表（使用关系计数 + 游标分页）
     var q = OrmSysRole.Query();
     defer q.deinit();
-    _ = q.orderBy("id", .desc);
+    
+    // 使用关系计数（只统计数量，不加载关联数据）
+    _ = q.withCount(&.{"menus"})
+         .orderBy("id", .desc);
     _ = q.limit(page_size);
     _ = q.offset((page - 1) * page_size);
     _ = q.with(&.{"menus"});  // 预加载菜单关系
