@@ -273,7 +273,7 @@ fn buildAdminQuery(params: ListQueryParams) !sql.ModelQuery(models.SysAdmin) {
         defer global.get_allocator().free(like);
         const keyword_clause = try std.fmt.allocPrint(global.get_allocator(), "(username LIKE '{s}' OR nickname LIKE '{s}' OR mobile LIKE '{s}')", .{ like, like, like });
         defer global.get_allocator().free(keyword_clause);
-        _ = q.whereRaw(keyword_clause);
+        _ = q.whereRaw(keyword_clause, {});
     }
 
     // 排序
@@ -320,7 +320,7 @@ fn fetchAdminRoles(allocator: Allocator, admins: []const models.SysAdmin) ![]con
     defer rel_q.deinit();
     const rel_in_clause = try buildInClause(allocator, "admin_id", admin_ids.items);
     defer allocator.free(rel_in_clause);
-    _ = rel_q.whereRaw(rel_in_clause);
+    _ = rel_q.whereRaw(rel_in_clause, {});
 
     const rel_rows = rel_q.get() catch |err| return err;
     defer OrmAdminRole.freeModels(rel_rows);
@@ -350,7 +350,7 @@ fn fetchRolesByIds(allocator: Allocator, admin_roles: []const SysAdminRole) ![]c
     defer role_q.deinit();
     const role_in_clause = try buildInClause(allocator, "id", role_ids.items);
     defer allocator.free(role_in_clause);
-    _ = role_q.whereRaw(role_in_clause);
+    _ = role_q.whereRaw(role_in_clause, {});
 
     const role_result = try role_q.getWithArena(allocator);
     return role_result.items();
@@ -479,7 +479,7 @@ fn fetchAdminsWithRoles(allocator: Allocator, params: ListQueryParams) !AdminLis
 
         const in_clause = try buildInClause(allocator, "id", admin_ids);
         defer allocator.free(in_clause);
-        _ = q.whereRaw(in_clause);
+        _ = q.whereRaw(in_clause, {});
     }
 
     // 3. 查询管理员列表

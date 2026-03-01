@@ -2575,12 +2575,25 @@ pub fn ModelQuery(comptime T: type) type {
             return self;
         }
 
-        /// WHERE 条件
+        /// WHERE 条件（参数化）
         pub fn where(self: *Self, field: []const u8, op: []const u8, val: anytype) *Self {
-            const clause = formatWhere(self.db.allocator, field, op, val) catch return self;
-            self.where_clauses.append(self.db.allocator, clause) catch {
-                self.db.allocator.free(clause);
+            var clause_buf: [256]u8 = undefined;
+            const clause = std.fmt.bufPrint(&clause_buf, "{s} {s} ?", .{ field, op }) catch return self;
+            const clause_owned = self.db.allocator.dupe(u8, clause) catch return self;
+            
+            self.where_clauses.append(self.db.allocator, clause_owned) catch {
+                self.db.allocator.free(clause_owned);
+                return self;
             };
+            
+            // 添加参数（深拷贝字符串）
+            var param = query_mod.Value.from(val);
+            if (param == .string_val) {
+                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch return self;
+                param = .{ .string_val = str_copy };
+            }
+            self.bind_params.append(self.db.allocator, param) catch return self;
+            
             return self;
         }
 
@@ -2863,11 +2876,62 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE 原始 SQL
-        pub fn whereRaw(self: *Self, raw_sql: []const u8) *Self {
+        /// 原生 SQL WHERE 条件（支持占位符）
+        /// 使用: 
+        ///   .whereRaw("age > 18")  // 无参数
+        ///   .whereRaw("age > ? AND status = ?", .{18, 1})  // 有参数
+        pub fn whereRaw(self: *Self, raw_sql: []const u8, params: anytype) *Self {
             const clause = self.db.allocator.dupe(u8, raw_sql) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
+                return self;
             };
+            
+            // 如果 params 是 void，不处理参数
+            const ParamsType = @TypeOf(params);
+            if (ParamsType == void) return self;
+            
+            // 添加参数（深拷贝字符串）
+            const type_info = @typeInfo(ParamsType);
+            
+            switch (type_info) {
+                .pointer => |ptr| {
+                    if (ptr.size == .slice or @typeInfo(ptr.child) == .array) {
+                        for (params) |p| {
+                            var param = query_mod.Value.from(p);
+                            if (param == .string_val) {
+                                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                                param = .{ .string_val = str_copy };
+                            }
+                            self.bind_params.append(self.db.allocator, param) catch {};
+                        }
+                    }
+                },
+                .array => {
+                    for (params) |p| {
+                        var param = query_mod.Value.from(p);
+                        if (param == .string_val) {
+                            const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                            param = .{ .string_val = str_copy };
+                        }
+                        self.bind_params.append(self.db.allocator, param) catch {};
+                    }
+                },
+                .@"struct" => |s| {
+                    if (s.is_tuple) {
+                        inline for (params) |p| {
+                            var param = query_mod.Value.from(p);
+                            if (param == .string_val) {
+                                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                                param = .{ .string_val = str_copy };
+                            }
+                            self.bind_params.append(self.db.allocator, param) catch {};
+                        }
+                    }
+                },
+                else => {},
+            }
+            
             return self;
         }
 
@@ -3862,6 +3926,11 @@ pub fn ModelQuery(comptime T: type) type {
                             try result.append(self.db.allocator, '\'');
                         },
                         .int_val => |n| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{n});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .uint_val => |n| {
                             var buf: [32]u8 = undefined;
                             const str = try std.fmt.bufPrint(&buf, "{d}", .{n});
                             try result.appendSlice(self.db.allocator, str);
