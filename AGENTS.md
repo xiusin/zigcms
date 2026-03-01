@@ -794,3 +794,891 @@ std.debug.assert(user.id != null);
 - **ORM 内存管理**：`knowlages/orm_memory_lifecycle.md`
 - **内存泄漏防范**：`knowlages/memory_leak_basics.md`
 - **错误处理**：`knowlages/error_resource_safety.md`
+
+---
+
+## ZigCMS 开发范式与实战案例
+
+### 开发范式总览
+
+ZigCMS 采用**整洁架构 + DDD + 参数化查询**的开发范式，确保代码安全、可维护、高性能。
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    开发范式核心                          │
+├─────────────────────────────────────────────────────────┤
+│ 1. 内存安全优先：GPA + Arena + 借用引用                 │
+│ 2. SQL 安全优先：参数化查询 + 注入防护                  │
+│ 3. 职责清晰：整洁架构分层                               │
+│ 4. 依赖倒置：接口抽象 + DI 容器                         │
+│ 5. 显式错误处理：try/catch + errdefer                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 范式 1：内存安全开发模式
+
+#### 1.1 RAII 模式（资源获取即初始化）
+
+```zig
+// ✅ 推荐：使用 defer 确保资源释放
+pub fn processRequest(allocator: Allocator, req: *Request) !Response {
+    // 1. 创建 QueryBuilder
+    var q = OrmUser.Query();
+    defer q.deinit();  // 作用域结束时自动清理
+    
+    // 2. 查询数据
+    _ = q.where("status", "=", 1);
+    const users = try q.get();
+    defer OrmUser.freeModels(users);  // 作用域结束时自动清理
+    
+    // 3. 处理数据
+    var result = std.ArrayList(UserDto).init(allocator);
+    defer result.deinit();
+    
+    for (users) |user| {
+        try result.append(toDto(user));
+    }
+    
+    return Response{ .data = try result.toOwnedSlice() };
+}
+```
+
+#### 1.2 Arena 分配器模式（批量操作）
+
+```zig
+// ✅ 推荐：批量操作使用 Arena
+pub fn batchProcess(allocator: Allocator, ids: []const i32) ![]Result {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();  // 一次性释放所有内存
+    const arena_allocator = arena.allocator();
+    
+    // 使用 Arena 分配器查询
+    var q = OrmUser.Query();
+    defer q.deinit();
+    
+    _ = q.whereIn("id", ids);
+    var result = try q.getWithArena(arena_allocator);
+    // 无需手动释放，arena.deinit() 会清理所有
+    
+    return processUsers(result.items());
+}
+```
+
+#### 1.3 借用引用模式（避免重复释放）
+
+```zig
+// ✅ 推荐：借用引用，不拥有所有权
+pub const AppContext = struct {
+    allocator: Allocator,
+    db: *Database,        // 借用引用
+    cache: *CacheInterface,  // 借用引用
+    
+    pub fn init(allocator: Allocator, db: *Database, cache: *CacheInterface) !*AppContext {
+        const ctx = try allocator.create(AppContext);
+        ctx.* = .{
+            .allocator = allocator,
+            .db = db,      // 不拥有所有权
+            .cache = cache,  // 不拥有所有权
+        };
+        return ctx;
+    }
+    
+    pub fn deinit(self: *AppContext) void {
+        // 不释放 db 和 cache，由所有者负责
+        self.allocator.destroy(self);
+    }
+};
+```
+
+### 范式 2：SQL 安全开发模式
+
+#### 2.1 参数化查询模式
+
+```zig
+// ✅ 推荐：使用参数化查询
+pub fn findUsers(age: i32, status: i32, role_ids: []const i32) ![]User {
+    var q = OrmUser.Query();
+    defer q.deinit();
+    
+    // 所有条件都参数化
+    _ = q.where("age", ">", age)           // 参数化
+         .where("status", "=", status)     // 参数化
+         .whereIn("role_id", role_ids);    // 参数化
+    
+    return try q.get();
+}
+
+// ❌ 避免：字符串拼接
+pub fn findUsersBad(age: i32) ![]User {
+    const sql = try std.fmt.allocPrint(allocator, 
+        "SELECT * FROM users WHERE age > {d}", .{age});  // ❌ 不安全
+    defer allocator.free(sql);
+    return try db.rawQuery(sql);
+}
+```
+
+#### 2.2 动态条件构建模式
+
+```zig
+// ✅ 推荐：使用 whereRaw + ParamBuilder
+pub fn searchUsers(filter: SearchFilter) ![]User {
+    var q = OrmUser.Query();
+    defer q.deinit();
+    
+    var params = sql.ParamBuilder.init(allocator);
+    defer params.deinit();
+    
+    var conditions = std.ArrayList(u8).init(allocator);
+    defer conditions.deinit();
+    
+    try conditions.appendSlice("1=1");
+    
+    // 动态添加条件
+    if (filter.age) |age| {
+        try conditions.appendSlice(" AND age > ?");
+        try params.add(age);
+    }
+    
+    if (filter.name) |name| {
+        try conditions.appendSlice(" AND name LIKE ?");
+        try params.add(try std.fmt.allocPrint(allocator, "%{s}%", .{name}));
+    }
+    
+    if (filter.role_ids) |ids| {
+        try conditions.appendSlice(" AND role_id IN (");
+        for (ids, 0..) |id, i| {
+            if (i > 0) try conditions.appendSlice(", ");
+            try conditions.appendSlice("?");
+            try params.add(id);
+        }
+        try conditions.appendSlice(")");
+    }
+    
+    _ = q.whereRaw(conditions.items, params);
+    return try q.get();
+}
+```
+
+### 范式 3：整洁架构开发模式
+
+#### 3.1 控制器模式（最小职责）
+
+```zig
+// ✅ 推荐：控制器只做参数解析和响应返回
+pub fn list(req: zap.Request) !void {
+    // 1. 解析参数
+    const page = req.getParamInt("page") orelse 1;
+    const page_size = req.getParamInt("page_size") orelse 20;
+    const keyword = req.getParam("keyword");
+    
+    // 2. 调用服务
+    const container = zigcms.core.di.getGlobalContainer();
+    const service = try container.resolve(UserService);
+    
+    const result = try service.list(page, page_size, keyword);
+    
+    // 3. 返回响应
+    try base.send_success(req, result);
+}
+
+// ❌ 避免：控制器包含业务逻辑
+pub fn listBad(req: zap.Request) !void {
+    // ❌ 直接操作数据库
+    var q = OrmUser.Query();
+    defer q.deinit();
+    
+    // ❌ 复杂的业务规则
+    if (user.role == "admin") {
+        // ...
+    }
+    
+    // ❌ 多个数据库操作
+    const users = try q.get();
+    for (users) |user| {
+        // ...
+    }
+}
+```
+
+#### 3.2 服务模式（业务编排）
+
+```zig
+// ✅ 推荐：服务编排多个仓储和基础设施
+pub const UserService = struct {
+    allocator: Allocator,
+    user_repo: *UserRepository,
+    role_repo: *RoleRepository,
+    cache: *CacheInterface,
+    
+    pub fn createUser(self: *Self, dto: CreateUserDto) !User {
+        // 1. 验证业务规则
+        if (try self.user_repo.existsByUsername(dto.username)) {
+            return error.UsernameExists;
+        }
+        
+        // 2. 验证角色存在
+        const role = try self.role_repo.findById(dto.role_id) orelse {
+            return error.RoleNotFound;
+        };
+        
+        // 3. 创建用户
+        var user = User{
+            .username = dto.username,
+            .email = dto.email,
+            .role_id = dto.role_id,
+        };
+        
+        try self.user_repo.save(&user);
+        
+        // 4. 清除相关缓存
+        try self.cache.delByPrefix("user:");
+        
+        return user;
+    }
+};
+```
+
+#### 3.3 仓储模式（数据访问抽象）
+
+```zig
+// domain/repositories/user_repository.zig
+// ✅ 推荐：定义仓储接口
+pub const UserRepository = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+    
+    pub const VTable = struct {
+        findById: *const fn (*anyopaque, i32) anyerror!?User,
+        save: *const fn (*anyopaque, *User) anyerror!void,
+        existsByUsername: *const fn (*anyopaque, []const u8) anyerror!bool,
+    };
+    
+    pub fn findById(self: *Self, id: i32) !?User {
+        return self.vtable.findById(self.ptr, id);
+    }
+};
+
+// infrastructure/database/sqlite_user_repository.zig
+// ✅ 推荐：实现仓储接口
+pub const SqliteUserRepository = struct {
+    allocator: Allocator,
+    db: *Database,
+    
+    pub fn findById(self: *Self, id: i32) !?User {
+        var q = OrmUser.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        const users = try q.get();
+        defer OrmUser.freeModels(users);
+        
+        if (users.len == 0) return null;
+        
+        // 深拷贝字符串字段
+        return User{
+            .id = users[0].id,
+            .username = try self.allocator.dupe(u8, users[0].username),
+            .email = try self.allocator.dupe(u8, users[0].email),
+        };
+    }
+    
+    pub fn vtable() UserRepository.VTable {
+        return .{
+            .findById = findByIdImpl,
+            .save = saveImpl,
+            .existsByUsername = existsByUsernameImpl,
+        };
+    }
+};
+```
+
+
+### 实战案例：完整的用户管理模块
+
+#### 案例 1：创建用户（完整流程）
+
+**1. 定义实体（domain/entities/user.model.zig）**
+```zig
+pub const User = struct {
+    id: ?i32 = null,
+    username: []const u8 = "",
+    email: []const u8 = "",
+    password: []const u8 = "",
+    role_id: i32 = 0,
+    status: i32 = 1,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
+    
+    pub fn isActive(self: *const User) bool {
+        return self.status == 1;
+    }
+};
+```
+
+**2. 定义仓储接口（domain/repositories/user_repository.zig）**
+```zig
+pub const UserRepository = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+    
+    pub const VTable = struct {
+        findById: *const fn (*anyopaque, i32) anyerror!?User,
+        findByUsername: *const fn (*anyopaque, []const u8) anyerror!?User,
+        save: *const fn (*anyopaque, *User) anyerror!void,
+        delete: *const fn (*anyopaque, i32) anyerror!void,
+    };
+    
+    pub fn findById(self: *Self, id: i32) !?User {
+        return self.vtable.findById(self.ptr, id);
+    }
+    
+    pub fn findByUsername(self: *Self, username: []const u8) !?User {
+        return self.vtable.findByUsername(self.ptr, username);
+    }
+    
+    pub fn save(self: *Self, user: *User) !void {
+        return self.vtable.save(self.ptr, user);
+    }
+    
+    pub fn delete(self: *Self, id: i32) !void {
+        return self.vtable.delete(self.ptr, id);
+    }
+};
+```
+
+**3. 实现仓储（infrastructure/database/sqlite_user_repository.zig）**
+```zig
+pub const SqliteUserRepository = struct {
+    allocator: Allocator,
+    db: *Database,
+    
+    pub fn init(allocator: Allocator, db: *Database) SqliteUserRepository {
+        return .{ .allocator = allocator, .db = db };
+    }
+    
+    pub fn findById(self: *Self, id: i32) !?User {
+        var q = OrmUser.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        const users = try q.get();
+        defer OrmUser.freeModels(users);
+        
+        if (users.len == 0) return null;
+        
+        // 深拷贝字符串字段
+        return User{
+            .id = users[0].id,
+            .username = try self.allocator.dupe(u8, users[0].username),
+            .email = try self.allocator.dupe(u8, users[0].email),
+            .password = try self.allocator.dupe(u8, users[0].password),
+            .role_id = users[0].role_id,
+            .status = users[0].status,
+            .created_at = users[0].created_at,
+            .updated_at = users[0].updated_at,
+        };
+    }
+    
+    pub fn findByUsername(self: *Self, username: []const u8) !?User {
+        var q = OrmUser.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("username", "=", username);
+        const users = try q.get();
+        defer OrmUser.freeModels(users);
+        
+        if (users.len == 0) return null;
+        
+        return User{
+            .id = users[0].id,
+            .username = try self.allocator.dupe(u8, users[0].username),
+            .email = try self.allocator.dupe(u8, users[0].email),
+            .password = try self.allocator.dupe(u8, users[0].password),
+            .role_id = users[0].role_id,
+            .status = users[0].status,
+            .created_at = users[0].created_at,
+            .updated_at = users[0].updated_at,
+        };
+    }
+    
+    pub fn save(self: *Self, user: *User) !void {
+        if (user.id) |id| {
+            // 更新
+            _ = try OrmUser.UpdateWith(id, .{
+                .username = user.username,
+                .email = user.email,
+                .password = user.password,
+                .role_id = user.role_id,
+                .status = user.status,
+            });
+        } else {
+            // 创建
+            const created = try OrmUser.Create(user.*);
+            user.id = created.id;
+        }
+    }
+    
+    pub fn delete(self: *Self, id: i32) !void {
+        try OrmUser.Delete(id);
+    }
+    
+    pub fn vtable() UserRepository.VTable {
+        return .{
+            .findById = findByIdImpl,
+            .findByUsername = findByUsernameImpl,
+            .save = saveImpl,
+            .delete = deleteImpl,
+        };
+    }
+    
+    fn findByIdImpl(ptr: *anyopaque, id: i32) anyerror!?User {
+        const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
+        return self.findById(id);
+    }
+    
+    fn findByUsernameImpl(ptr: *anyopaque, username: []const u8) anyerror!?User {
+        const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
+        return self.findByUsername(username);
+    }
+    
+    fn saveImpl(ptr: *anyopaque, user: *User) anyerror!void {
+        const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
+        return self.save(user);
+    }
+    
+    fn deleteImpl(ptr: *anyopaque, id: i32) anyerror!void {
+        const self: *SqliteUserRepository = @ptrCast(@alignCast(ptr));
+        return self.delete(id);
+    }
+};
+```
+
+**4. 创建服务（application/services/user_service.zig）**
+```zig
+pub const UserService = struct {
+    allocator: Allocator,
+    user_repo: UserRepository,
+    cache: *CacheInterface,
+    
+    pub fn init(allocator: Allocator, user_repo: UserRepository, cache: *CacheInterface) UserService {
+        return .{
+            .allocator = allocator,
+            .user_repo = user_repo,
+            .cache = cache,
+        };
+    }
+    
+    pub fn createUser(self: *Self, dto: CreateUserDto) !User {
+        // 1. 验证用户名是否存在
+        if (try self.user_repo.findByUsername(dto.username)) |_| {
+            return error.UsernameExists;
+        }
+        
+        // 2. 验证邮箱是否存在
+        // ...
+        
+        // 3. 加密密码
+        const hashed_password = try hashPassword(self.allocator, dto.password);
+        defer self.allocator.free(hashed_password);
+        
+        // 4. 创建用户
+        var user = User{
+            .username = dto.username,
+            .email = dto.email,
+            .password = hashed_password,
+            .role_id = dto.role_id,
+            .status = 1,
+        };
+        
+        try self.user_repo.save(&user);
+        
+        // 5. 清除相关缓存
+        try self.cache.delByPrefix("user:");
+        
+        return user;
+    }
+    
+    pub fn updateUser(self: *Self, id: i32, dto: UpdateUserDto) !void {
+        // 1. 查询用户
+        var user = try self.user_repo.findById(id) orelse return error.UserNotFound;
+        defer {
+            self.allocator.free(user.username);
+            self.allocator.free(user.email);
+            self.allocator.free(user.password);
+        }
+        
+        // 2. 更新字段
+        if (dto.email) |email| {
+            self.allocator.free(user.email);
+            user.email = try self.allocator.dupe(u8, email);
+        }
+        
+        if (dto.status) |status| {
+            user.status = status;
+        }
+        
+        // 3. 保存
+        try self.user_repo.save(&user);
+        
+        // 4. 清除缓存
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        try self.cache.del(cache_key);
+    }
+    
+    pub fn deleteUser(self: *Self, id: i32) !void {
+        // 1. 删除用户
+        try self.user_repo.delete(id);
+        
+        // 2. 清除缓存
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        try self.cache.del(cache_key);
+        try self.cache.delByPrefix("user:");
+    }
+    
+    pub fn getUserById(self: *Self, id: i32) !?User {
+        // 1. 尝试从缓存获取
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        
+        if (self.cache.get(cache_key, self.allocator)) |cached| {
+            defer self.allocator.free(cached);
+            return try deserializeUser(self.allocator, cached);
+        }
+        
+        // 2. 从数据库查询
+        const user = try self.user_repo.findById(id) orelse return null;
+        
+        // 3. 缓存结果
+        const json = try serializeUser(self.allocator, user);
+        defer self.allocator.free(json);
+        try self.cache.set(cache_key, json, 300);
+        
+        return user;
+    }
+};
+```
+
+**5. 创建 DTO（api/dto/user_create.dto.zig）**
+```zig
+pub const CreateUserDto = struct {
+    username: []const u8,
+    email: []const u8,
+    password: []const u8,
+    role_id: i32,
+};
+
+pub const UpdateUserDto = struct {
+    email: ?[]const u8 = null,
+    status: ?i32 = null,
+};
+```
+
+**6. 创建控制器（api/controllers/user.controller.zig）**
+```zig
+pub fn create(req: zap.Request) !void {
+    // 1. 解析请求体
+    const body = try req.parseBody(CreateUserDto);
+    
+    // 2. 调用服务
+    const container = zigcms.core.di.getGlobalContainer();
+    const service = try container.resolve(UserService);
+    
+    const user = try service.createUser(body);
+    
+    // 3. 返回响应
+    try base.send_success(req, user);
+}
+
+pub fn update(req: zap.Request) !void {
+    // 1. 解析参数
+    const id = try req.getParamInt("id") orelse return error.InvalidId;
+    const body = try req.parseBody(UpdateUserDto);
+    
+    // 2. 调用服务
+    const container = zigcms.core.di.getGlobalContainer();
+    const service = try container.resolve(UserService);
+    
+    try service.updateUser(id, body);
+    
+    // 3. 返回响应
+    try base.send_success(req, .{ .message = "更新成功" });
+}
+
+pub fn delete(req: zap.Request) !void {
+    // 1. 解析参数
+    const id = try req.getParamInt("id") orelse return error.InvalidId;
+    
+    // 2. 调用服务
+    const container = zigcms.core.di.getGlobalContainer();
+    const service = try container.resolve(UserService);
+    
+    try service.deleteUser(id);
+    
+    // 3. 返回响应
+    try base.send_success(req, .{ .message = "删除成功" });
+}
+
+pub fn get(req: zap.Request) !void {
+    // 1. 解析参数
+    const id = try req.getParamInt("id") orelse return error.InvalidId;
+    
+    // 2. 调用服务
+    const container = zigcms.core.di.getGlobalContainer();
+    const service = try container.resolve(UserService);
+    
+    const user = try service.getUserById(id) orelse return error.UserNotFound;
+    defer {
+        req.allocator.free(user.username);
+        req.allocator.free(user.email);
+        req.allocator.free(user.password);
+    }
+    
+    // 3. 返回响应
+    try base.send_success(req, user);
+}
+```
+
+**7. 注册路由（api/bootstrap.zig）**
+```zig
+pub fn registerRoutes(self: *Self) !void {
+    // 用户路由
+    try self.app.route("POST", "/api/users", user_controller.create);
+    try self.app.route("PUT", "/api/users/:id", user_controller.update);
+    try self.app.route("DELETE", "/api/users/:id", user_controller.delete);
+    try self.app.route("GET", "/api/users/:id", user_controller.get);
+}
+```
+
+**8. 注册到 DI 容器（root.zig）**
+```zig
+fn registerUserServices(container: *DIContainer, allocator: Allocator, db: *Database) !void {
+    // 1. 创建仓储实例
+    const sqlite_repo = try allocator.create(SqliteUserRepository);
+    sqlite_repo.* = SqliteUserRepository.init(allocator, db);
+    
+    const user_repo = try allocator.create(UserRepository);
+    user_repo.* = domain.repositories.user_repository.create(sqlite_repo, &SqliteUserRepository.vtable());
+    
+    // 2. 注册到容器
+    try container.registerInstance(SqliteUserRepository, sqlite_repo, null);
+    try container.registerInstance(UserRepository, user_repo, null);
+    
+    // 3. 注册服务
+    try container.registerSingleton(UserService, UserService, struct {
+        fn factory(di: *DIContainer, alloc: Allocator) anyerror!*UserService {
+            const repo = try di.resolve(UserRepository);
+            const cache = try di.resolve(CacheInterface);
+            
+            const service = try alloc.create(UserService);
+            service.* = UserService.init(alloc, repo.*, cache);
+            return service;
+        }
+    }.factory, null);
+}
+```
+
+#### 案例 2：批量查询优化（N+1 问题）
+
+**问题场景**：查询角色列表，每个角色需要查询关联的菜单
+
+**❌ 错误实现（N+1 查询）**
+```zig
+pub fn getRoleList() ![]RoleWithMenus {
+    // 1. 查询所有角色（1 次查询）
+    var role_q = OrmRole.Query();
+    defer role_q.deinit();
+    const roles = try role_q.get();
+    defer OrmRole.freeModels(roles);
+    
+    var result = std.ArrayList(RoleWithMenus).init(allocator);
+    defer result.deinit();
+    
+    // 2. 为每个角色查询菜单（N 次查询）
+    for (roles) |role| {
+        var menu_q = OrmRoleMenu.Query();
+        defer menu_q.deinit();
+        _ = menu_q.where("role_id", "=", role.id);  // ❌ N+1 问题
+        const menus = try menu_q.get();
+        defer OrmRoleMenu.freeModels(menus);
+        
+        try result.append(.{
+            .role = role,
+            .menus = menus,
+        });
+    }
+    
+    return result.toOwnedSlice();
+}
+```
+
+**✅ 正确实现（批量查询）**
+```zig
+pub fn getRoleList() ![]RoleWithMenus {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+    
+    // 1. 查询所有角色（1 次查询）
+    var role_q = OrmRole.Query();
+    defer role_q.deinit();
+    var role_result = try role_q.getWithArena(arena_allocator);
+    const roles = role_result.items();
+    
+    // 2. 收集所有角色 ID
+    var role_ids = std.ArrayList(i32).init(arena_allocator);
+    for (roles) |role| {
+        try role_ids.append(role.id.?);
+    }
+    
+    // 3. 批量查询角色-菜单关系（1 次查询）
+    var rel_q = OrmRoleMenu.Query();
+    defer rel_q.deinit();
+    _ = rel_q.whereIn("role_id", role_ids.items);  // ✅ 批量查询
+    var rel_result = try rel_q.getWithArena(arena_allocator);
+    const relations = rel_result.items();
+    
+    // 4. 收集所有菜单 ID
+    var menu_ids = std.ArrayList(i32).init(arena_allocator);
+    for (relations) |rel| {
+        try menu_ids.append(rel.menu_id);
+    }
+    
+    // 5. 批量查询菜单信息（1 次查询）
+    var menu_q = OrmMenu.Query();
+    defer menu_q.deinit();
+    _ = menu_q.whereIn("id", menu_ids.items);  // ✅ 批量查询
+    var menu_result = try menu_q.getWithArena(arena_allocator);
+    const menus = menu_result.items();
+    
+    // 6. 构建 HashMap 加速查找
+    var menu_map = std.AutoHashMap(i32, Menu).init(arena_allocator);
+    for (menus) |menu| {
+        try menu_map.put(menu.id.?, menu);
+    }
+    
+    // 7. 组装结果
+    var result = std.ArrayList(RoleWithMenus).init(allocator);
+    defer result.deinit();
+    
+    for (roles) |role| {
+        var role_menus = std.ArrayList(Menu).init(arena_allocator);
+        
+        for (relations) |rel| {
+            if (rel.role_id == role.id.?) {
+                if (menu_map.get(rel.menu_id)) |menu| {
+                    try role_menus.append(menu);
+                }
+            }
+        }
+        
+        try result.append(.{
+            .role = role,
+            .menus = try role_menus.toOwnedSlice(),
+        });
+    }
+    
+    return result.toOwnedSlice();
+}
+```
+
+**性能对比**：
+- ❌ N+1 查询：1 + 10 + 30 = 41 次查询
+- ✅ 批量查询：1 + 1 + 1 = 3 次查询
+- **性能提升：93%**
+
+#### 案例 3：缓存使用模式
+
+**场景**：用户信息缓存，写入时更新缓存
+
+```zig
+pub const UserService = struct {
+    allocator: Allocator,
+    user_repo: UserRepository,
+    cache: *CacheInterface,
+    
+    // 获取用户（带缓存）
+    pub fn getUserById(self: *Self, id: i32) !?User {
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        
+        // 1. 尝试从缓存获取
+        if (self.cache.get(cache_key, self.allocator)) |cached| {
+            defer self.allocator.free(cached);
+            
+            // 检查是否为空值缓存
+            if (std.mem.eql(u8, cached, "null")) {
+                return null;
+            }
+            
+            return try deserializeUser(self.allocator, cached);
+        }
+        
+        // 2. 从数据库查询
+        const user = try self.user_repo.findById(id);
+        
+        // 3. 缓存结果（包括空值）
+        if (user) |u| {
+            const json = try serializeUser(self.allocator, u);
+            defer self.allocator.free(json);
+            try self.cache.set(cache_key, json, 300);  // 5 分钟
+            return u;
+        } else {
+            try self.cache.set(cache_key, "null", 60);  // 空值缓存 1 分钟
+            return null;
+        }
+    }
+    
+    // 更新用户（更新缓存）
+    pub fn updateUser(self: *Self, id: i32, dto: UpdateUserDto) !void {
+        // 1. 更新数据库
+        var user = try self.user_repo.findById(id) orelse return error.UserNotFound;
+        defer {
+            self.allocator.free(user.username);
+            self.allocator.free(user.email);
+            self.allocator.free(user.password);
+        }
+        
+        if (dto.email) |email| {
+            self.allocator.free(user.email);
+            user.email = try self.allocator.dupe(u8, email);
+        }
+        
+        try self.user_repo.save(&user);
+        
+        // 2. 更新缓存
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        
+        const json = try serializeUser(self.allocator, user);
+        defer self.allocator.free(json);
+        try self.cache.set(cache_key, json, 300);
+    }
+    
+    // 删除用户（清除缓存）
+    pub fn deleteUser(self: *Self, id: i32) !void {
+        // 1. 删除数据库记录
+        try self.user_repo.delete(id);
+        
+        // 2. 删除缓存
+        const cache_key = try std.fmt.allocPrint(self.allocator, "user:{d}", .{id});
+        defer self.allocator.free(cache_key);
+        try self.cache.del(cache_key);
+        
+        // 3. 删除相关缓存
+        try self.cache.delByPrefix("user:");
+    }
+};
+```
+
+### 总结
+
+ZigCMS 开发范式强调：
+1. **内存安全**：RAII + Arena + 借用引用
+2. **SQL 安全**：参数化查询 + 注入防护
+3. **架构清晰**：整洁架构 + 依赖倒置
+4. **性能优化**：批量查询 + 缓存策略
+5. **代码质量**：显式错误处理 + 资源管理
+
+遵循这些范式，可以编写出安全、高效、易维护的 ZigCMS 应用。

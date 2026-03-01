@@ -9,6 +9,8 @@ import { complexSchema } from './complex-schema';
 import cmsMock from './cms';
 import feedbackMock from './feedback';
 import feedbackNotificationMock from './feedback-notification';
+import oauthMock from './oauth';
+import autoTestMock from './auto-test';
 
 // 注册 CMS Mock
 cmsMock.forEach((item) => {
@@ -22,6 +24,16 @@ feedbackMock.forEach((item: any) => {
 
 // 注册反馈通知 Mock
 feedbackNotificationMock.forEach((item: any) => {
+  Mock.mock(new RegExp(item.url), item.method, item.response);
+});
+
+// 注册 OAuth Mock
+oauthMock.forEach((item: any) => {
+  Mock.mock(new RegExp(item.url), item.method, item.response);
+});
+
+// 注册自动化测试系统 Mock
+autoTestMock.forEach((item: any) => {
   Mock.mock(new RegExp(item.url), item.method, item.response);
 });
 
