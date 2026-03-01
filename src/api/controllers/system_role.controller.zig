@@ -86,11 +86,14 @@ pub fn bumpRoleCacheVersion(allocator: Allocator) void {
 
 /// 保存角色信息及其权限关联。
 fn saveImpl(self: *Self, req: zap.Request) !void {
+    std.debug.print("\n" ++ "=" ** 60 ++ "\n", .{});
+    std.debug.print("【角色保存】开始处理请求\n", .{});
+    std.debug.print("=" ** 60 ++ "\n", .{});
+    
     req.parseBody() catch return base.send_failed(req, "解析请求体失败");
     const body = req.body orelse return base.send_failed(req, "请求体为空");
 
     // 打印原始请求体
-    std.debug.print("\n=== 角色保存请求 ===\n", .{});
     std.debug.print("请求体: {s}\n", .{body});
 
     var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
@@ -124,14 +127,20 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     // 2. 创建或更新 sys_role 表
     if (id_val != null and id_val.? != .null) {
         role_id = @intCast(id_val.?.integer);
+        std.debug.print("更新角色 ID: {d}\n", .{role_id});
         _ = OrmSysRole.Update(role_id, .{
             .role_name = role_name,
             .role_key = role_key,
             .sort = sort,
             .remark = remark,
             .status = status,
-        }) catch |err| return base.send_error(req, err);
+        }) catch |err| {
+            std.debug.print("更新失败: {}\n", .{err});
+            return base.send_error(req, err);
+        };
+        std.debug.print("更新成功\n", .{});
     } else {
+        std.debug.print("创建新角色\n", .{});
         var created = OrmSysRole.Create(.{
             .role_name = role_name,
             .role_key = role_key,
@@ -143,7 +152,10 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
         role_id = created.id orelse 0;
     }
 
-    if (role_id <= 0) return base.send_failed(req, "保存角色失败");
+    if (role_id <= 0) {
+        std.debug.print("角色ID无效: {d}\n", .{role_id});
+        return base.send_failed(req, "保存角色失败");
+    }
 
     std.debug.print("角色ID: {d}\n", .{role_id});
 
