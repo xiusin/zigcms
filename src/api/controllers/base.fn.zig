@@ -91,7 +91,12 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
         req.sendBody(json) catch {};
 
         // 同时打印到日志
-        logger.err("SQL错误详情: {s}", .{detail.format(global.get_allocator()) catch "格式化错误失败"});
+        if (detail.format(global.get_allocator())) |formatted| {
+            logger.err("SQL错误详情: {s}", .{formatted});
+            global.get_allocator().free(formatted);
+        } else |_| {
+            logger.err("SQL错误详情: 格式化错误失败", .{});
+        }
         return;
     }
 

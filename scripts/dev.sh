@@ -89,8 +89,12 @@ start_file_watcher() {
     server_pid=$!
     success "服务器已启动 (PID: $server_pid)"
     
-    # 监视文件变化
+    # 监视文件变化，仅关注非 test 的 .zig 文件，最小触发间隔 3s
+    last_build_ts=0
     fswatch -r . \
+        --include=".*\\.zig$" \
+        --exclude=".*_test\\.zig$" \
+        --exclude=".*test\\.zig$" \
         --exclude=".zig-cache" \
         --exclude="zig-out" \
         --exclude="logs" \
@@ -101,7 +105,20 @@ start_file_watcher() {
         --exclude="*.db" \
         --exclude="*.db-*" \
         --latency=2 | while read -r changed_file; do
-        
+
+        # 仅处理匹配规则的 zig 文件
+        case "$changed_file" in
+            *.zig) ;; # continue
+            *) continue ;;
+        esac
+
+        now_ts=$(date +%s)
+        if [ $((now_ts - last_build_ts)) -lt 3 ]; then
+            printf "${YELLOW}⏱️  触发过于频繁，跳过本次重建${NC}\n"
+            continue
+        fi
+        last_build_ts=$now_ts
+
         printf "\n${YELLOW}${WATCH_ICON} 检测到文件变化: %s${NC}\n" "$changed_file"
         printf "${BLUE}🔄 重新构建并重启服务器...${NC}\n"
         
