@@ -11,6 +11,7 @@ import feedbackMock from './feedback';
 import feedbackNotificationMock from './feedback-notification';
 import oauthMock from './oauth';
 import autoTestMock from './auto-test';
+import qualityCenterMock from './quality-center';
 
 // 注册 CMS Mock
 cmsMock.forEach((item) => {
@@ -34,6 +35,11 @@ oauthMock.forEach((item: any) => {
 
 // 注册自动化测试系统 Mock
 autoTestMock.forEach((item: any) => {
+  Mock.mock(new RegExp(item.url), item.method, item.response);
+});
+
+// 注册质量中心 Mock
+qualityCenterMock.forEach((item: any) => {
   Mock.mock(new RegExp(item.url), item.method, item.response);
 });
 
