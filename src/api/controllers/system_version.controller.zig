@@ -63,6 +63,11 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     if (req.getParamSlice("page")) |s| page = @intCast(strings.to_int(s) catch 1);
     if (req.getParamSlice("page_size")) |s| limit = @intCast(strings.to_int(s) catch 10);
 
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
     var q = OrmConfig.WhereEq("config_group", "version");
     defer q.deinit();
     _ = q.orderBy("sort", .desc);
@@ -70,14 +75,13 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     const total = q.count() catch |e| return base.send_error(req, e);
     _ = q.page(@intCast(page), @intCast(limit));
 
-    const rows = q.get() catch |e| return base.send_error(req, e);
-    defer OrmConfig.freeModels(rows);
+    var result = try q.getWithArena(arena_alloc);
+    const rows = result.items();
 
     var items = std.ArrayListUnmanaged(VersionPayload){};
-    defer items.deinit(self.allocator);
     for (rows) |row| {
-        const parsed = json_mod.JSON.decode(VersionPayload, self.allocator, row.config_value) catch VersionPayload{};
-        items.append(self.allocator, .{
+        const parsed = json_mod.JSON.decode(VersionPayload, arena_alloc, row.config_value) catch VersionPayload{};
+        items.append(arena_alloc, .{
             .id = row.id,
             .version = parsed.version,
             .version_type = parsed.version_type,
