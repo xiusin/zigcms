@@ -2733,6 +2733,29 @@ pub fn ModelQuery(comptime T: type) type {
             return self;
         }
 
+        /// 带条件的预加载关系
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        /// 
+        /// // 只预加载状态为 1 的菜单
+        /// const config = relations_mod.EagerLoadConfig{
+        ///     .where_clauses = &.{
+        ///         .{ .field = "status", .op = "=", .value = "1" },
+        ///     },
+        ///     .order_by = "sort",
+        ///     .limit = 10,
+        /// };
+        /// _ = q.withWhere("menus", config);
+        /// const roles = try q.get();
+        /// ```
+        pub fn withWhere(self: *Self, relation: []const u8, config: relations_mod.EagerLoadConfig) *Self {
+            self.eager_loader.addWithConfig(relation, config) catch {};
+            return self;
+        }
+
         /// 包含已软删除的记录
         /// 
         /// 使用示例：

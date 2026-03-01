@@ -43,6 +43,22 @@ pub const RelationType = enum {
     many_to_many,   // 多对多
 };
 
+/// 预加载配置
+pub const EagerLoadConfig = struct {
+    /// WHERE 条件
+    where_clauses: ?[]const WhereClause = null,
+    /// ORDER BY
+    order_by: ?[]const u8 = null,
+    /// LIMIT
+    limit: ?usize = null,
+    
+    pub const WhereClause = struct {
+        field: []const u8,
+        op: []const u8,
+        value: []const u8,
+    };
+};
+
 /// 关系定义
 pub fn Relation(comptime T: type) type {
     _ = T; // 标记为已使用
@@ -64,12 +80,14 @@ pub fn EagerLoader(comptime Model: type) type {
         allocator: Allocator,
         relations: std.StringHashMap(void),
         nested_relations: std.StringHashMap(std.ArrayList([]const u8)), // 嵌套关系
+        relation_configs: std.StringHashMap(EagerLoadConfig), // 关系配置
         
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
                 .relations = std.StringHashMap(void).init(allocator),
                 .nested_relations = std.StringHashMap(std.ArrayList([]const u8)).init(allocator),
+                .relation_configs = std.StringHashMap(EagerLoadConfig).init(allocator),
             };
         }
         
@@ -81,6 +99,7 @@ pub fn EagerLoader(comptime Model: type) type {
             }
             self.nested_relations.deinit();
             self.relations.deinit();
+            self.relation_configs.deinit();
         }
         
         /// 添加预加载关系（支持嵌套：menus.permissions）
@@ -106,9 +125,20 @@ pub fn EagerLoader(comptime Model: type) type {
             }
         }
         
+        /// 添加带配置的预加载关系
+        pub fn addWithConfig(self: *Self, relation: []const u8, config: EagerLoadConfig) !void {
+            try self.add(relation);
+            try self.relation_configs.put(relation, config);
+        }
+        
         /// 检查是否需要预加载
         pub fn has(self: *const Self, relation: []const u8) bool {
             return self.relations.contains(relation);
+        }
+        
+        /// 获取关系配置
+        pub fn getConfig(self: *const Self, relation: []const u8) ?EagerLoadConfig {
+            return self.relation_configs.get(relation);
         }
         
         /// 预加载所有关系
