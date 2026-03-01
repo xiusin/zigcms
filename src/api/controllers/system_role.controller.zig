@@ -145,10 +145,11 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
             // 写入新关联
             for (menu_ids_val.array.items) |m_id_val| {
                 if (m_id_val != .integer) continue;
-                _ = OrmRoleMenu.Create(.{
+                var created_menu = OrmRoleMenu.Create(.{
                     .role_id = role_id,
                     .menu_id = @as(i32, @intCast(m_id_val.integer)),
                 }) catch |err| return base.send_error(req, err);
+                OrmRoleMenu.freeModel(&created_menu);
             }
         }
     }
