@@ -3846,11 +3846,20 @@ pub fn ModelQuery(comptime T: type) type {
                 if (i > 0) try sql.appendSlice(allocator, ", ");
 
                 const V = @TypeOf(v);
-                if (V == []const u8) {
+                // 编译时类型检查
+                if (V == []const u8 or V == []u8) {
+                    // 字符串类型：转义单引号防止 SQL 注入
                     try sql.append(allocator, '\'');
-                    try sql.appendSlice(allocator, v);
+                    for (v) |c| {
+                        if (c == '\'') {
+                            try sql.appendSlice(allocator, "''"); // SQL 标准转义
+                        } else {
+                            try sql.append(allocator, c);
+                        }
+                    }
                     try sql.append(allocator, '\'');
                 } else {
+                    // 数值类型：直接格式化（编译时保证类型安全）
                     var buf: [32]u8 = undefined;
                     const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
                     try sql.appendSlice(allocator, str);
@@ -3872,11 +3881,20 @@ pub fn ModelQuery(comptime T: type) type {
                 if (i > 0) try sql.appendSlice(allocator, ", ");
 
                 const V = @TypeOf(v);
-                if (V == []const u8) {
+                // 编译时类型检查
+                if (V == []const u8 or V == []u8) {
+                    // 字符串类型：转义单引号防止 SQL 注入
                     try sql.append(allocator, '\'');
-                    try sql.appendSlice(allocator, v);
+                    for (v) |c| {
+                        if (c == '\'') {
+                            try sql.appendSlice(allocator, "''"); // SQL 标准转义
+                        } else {
+                            try sql.append(allocator, c);
+                        }
+                    }
                     try sql.append(allocator, '\'');
                 } else {
+                    // 数值类型：直接格式化（编译时保证类型安全）
                     var buf: [32]u8 = undefined;
                     const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
                     try sql.appendSlice(allocator, str);
