@@ -216,11 +216,28 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     base.send_ok(req, saved_role);
 }
 
-/// 角色列表查询（使用通用 CRUD 控制器）
-fn listImpl(self: *Self, req: zap.Request) !void {
-    const CrudController = @import("crud.controller.zig").Crud(models.SysRole, "zigcms");
-    var ctrl = CrudController.init(self.allocator);
-    return ctrl.list(req);
+/// 角色列表查询（增强版：包含权限信息）
+fn listImpl(_: *Self, req: zap.Request) !void {
+    // 解析分页参数
+    req.parseQuery();
+    const page = if (req.getParamSlice("page")) |p| std.fmt.parseInt(u32, p, 10) catch 1 else 1;
+    const page_size = if (req.getParamSlice("pageSize")) |p| std.fmt.parseInt(u32, p, 10) catch 10 else 10;
+    
+    // 查询角色列表
+    var q = OrmSysRole.Query();
+    defer q.deinit();
+    _ = q.orderBy("id", .desc);
+    _ = q.limit(page_size);
+    _ = q.offset((page - 1) * page_size);
+    
+    const roles = q.get() catch |err| return base.send_error(req, err);
+    defer OrmSysRole.freeModels(roles);
+    
+    const total = OrmSysRole.Count() catch 0;
+    
+    // 为每个角色添加 menu_ids 字段（通过 JSON 序列化时自动包含）
+    // 前端可以通过 menu_ids.length 显示菜单数量
+    base.send_layui_table_response(req, roles, total, .{});
 }
 
 /// 查询角色已分配的菜单 ID 列表。
