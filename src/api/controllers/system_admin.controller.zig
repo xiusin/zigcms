@@ -115,309 +115,413 @@ fn normalizeRoleIds(allocator: Allocator, values: []const i32) ![]i32 {
     return try compact.toOwnedSlice(allocator);
 }
 
-/// 返回管理员分页列表，并附带角色名称与角色ID集合。
-fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
+/// 查询参数结构体
+const ListQueryParams = struct {
+    page: i32 = 1,
+    limit: i32 = 10,
+    keyword: []const u8 = "",
+    status: ?i32 = null,
+    dept_id: ?i32 = null,
+    role_id: ?i32 = null,
+    sort_field: []const u8 = "",
+    sort_value: []const u8 = "",
+};
+
+/// 从 HTTP 请求中解析查询参数
+fn parseListQueryParams(allocator: Allocator, req: zap.Request) !ListQueryParams {
+    var params = ListQueryParams{};
+
+    // 解析 query 参数
     req.parseQuery();
-
-    var page: i32 = 1;
-    var limit: i32 = 10;
-    var keyword: []const u8 = "";
-    var status: ?i32 = null;
-    var dept_id: ?i32 = null;
-    var role_id: ?i32 = null;
-    var sort_field: []const u8 = "";
-    var sort_value: []const u8 = "";
-
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
-        return base.send_error(req, err);
+    var query_params = req.parametersToOwnedStrList(allocator) catch |err| {
+        return err;
     };
-    defer params.deinit();
+    defer query_params.deinit();
 
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @as(i32, @intCast(strings.to_int(param.value) catch 1));
-        } else if (std.mem.eql(u8, param.key, "limit") or std.mem.eql(u8, param.key, "pageSize")) {
-            limit = @as(i32, @intCast(strings.to_int(param.value) catch 10));
-        } else if (std.mem.eql(u8, param.key, "keyword")) {
-            keyword = param.value;
-        } else if (std.mem.eql(u8, param.key, "status") and param.value.len > 0) {
-            status = @as(i32, @intCast(strings.to_int(param.value) catch 0));
-        } else if (std.mem.eql(u8, param.key, "dept_id") and param.value.len > 0) {
-            dept_id = @as(i32, @intCast(strings.to_int(param.value) catch 0));
-        } else if (std.mem.eql(u8, param.key, "role_id") and param.value.len > 0) {
-            role_id = @as(i32, @intCast(strings.to_int(param.value) catch 0));
-        }
+    for (query_params.items) |param| {
+        try applyQueryParam(&params, param.key, param.value);
     }
 
-    // 兼容 JSON body 参数
+    // 解析 JSON body 参数（覆盖 query 参数）
     req.parseBody() catch {};
     if (req.body) |body| {
-        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+        var parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch null;
         defer if (parsed) |*p| p.deinit();
         if (parsed) |p| {
             if (p.value == .object) {
-                const obj = p.value.object;
-                if (obj.get("page")) |v| switch (v) {
-                    .integer => page = @intCast(v.integer),
-                    else => {},
-                };
-                if (obj.get("pageSize")) |v| switch (v) {
-                    .integer => limit = @intCast(v.integer),
-                    else => {},
-                };
-                if (obj.get("limit")) |v| switch (v) {
-                    .integer => limit = @intCast(v.integer),
-                    else => {},
-                };
-                if (obj.get("keyword")) |v| switch (v) {
-                    .string => keyword = v.string,
-                    else => {},
-                };
-                if (obj.get("status")) |v| switch (v) {
-                    .integer => status = @intCast(v.integer),
-                    .string => {
-                        if (v.string.len > 0) status = @intCast(strings.to_int(v.string) catch 0);
-                    },
-                    else => {},
-                };
-                if (obj.get("dept_id")) |v| switch (v) {
-                    .integer => dept_id = @intCast(v.integer),
-                    .string => {
-                        if (v.string.len > 0) dept_id = @intCast(strings.to_int(v.string) catch 0);
-                    },
-                    else => {},
-                };
-                if (obj.get("role_id")) |v| switch (v) {
-                    .integer => role_id = @intCast(v.integer),
-                    .string => {
-                        if (v.string.len > 0) role_id = @intCast(strings.to_int(v.string) catch 0);
-                    },
-                    else => {},
-                };
-                if (obj.get("sort")) |v| switch (v) {
-                    .object => {
-                        if (v.object.get("field")) |sf| switch (sf) {
-                            .string => sort_field = sf.string,
-                            else => {},
-                        };
-                        if (v.object.get("value")) |sv| switch (sv) {
-                            .string => sort_value = sv.string,
-                            else => {},
-                        };
-                    },
-                    else => {},
-                };
+                try applyJsonParams(&params, p.value.object);
             }
         }
     }
 
-    if (page < 1) page = 1;
-    if (limit < 1) limit = 10;
-    if (limit > 200) limit = 200;
+    // 参数校验和默认值
+    if (params.page < 1) params.page = 1;
+    if (params.limit < 1) params.limit = 10;
+    if (params.limit > 200) params.limit = 200;
 
+    return params;
+}
+
+/// 应用单个 query 参数
+fn applyQueryParam(params: *ListQueryParams, key: []const u8, value: []const u8) !void {
+    if (std.mem.eql(u8, key, "page")) {
+        params.page = @as(i32, @intCast(strings.to_int(value) catch 1));
+    } else if (std.mem.eql(u8, key, "limit") or std.mem.eql(u8, key, "pageSize")) {
+        params.limit = @as(i32, @intCast(strings.to_int(value) catch 10));
+    } else if (std.mem.eql(u8, key, "keyword")) {
+        params.keyword = value;
+    } else if (std.mem.eql(u8, key, "status") and value.len > 0) {
+        params.status = @as(i32, @intCast(strings.to_int(value) catch 0));
+    } else if (std.mem.eql(u8, key, "dept_id") and value.len > 0) {
+        params.dept_id = @as(i32, @intCast(strings.to_int(value) catch 0));
+    } else if (std.mem.eql(u8, key, "role_id") and value.len > 0) {
+        params.role_id = @as(i32, @intCast(strings.to_int(value) catch 0));
+    }
+}
+
+/// 应用 JSON body 参数
+fn applyJsonParams(params: *ListQueryParams, obj: std.json.ObjectMap) !void {
+    if (obj.get("page")) |v| switch (v) {
+        .integer => params.page = @intCast(v.integer),
+        else => {},
+    };
+    if (obj.get("pageSize")) |v| switch (v) {
+        .integer => params.limit = @intCast(v.integer),
+        else => {},
+    };
+    if (obj.get("limit")) |v| switch (v) {
+        .integer => params.limit = @intCast(v.integer),
+        else => {},
+    };
+    if (obj.get("keyword")) |v| switch (v) {
+        .string => params.keyword = v.string,
+        else => {},
+    };
+    if (obj.get("status")) |v| switch (v) {
+        .integer => params.status = @intCast(v.integer),
+        .string => {
+            if (v.string.len > 0) params.status = @intCast(strings.to_int(v.string) catch 0);
+        },
+        else => {},
+    };
+    if (obj.get("dept_id")) |v| switch (v) {
+        .integer => params.dept_id = @intCast(v.integer),
+        .string => {
+            if (v.string.len > 0) params.dept_id = @intCast(strings.to_int(v.string) catch 0);
+        },
+        else => {},
+    };
+    if (obj.get("role_id")) |v| switch (v) {
+        .integer => params.role_id = @intCast(v.integer),
+        .string => {
+            if (v.string.len > 0) params.role_id = @intCast(strings.to_int(v.string) catch 0);
+        },
+        else => {},
+    };
+    if (obj.get("sort")) |v| switch (v) {
+        .object => {
+            if (v.object.get("field")) |sf| switch (sf) {
+                .string => params.sort_field = sf.string,
+                else => {},
+            };
+            if (v.object.get("value")) |sv| switch (sv) {
+                .string => params.sort_value = sv.string,
+                else => {},
+            };
+        },
+        else => {},
+    };
+}
+
+/// 管理员行数据结构体
+const AdminRow = struct {
+    id: ?i32,
+    username: []const u8,
+    nickname: []const u8,
+    mobile: []const u8,
+    email: []const u8,
+    avatar: []const u8,
+    gender: i32,
+    status: i32,
+    dept_id: ?i32,
+    last_login: ?i64,
+    role_ids: []const i32,
+    role_names: []const []const u8,
+    role_name: []const u8,
+    role_text: []const u8,
+};
+
+/// 查询结果结构体
+const AdminListResult = struct {
+    rows: []const AdminRow,
+    total: u64,
+    arena: std.heap.ArenaAllocator,
+};
+
+/// 构建管理员查询条件
+fn buildAdminQuery(params: ListQueryParams) !sql.ModelQuery(models.SysAdmin) {
     var q = OrmAdmin.Query();
-    defer q.deinit();
-    if (status) |v| _ = q.whereEq("status", v);
-    if (dept_id) |v| _ = q.whereEq("dept_id", v);
-    if (keyword.len > 0) {
-        if (keyword.len > 64) return base.send_failed(req, "keyword 长度不能超过 64");
-        if (std.mem.indexOfScalar(u8, keyword, '\'') != null) return base.send_failed(req, "keyword 包含非法字符");
-        const like = std.fmt.allocPrint(self.allocator, "%{s}%", .{keyword}) catch return base.send_failed(req, "查询参数错误");
-        defer self.allocator.free(like);
-        const keyword_clause = std.fmt.allocPrint(self.allocator, "(username LIKE '{s}' OR nickname LIKE '{s}' OR mobile LIKE '{s}')", .{ like, like, like }) catch return base.send_failed(req, "查询参数错误");
-        defer self.allocator.free(keyword_clause);
+    errdefer q.deinit();
+
+    if (params.status) |v| _ = q.whereEq("status", v);
+    if (params.dept_id) |v| _ = q.whereEq("dept_id", v);
+
+    if (params.keyword.len > 0) {
+        if (params.keyword.len > 64) return error.KeywordTooLong;
+        if (std.mem.indexOfScalar(u8, params.keyword, '\'') != null) return error.InvalidKeyword;
+        const like = try std.fmt.allocPrint(global.get_allocator(), "%{s}%", .{params.keyword});
+        defer global.get_allocator().free(like);
+        const keyword_clause = try std.fmt.allocPrint(global.get_allocator(), "(username LIKE '{s}' OR nickname LIKE '{s}' OR mobile LIKE '{s}')", .{ like, like, like });
+        defer global.get_allocator().free(keyword_clause);
         _ = q.whereRaw(keyword_clause);
     }
-    if (sort_field.len > 0 and (std.mem.eql(u8, sort_value, "asc") or std.mem.eql(u8, sort_value, "ASC"))) {
-        _ = q.orderBy(sort_field, .asc);
-    } else if (sort_field.len > 0 and (std.mem.eql(u8, sort_value, "desc") or std.mem.eql(u8, sort_value, "DESC"))) {
-        _ = q.orderBy(sort_field, .desc);
+
+    // 排序
+    if (params.sort_field.len > 0 and (std.mem.eql(u8, params.sort_value, "asc") or std.mem.eql(u8, params.sort_value, "ASC"))) {
+        _ = q.orderBy(params.sort_field, .asc);
+    } else if (params.sort_field.len > 0 and (std.mem.eql(u8, params.sort_value, "desc") or std.mem.eql(u8, params.sort_value, "DESC"))) {
+        _ = q.orderBy(params.sort_field, .desc);
     } else {
         _ = q.orderBy("id", .desc);
     }
 
-    var role_filtered_admin_ids = std.ArrayListUnmanaged(i32){};
-    defer role_filtered_admin_ids.deinit(self.allocator);
-    if (role_id) |rid| {
-        var rel_q = OrmAdminRole.WhereEq("role_id", rid);
-        defer rel_q.deinit();
-        const rels = rel_q.get() catch |err| return base.send_error(req, err);
-        defer OrmAdminRole.freeModels(rels);
-        for (rels) |rel| {
-            role_filtered_admin_ids.append(self.allocator, rel.admin_id) catch {};
-        }
-        if (role_filtered_admin_ids.items.len == 0) {
-            return base.send_layui_table_response(req, &.{}, 0, .{});
-        }
-        const in_clause = buildInClause(self.allocator, "id", role_filtered_admin_ids.items) catch return base.send_failed(req, "构建查询条件失败");
-        defer self.allocator.free(in_clause);
-        _ = q.whereRaw(in_clause);
-    }
+    return q;
+}
 
-    const total = q.count() catch |err| return base.send_error(req, err);
-    _ = q.page(@intCast(page), @intCast(limit));
-    const admins = q.get() catch |err| return base.send_error(req, err);
-    defer OrmAdmin.freeModels(admins);
+/// 获取角色过滤后的管理员 ID 列表
+fn getRoleFilteredAdminIds(allocator: Allocator, role_id: i32) ![]i32 {
+    var rel_q = OrmAdminRole.WhereEq("role_id", role_id);
+    defer rel_q.deinit();
+    const rels = rel_q.get() catch |err| return err;
+    defer OrmAdminRole.freeModels(rels);
 
     var admin_ids = std.ArrayListUnmanaged(i32){};
-    defer admin_ids.deinit(self.allocator);
+    errdefer admin_ids.deinit(allocator);
+    for (rels) |rel| {
+        admin_ids.append(allocator, rel.admin_id) catch {};
+    }
+
+    return try admin_ids.toOwnedSlice(allocator);
+}
+
+/// 获取管理员的角色关联
+fn fetchAdminRoles(allocator: Allocator, admins: []const models.SysAdmin) ![]const SysAdminRole {
+    var admin_ids = std.ArrayListUnmanaged(i32){};
+    errdefer admin_ids.deinit(allocator);
     for (admins) |admin| {
-        if (admin.id) |id| admin_ids.append(self.allocator, id) catch {};
+        if (admin.id) |id| admin_ids.append(allocator, id) catch {};
     }
 
-    var all_rels = std.ArrayListUnmanaged(SysAdminRole){};
-    defer all_rels.deinit(self.allocator);
-    if (admin_ids.items.len > 0) {
-        var rel_q = OrmAdminRole.Query();
-        defer rel_q.deinit();
-        const rel_in_clause = buildInClause(self.allocator, "admin_id", admin_ids.items) catch return base.send_failed(req, "构建查询条件失败");
-        defer self.allocator.free(rel_in_clause);
-        _ = rel_q.whereRaw(rel_in_clause);
-        const rel_rows = rel_q.get() catch |err| return base.send_error(req, err);
-        defer OrmAdminRole.freeModels(rel_rows);
-        for (rel_rows) |rel| all_rels.append(self.allocator, rel) catch {};
+    if (admin_ids.items.len == 0) {
+        return &.{};
     }
 
+    var rel_q = OrmAdminRole.Query();
+    defer rel_q.deinit();
+    const rel_in_clause = try buildInClause(allocator, "admin_id", admin_ids.items);
+    defer allocator.free(rel_in_clause);
+    _ = rel_q.whereRaw(rel_in_clause);
+
+    const rel_rows = rel_q.get() catch |err| return err;
+    defer OrmAdminRole.freeModels(rel_rows);
+
+    var result = std.ArrayListUnmanaged(SysAdminRole){};
+    errdefer result.deinit(allocator);
+    for (rel_rows) |rel| {
+        result.append(allocator, rel) catch {};
+    }
+
+    return try result.toOwnedSlice(allocator);
+}
+
+/// 根据 ID 列表获取角色
+fn fetchRolesByIds(allocator: Allocator, admin_roles: []const SysAdminRole) ![]const models.SysRole {
     var role_ids = std.ArrayListUnmanaged(i32){};
-    defer role_ids.deinit(self.allocator);
-    for (all_rels.items) |rel| {
-        role_ids.append(self.allocator, rel.role_id) catch {};
+    errdefer role_ids.deinit(allocator);
+    for (admin_roles) |rel| {
+        role_ids.append(allocator, rel.role_id) catch {};
     }
 
-    var role_result: sql.QueryResult(models.SysRole) = if (role_ids.items.len > 0) blk: {
-        var role_q = OrmRole.Query();
-        defer role_q.deinit();
-        const role_in_clause = buildInClause(self.allocator, "id", role_ids.items) catch return base.send_failed(req, "构建查询条件失败");
-        defer self.allocator.free(role_in_clause);
-        _ = role_q.whereRaw(role_in_clause);
-        break :blk role_q.getWithArena(self.allocator) catch |err| return base.send_error(req, err);
-    } else sql.QueryResult(models.SysRole){ .arena = std.heap.ArenaAllocator.init(self.allocator), .models = &.{} };
-    defer role_result.deinit();
-    const roles = role_result.items();
+    if (role_ids.items.len == 0) {
+        return &.{};
+    }
 
-    const AdminRow = struct {
-        id: ?i32,
-        username: []const u8,
-        nickname: []const u8,
-        mobile: []const u8,
-        email: []const u8,
-        avatar: []const u8,
-        gender: i32,
-        status: i32,
-        dept_id: ?i32,
-        last_login: ?i64,
-        role_ids: []const i32,
-        role_names: []const []const u8,
-        role_name: []const u8,
-        role_text: []const u8,
+    var role_q = OrmRole.Query();
+    defer role_q.deinit();
+    const role_in_clause = try buildInClause(allocator, "id", role_ids.items);
+    defer allocator.free(role_in_clause);
+    _ = role_q.whereRaw(role_in_clause);
+
+    const role_result = try role_q.getWithArena(allocator);
+    return role_result.items();
+}
+
+/// 构建单个管理员的行数据
+fn buildAdminRowData(
+    allocator: Allocator,
+    admin_id: i32,
+    admin_roles: []const SysAdminRole,
+    roles: []const models.SysRole,
+) !struct {
+    role_ids: []const i32,
+    role_names: []const []const u8,
+    role_name: []const u8,
+    role_text: []const u8,
+} {
+    // 1. 收集角色 ID
+    var role_ids_buf = std.ArrayListUnmanaged(i32){};
+    errdefer role_ids_buf.deinit(allocator);
+
+    for (admin_roles) |rel| {
+        if (rel.admin_id != admin_id) continue;
+        var exists = false;
+        for (role_ids_buf.items) |saved_id| {
+            if (saved_id == rel.role_id) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) try role_ids_buf.append(allocator, rel.role_id);
+    }
+
+    const normalized_role_ids = try normalizeRoleIds(allocator, role_ids_buf.items);
+
+    // 2. 收集角色名称
+    const role_names = try allocator.alloc([]const u8, normalized_role_ids.len);
+    var role_name: []const u8 = "";
+    var role_text_builder = std.ArrayListUnmanaged(u8){};
+    errdefer role_text_builder.deinit(allocator);
+
+    for (normalized_role_ids, 0..) |sorted_role_id, idx| {
+        role_names[idx] = "";
+        for (roles) |role| {
+            if ((role.id orelse 0) == sorted_role_id) {
+                const role_name_owned = try allocator.dupe(u8, role.role_name);
+                role_names[idx] = role_name_owned;
+                if (role_name.len == 0) role_name = role_name_owned;
+                if (role_text_builder.items.len > 0) {
+                    try role_text_builder.appendSlice(allocator, ",");
+                }
+                try role_text_builder.appendSlice(allocator, role_name_owned);
+                break;
+            }
+        }
+    }
+
+    const role_text = try role_text_builder.toOwnedSlice(allocator);
+
+    return .{
+        .role_ids = normalized_role_ids,
+        .role_names = role_names,
+        .role_name = role_name,
+        .role_text = role_text,
     };
+}
 
+/// 组装管理员行数据
+fn assembleAdminRows(
+    allocator: Allocator,
+    admins: []const models.SysAdmin,
+    admin_roles: []const SysAdminRole,
+    roles: []const models.SysRole,
+) ![]const AdminRow {
     var rows = std.ArrayListUnmanaged(AdminRow){};
-    defer rows.deinit(self.allocator);
-    var username_owners = std.ArrayListUnmanaged([]const u8){};
-    var nickname_owners = std.ArrayListUnmanaged([]const u8){};
-    var mobile_owners = std.ArrayListUnmanaged([]const u8){};
-    var email_owners = std.ArrayListUnmanaged([]const u8){};
-    var avatar_owners = std.ArrayListUnmanaged([]const u8){};
-    var role_ids_owners = std.ArrayListUnmanaged([]i32){};
-    var role_names_owners = std.ArrayListUnmanaged([][]const u8){};
-    var role_text_owners = std.ArrayListUnmanaged([]u8){};
-    defer {
-        for (role_ids_owners.items) |owner| self.allocator.free(owner);
-        role_ids_owners.deinit(self.allocator);
-        for (role_names_owners.items) |owner| self.allocator.free(owner);
-        role_names_owners.deinit(self.allocator);
-        for (role_text_owners.items) |owner| self.allocator.free(owner);
-        role_text_owners.deinit(self.allocator);
-        for (username_owners.items) |owner| self.allocator.free(owner);
-        username_owners.deinit(self.allocator);
-        for (nickname_owners.items) |owner| self.allocator.free(owner);
-        nickname_owners.deinit(self.allocator);
-        for (mobile_owners.items) |owner| self.allocator.free(owner);
-        mobile_owners.deinit(self.allocator);
-        for (email_owners.items) |owner| self.allocator.free(owner);
-        email_owners.deinit(self.allocator);
-        for (avatar_owners.items) |owner| self.allocator.free(owner);
-        avatar_owners.deinit(self.allocator);
-    }
+    errdefer rows.deinit(allocator);
 
     for (admins) |admin| {
         const aid = admin.id orelse 0;
-        var curr_role_ids_buf = std.ArrayListUnmanaged(i32){};
-        defer curr_role_ids_buf.deinit(self.allocator);
+        const row_data = try buildAdminRowData(allocator, aid, admin_roles, roles);
 
-        var role_name: []const u8 = "";
-        for (all_rels.items) |rel| {
-            if (rel.admin_id != aid) continue;
-            var exists = false;
-            for (curr_role_ids_buf.items) |saved_id| {
-                if (saved_id == rel.role_id) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists) curr_role_ids_buf.append(self.allocator, rel.role_id) catch {};
-        }
-
-        const normalized_role_ids = normalizeRoleIds(self.allocator, curr_role_ids_buf.items) catch return base.send_failed(req, "角色数据处理失败");
-        role_ids_owners.append(self.allocator, normalized_role_ids) catch {};
-
-        const owned_role_names = try self.allocator.alloc([]const u8, normalized_role_ids.len);
-        role_names_owners.append(self.allocator, owned_role_names) catch {};
-
-        var role_text_builder = std.ArrayListUnmanaged(u8){};
-        defer role_text_builder.deinit(self.allocator);
-        for (normalized_role_ids, 0..) |sorted_role_id, idx| {
-            owned_role_names[idx] = "";
-            for (roles) |role| {
-                if ((role.id orelse 0) == sorted_role_id) {
-                    const role_name_owned = self.allocator.dupe(u8, role.role_name) catch role.role_name;
-                    owned_role_names[idx] = role_name_owned;
-                    if (role_name.len == 0) role_name = role_name_owned;
-                    if (role_text_builder.items.len > 0) {
-                        role_text_builder.appendSlice(self.allocator, ",") catch {};
-                    }
-                    role_text_builder.appendSlice(self.allocator, role_name_owned) catch {};
-                    break;
-                }
-            }
-        }
-
-        const role_text_owned = role_text_builder.toOwnedSlice(self.allocator) catch "";
-        if (role_text_owned.len > 0) {
-            role_text_owners.append(self.allocator, @constCast(role_text_owned)) catch {};
-        }
-
-        const username_owned = self.allocator.dupe(u8, admin.username) catch admin.username;
-        const nickname_owned = self.allocator.dupe(u8, admin.nickname) catch admin.nickname;
-        const mobile_owned = self.allocator.dupe(u8, admin.mobile) catch admin.mobile;
-        const email_owned = self.allocator.dupe(u8, admin.email) catch admin.email;
-        const avatar_owned = self.allocator.dupe(u8, admin.avatar) catch admin.avatar;
-        username_owners.append(self.allocator, username_owned) catch {};
-        nickname_owners.append(self.allocator, nickname_owned) catch {};
-        mobile_owners.append(self.allocator, mobile_owned) catch {};
-        email_owners.append(self.allocator, email_owned) catch {};
-        avatar_owners.append(self.allocator, avatar_owned) catch {};
-
-        rows.append(self.allocator, .{
+        const row = AdminRow{
             .id = admin.id,
-            .username = username_owned,
-            .nickname = nickname_owned,
-            .mobile = mobile_owned,
-            .email = email_owned,
-            .avatar = avatar_owned,
+            .username = try allocator.dupe(u8, admin.username),
+            .nickname = try allocator.dupe(u8, admin.nickname),
+            .mobile = try allocator.dupe(u8, admin.mobile),
+            .email = try allocator.dupe(u8, admin.email),
+            .avatar = try allocator.dupe(u8, admin.avatar),
             .gender = admin.gender,
             .status = admin.status,
             .dept_id = admin.dept_id,
             .last_login = admin.last_login,
-            .role_ids = normalized_role_ids,
-            .role_names = owned_role_names,
-            .role_name = role_name,
-            .role_text = role_text_owned,
-        }) catch {};
+            .role_ids = row_data.role_ids,
+            .role_names = row_data.role_names,
+            .role_name = row_data.role_name,
+            .role_text = row_data.role_text,
+        };
+
+        try rows.append(allocator, row);
     }
 
-    base.send_layui_table_response(req, rows.items, total, .{});
+    return try rows.toOwnedSlice(allocator);
+}
+
+/// 获取管理员及其角色数据
+fn fetchAdminsWithRoles(allocator: Allocator, params: ListQueryParams) !AdminListResult {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+
+    // 1. 构建查询
+    var q = try buildAdminQuery(params);
+    defer q.deinit();
+
+    // 2. 角色过滤
+    if (params.role_id) |rid| {
+        const admin_ids = try getRoleFilteredAdminIds(allocator, rid);
+        defer allocator.free(admin_ids);
+
+        if (admin_ids.len == 0) {
+            return AdminListResult{
+                .rows = &.{},
+                .total = 0,
+                .arena = arena,
+            };
+        }
+
+        const in_clause = try buildInClause(allocator, "id", admin_ids);
+        defer allocator.free(in_clause);
+        _ = q.whereRaw(in_clause);
+    }
+
+    // 3. 查询管理员列表
+    const total = q.count() catch |err| return err;
+    _ = q.page(@intCast(params.page), @intCast(params.limit));
+    const admins = q.get() catch |err| return err;
+    defer OrmAdmin.freeModels(admins);
+
+    // 4. 查询角色关联
+    const admin_roles = try fetchAdminRoles(arena.allocator(), admins);
+
+    // 5. 查询角色详情
+    const roles = try fetchRolesByIds(arena.allocator(), admin_roles);
+
+    // 6. 组装数据
+    const rows = try assembleAdminRows(arena.allocator(), admins, admin_roles, roles);
+
+    return AdminListResult{
+        .rows = rows,
+        .total = total,
+        .arena = arena,
+    };
+}
+
+/// 返回管理员分页列表，并附带角色名称与角色ID集合。
+fn listWithRolesImpl(self: *Self, req: zap.Request) !void {
+    // 1. 解析参数
+    const params = parseListQueryParams(self.allocator, req) catch |err| {
+        return base.send_error(req, err);
+    };
+
+    // 2. 构建查询并获取数据
+    const result = fetchAdminsWithRoles(self.allocator, params) catch |err| {
+        switch (err) {
+            error.KeywordTooLong => return base.send_failed(req, "keyword 长度不能超过 64"),
+            error.InvalidKeyword => return base.send_failed(req, "keyword 包含非法字符"),
+            else => return base.send_error(req, err),
+        }
+    };
+
+    // 3. 返回响应
+    base.send_layui_table_response(req, result.rows, result.total, .{});
 }
 
 /// 重置管理员密码接口。
