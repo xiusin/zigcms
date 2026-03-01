@@ -1,123 +1,110 @@
 <template>
   <d-drawer
-    :title="isEditFlag ? '编辑角色' : '新建角色'"
+    :title="isEditFlag ? '编辑角色权限' : '新建角色'"
     :visible="visible"
     :ok-loading="loading"
     width="750px"
     @ok="sendInfo"
     @cancel="onClose"
   >
-    <a-form :model="info" layout="vertical">
-      <a-form-item
-        label="角色名称"
-        field="role_name"
-        :rules="[{ required: true, message: '请输入角色名称' }]"
-      >
-        <a-input v-model="info.role_name" placeholder="请输入角色名称" />
-      </a-form-item>
-      <a-form-item label="角色标识" field="role_key">
-        <a-input
-          v-model="info.role_key"
-          placeholder="请输入角色标识（如：admin、user）"
-        />
-      </a-form-item>
-      <a-form-item label="排序" field="sort">
-        <a-input-number
-          v-model="info.sort"
-          :min="0"
-          placeholder="数字越小越靠前"
-          style="width: 100%"
-        />
-      </a-form-item>
-      <a-form-item label="备注" field="remark">
-        <a-textarea v-model="info.remark" placeholder="请输入备注" :rows="2" />
-      </a-form-item>
-      <a-form-item label="菜单权限" field="menu_ids">
-        <div class="permission-header">
-          <a-space>
-            <a-checkbox
-              :model-value="isSelectAll"
-              :indeterminate="isIndeterminate"
-              @change="handleSelectAll"
-            >
-              全选
-            </a-checkbox>
-            <a-button type="text" size="small" @click="expandAll">
-              展开全部
-            </a-button>
-            <a-button type="text" size="small" @click="collapseAll">
-              收起全部
-            </a-button>
-            <a-button
-              type="text"
-              size="small"
-              :loading="menuTreeLoading"
-              @click="fetchMenuTree"
-            >
-              <template #icon><icon-refresh /></template>
-              刷新
-            </a-button>
-          </a-space>
-        </div>
-        <a-spin :spinning="menuTreeLoading">
-          <a-tree
-            ref="treeRef"
-            v-model:checked-keys="info.menu_ids"
-            :data="menuTree"
-            :checkable="true"
-            :default-expand-all="false"
-            :field-names="{ key: 'id', title: 'title', children: 'children' }"
-            :selectable="false"
-            style="max-height: 300px; overflow-y: auto; margin-top: 8px"
-          />
-          <a-empty
-            v-if="!menuTreeLoading && menuTree.length === 0"
-            description="暂无菜单数据，请联系管理员配置"
-          />
-        </a-spin>
-      </a-form-item>
-      <!-- 按钮权限 -->
-      <a-form-item label="按钮权限" field="button_perms">
-        <div class="permission-header">
-          <a-space>
-            <a-checkbox
-              :model-value="isBtnSelectAll"
-              :indeterminate="isBtnIndeterminate"
-              @change="handleBtnSelectAll"
-            >
-              全选
-            </a-checkbox>
-            <a-button
-              type="text"
-              size="small"
-              :loading="btnPermsLoading"
-              @click="fetchButtonPerms"
-            >
-              <template #icon><icon-refresh /></template>
-              刷新
-            </a-button>
-          </a-space>
-        </div>
-        <a-spin :spinning="btnPermsLoading">
-          <div class="button-perms-container">
-            <a-checkbox-group
-              v-model="info.button_perms"
-              :options="buttonPermsOptions"
-              :direction="'horizontal'"
-            />
-            <a-empty
-              v-if="!btnPermsLoading && buttonPermsOptions.length === 0"
-              description="暂无可分配的按钮权限"
-            />
+    <div class="drawer-content-wrapper">
+      <!-- 顶部表单区 -->
+      <div class="form-header-section">
+        <a-form :model="info" layout="vertical" class="compact-form">
+          <a-row :gutter="24">
+            <a-col :span="12">
+              <a-form-item label="角色名称" field="role_name" required>
+                <a-input v-model="info.role_name" placeholder="例如：超级管理员" class="glass-input" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="角色标识" field="role_key">
+                <a-input v-model="info.role_key" placeholder="例如：admin" class="glass-input" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="显示排序" field="sort">
+                <a-input-number v-model="info.sort" :min="0" class="glass-input" style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="备注说明" field="remark">
+                <a-input v-model="info.remark" placeholder="备注角色用途" class="glass-input" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </a-form>
+      </div>
+
+      <!-- 核心权限选择区 - 自动填满剩余空间 -->
+      <div class="permission-tree-section">
+        <div class="tree-label">权限配置 (勾选菜单与按钮操作)</div>
+        <div class="tree-container-glass">
+          <!-- 极简工具栏 -->
+          <div class="tree-toolbar-modern">
+            <div class="toolbar-left">
+              <a-checkbox
+                :model-value="isSelectAll"
+                :indeterminate="isIndeterminate"
+                @change="handleSelectAll"
+              >
+                全选所有权限
+              </a-checkbox>
+            </div>
+            <div class="toolbar-right">
+              <a-button-group type="text" size="small">
+                <a-button @click="expandAll(true)">
+                  <template #icon><icon-expand /></template>
+                  展开
+                </a-button>
+                <a-button @click="expandAll(false)">
+                  <template #icon><icon-shrink /></template>
+                  折叠
+                </a-button>
+                <a-button :loading="menuTreeLoading" @click="fetchMenuTree">
+                  <template #icon><icon-refresh /></template>
+                  刷新
+                </a-button>
+              </a-button-group>
+            </div>
           </div>
-        </a-spin>
-      </a-form-item>
-    </a-form>
+          
+          <!-- 滚动树区域 -->
+          <div class="tree-viewport">
+            <a-spin :loading="menuTreeLoading" tip="加载资源树..." style="width: 100%">
+              <a-tree
+                ref="treeRef"
+                v-model:checked-keys="info.menu_ids"
+                :data="menuTree"
+                :checkable="true"
+                :default-expand-all="false"
+                :field-names="{ key: 'id', title: 'title', children: 'children' }"
+                :selectable="false"
+                :check-strictly="false"
+                class="refined-tree"
+              >
+                <template #title="nodeData">
+                  <div class="custom-tree-node">
+                    <span class="node-icon-wrap">
+                      <component :is="nodeData.icon || (nodeData.menu_type === 3 ? 'icon-command' : 'icon-file')" />
+                    </span>
+                    <span class="node-text">{{ nodeData.title }}</span>
+                    <a-tag v-if="nodeData.menu_type === 3" size="mini" class="btn-type-tag">按钮</a-tag>
+                    <span v-if="nodeData.perms" class="node-perms-hint">{{ nodeData.perms }}</span>
+                  </div>
+                </template>
+              </a-tree>
+              <a-empty v-if="!menuTreeLoading && menuTree.length === 0" />
+            </a-spin>
+          </div>
+        </div>
+      </div>
+    </div>
   </d-drawer>
 </template>
 
 <script lang="ts" setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed } from 'vue';
   import request from '@/api/request';
   import { Message } from '@arco-design/web-vue';
   import DDrawer from '@/components/d-modal/d-drawer.vue';
@@ -127,118 +114,68 @@
   const isEditFlag = ref(false);
   const treeRef = ref();
   const menuTreeLoading = ref(false);
-  const btnPermsLoading = ref(false);
 
-  // 菜单树数据
   const menuTree = ref<any[]>([]);
-
-  // 按钮权限选项
-  const buttonPermsOptions = ref<any[]>([]);
-
-  // 默认按钮权限列表
-  const defaultButtonPerms = [
-    { label: '新增', value: 'btn:add' },
-    { label: '编辑', value: 'btn:edit' },
-    { label: '删除', value: 'btn:delete' },
-    { label: '导出', value: 'btn:export' },
-    { label: '导入', value: 'btn:import' },
-    { label: '查询', value: 'btn:query' },
-    { label: '详情', value: 'btn:detail' },
-    { label: '审核', value: 'btn:audit' },
-    { label: '启用', value: 'btn:enable' },
-    { label: '禁用', value: 'btn:disable' },
-    { label: '分配权限', value: 'btn:permission' },
-    { label: '重置密码', value: 'btn:resetPwd' },
-  ];
-
   const info = ref<any>({
     id: null,
-    role_name: null,
-    role_key: null,
+    role_name: '',
+    role_key: '',
     sort: 0,
-    remark: null,
+    remark: '',
     menu_ids: [],
-    button_perms: [],
   });
 
   const emits = defineEmits(['refresh']);
 
-  // 计算所有菜单 ID
   const allMenuIds = computed(() => {
     const ids: number[] = [];
     const traverse = (nodes: any[]) => {
       nodes.forEach((node) => {
         ids.push(node.id);
-        if (node.children?.length) {
-          traverse(node.children);
-        }
+        if (node.children?.length) traverse(node.children);
       });
     };
     traverse(menuTree.value);
     return ids;
   });
 
-  const isSelectAll = computed(() => {
-    return (
-      allMenuIds.value.length > 0 &&
-      allMenuIds.value.every((id) => info.value.menu_ids?.includes(id))
-    );
-  });
-
-  const isIndeterminate = computed(() => {
-    const checked = info.value.menu_ids?.length || 0;
-    return checked > 0 && checked < allMenuIds.value.length;
-  });
-
-  // 按钮权限全选计算
-  const allBtnPerms = computed(() =>
-    buttonPermsOptions.value.map((item) => item.value)
+  const isSelectAll = computed(() => 
+    allMenuIds.value.length > 0 && allMenuIds.value.every(id => info.value.menu_ids?.includes(id))
   );
 
-  const isBtnSelectAll = computed(() => {
-    return (
-      allBtnPerms.value.length > 0 &&
-      allBtnPerms.value.every((perm) => info.value.button_perms?.includes(perm))
-    );
+  const isIndeterminate = computed(() => {
+    const checkedCount = info.value.menu_ids?.length || 0;
+    return checkedCount > 0 && checkedCount < allMenuIds.value.length;
   });
 
-  const isBtnIndeterminate = computed(() => {
-    const checked = info.value.button_perms?.length || 0;
-    return checked > 0 && checked < allBtnPerms.value.length;
-  });
-
-  const handleSelectAll = (checked: boolean) => {
-    info.value.menu_ids = checked ? [...allMenuIds.value] : [];
+  const handleSelectAll = (val: any) => {
+    info.value.menu_ids = val ? [...allMenuIds.value] : [];
   };
 
-  const handleBtnSelectAll = (checked: boolean) => {
-    info.value.button_perms = checked ? [...allBtnPerms.value] : [];
+  const expandAll = (isExpand: boolean) => {
+    treeRef.value?.expandAll(isExpand);
   };
 
-  // 获取菜单树
   const buildTree = (list: any[]) => {
     if (!Array.isArray(list)) return [];
     const map = new Map<number, any>();
-    list.forEach((item) => {
+    list.forEach(item => {
       const id = Number(item.id);
-      // 核心修复：增加 title 字段供 a-tree 显示，并确保 children 初始化
       map.set(id, { 
         ...item, 
         id, 
         key: id, 
-        value: id, 
-        title: item.menu_name || item.title || `菜单${id}`,
+        title: item.menu_name || item.title || `节点${id}`,
         children: [] 
       });
     });
     const roots: any[] = [];
-    list.forEach((item) => {
+    list.forEach(item => {
       const id = Number(item.id);
-      const parentId = Number(item.pid || 0);
+      const pid = Number(item.pid || 0);
       const node = map.get(id);
-      if (!node) return;
-      if (parentId > 0 && map.has(parentId)) {
-        map.get(parentId).children.push(node);
+      if (pid > 0 && map.has(pid)) {
+        map.get(pid).children.push(node);
       } else {
         roots.push(node);
       }
@@ -250,27 +187,10 @@
     menuTreeLoading.value = true;
     try {
       const res = await request('/api/system/menu/tree', {});
-      
-      // 穿透拦截器包装：优先取 res.data (如果是数组)，否则取 list/items
-      let list = [];
-      if (Array.isArray(res.data)) {
-        list = res.data;
-      } else if (res.data && Array.isArray(res.data.list)) {
-        list = res.data.list;
-      } else if (res.data && Array.isArray(res.data.items)) {
-        list = res.data.items;
-      }
-
-      if (list.length) {
-        menuTree.value = buildTree(list);
-        console.log('[EditRolePermission] Menu tree built from', list.length, 'items');
-      } else {
-        menuTree.value = [];
-        console.warn('[EditRolePermission] No menu data found in response');
-      }
+      const list = Array.isArray(res.data) ? res.data : (res.data?.list || res.data?.items || []);
+      menuTree.value = buildTree(list);
     } catch (e) {
-      menuTree.value = [];
-      console.error('获取菜单树失败:', e);
+      console.error('Fetch tree failed', e);
     } finally {
       menuTreeLoading.value = false;
     }
@@ -278,97 +198,37 @@
 
   const fetchRolePermissions = async (roleId: number) => {
     try {
-      const url = `/api/system/role/permissions/info?role_id=${roleId}`;
-      console.log('[EditRolePermission] Fetching permissions from:', url);
-      const res = await request(url, {
-        role_id: roleId,
-      });
-      console.log('[EditRolePermission] FULL RAW RESPONSE:', res);
-      
-      // 深度查找字段，兼容拦截器包装
+      const res = await request(`/api/system/role/permissions/info?role_id=${roleId}`, { role_id: roleId });
       const findField = (obj: any, field: string): any => {
         if (!obj) return null;
         if (Array.isArray(obj[field])) return obj[field];
         if (obj.data) return findField(obj.data, field);
         return null;
       };
-
       const menuIds = findField(res, 'menu_ids') || [];
-      const buttonPerms = findField(res, 'button_perms') || [];
-
-      console.log('[EditRolePermission] Parsed IDs:', { menuIds, buttonPerms });
-
-      // 转换为数字确保树组件能正确匹配 ID
       info.value.menu_ids = menuIds.map((id: any) => Number(id));
-      info.value.button_perms = buttonPerms;
     } catch (e) {
-      console.error('获取角色权限详情失败:', e);
-    }
-  };
-
-  // 获取按钮权限列表
-  const fetchButtonPerms = async () => {
-    btnPermsLoading.value = true;
-    try {
-      // 优先从后端获取按钮权限配置
-      const res = await request('/api/system/role/button-perms', {}, undefined, 'GET');
-      if (res.data?.length) {
-        buttonPermsOptions.value = res.data;
-      } else {
-        // 使用默认按钮权限
-        buttonPermsOptions.value = defaultButtonPerms;
-      }
-    } catch (e) {
-      // 使用默认按钮权限
-      buttonPermsOptions.value = defaultButtonPerms;
-      console.error('获取按钮权限失败:', e);
-    } finally {
-      btnPermsLoading.value = false;
+      console.error('Fetch permissions failed', e);
     }
   };
 
   async function show(item: any) {
     visible.value = true;
-    isEditFlag.value = false;
+    isEditFlag.value = !!item?.id;
     info.value = {
-      id: null,
-      role_name: null,
-      role_key: null,
-      sort: 0,
-      remark: null,
+      id: item?.id || null,
+      role_name: item?.role_name || '',
+      role_key: item?.role_key || '',
+      sort: item?.sort || 0,
+      remark: item?.remark || '',
       menu_ids: [],
-      button_perms: [],
     };
-    
-    // 1. 先加载菜单树基础数据
     await fetchMenuTree();
-    // 2. 加载按钮权限基础数据
-    await fetchButtonPerms();
-    
-    if (item?.id) {
-      isEditFlag.value = true;
-      Object.assign(info.value, {
-        ...item,
-        // 这里不要直接覆盖 menu_ids，等 fetchRolePermissions 返回
-        menu_ids: [], 
-        button_perms: [],
-      });
-      // 3. 最后根据 roleId 获取当前角色的具体权限
-      await fetchRolePermissions(Number(item.id));
-    }
+    if (item?.id) await fetchRolePermissions(Number(item.id));
   }
 
   function onClose() {
     visible.value = false;
-    info.value = {
-      id: null,
-      role_name: null,
-      role_key: null,
-      sort: 0,
-      remark: null,
-      menu_ids: [],
-      button_perms: [],
-    };
   }
 
   async function sendInfo() {
@@ -377,69 +237,158 @@
       return;
     }
     loading.value = true;
-    const rolePayload = {
-      id: info.value.id,
-      role_name: info.value.role_name,
-      role_key: info.value.role_key,
-      sort: info.value.sort,
-      remark: info.value.remark,
-      status: info.value.status ?? 1,
-    };
-
-    request('/api/system/role/save', rolePayload)
-      .then(async (res: any) => {
-        const roleId =
-          info.value.id ||
-          res?.data?.id ||
-          res?.data?.data?.id ||
-          0;
-
-        if (!roleId) {
-          throw new Error('角色保存成功但未返回角色ID');
-        }
-
-        await request('/api/system/role/permissions/save', {
-          role_id: Number(roleId),
-          menu_ids: (info.value.menu_ids || []).map((id: number) => Number(id)),
-          button_perms: info.value.button_perms || [],
-        });
-
-        emits('refresh');
-        Message.success('操作成功');
-        onClose();
-      })
-      .catch((err: any) => {
-        Message.error(err?.msg || err?.message || '保存失败');
-      })
-      .finally(() => {
-        loading.value = false;
+    try {
+      const roleRes: any = await request('/api/system/role/save', {
+        ...info.value,
+        status: info.value.status ?? 1,
       });
+      const roleId = info.value.id || roleRes?.data?.id || roleRes?.data?.data?.id;
+      
+      await request('/api/system/role/permissions/save', {
+        role_id: Number(roleId),
+        menu_ids: info.value.menu_ids.map(Number),
+        button_perms: [],
+      });
+
+      emits('refresh');
+      Message.success('保存成功');
+      onClose();
+    } catch (err: any) {
+      Message.error(err?.msg || '操作失败');
+    } finally {
+      loading.value = false;
+    }
   }
 
-  // 暴露方法供外部调用
-  defineExpose({ show, fetchMenuTree, fetchButtonPerms });
+  defineExpose({ show });
 </script>
 
-<style scoped>
-  .permission-header {
-    padding: 8px 12px;
-    background: var(--color-fill-1);
-    border-radius: 4px;
-    margin-bottom: 8px;
-  }
-  .button-perms-container {
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-  }
-  .button-perms-container :deep(.arco-checkbox-group) {
+<style scoped lang="less">
+  /* 填满父容器的关键布局 */
+  .drawer-content-wrapper {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    height: 100%;
+    gap: 16px;
   }
-  .button-perms-container :deep(.arco-checkbox-wrapper) {
-    margin-right: 0;
+
+  .form-header-section {
+    flex-shrink: 0;
+    padding: 4px;
+  }
+
+  .permission-tree-section {
+    flex: 1; /* 自动撑满 */
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* 允许内部滚动 */
+  }
+
+  .tree-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-2);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    &::before {
+      content: '';
+      width: 3px;
+      height: 14px;
+      background: rgb(var(--primary-6));
+      margin-right: 8px;
+      border-radius: 2px;
+    }
+  }
+
+  /* 玻璃态容器容器 */
+  .tree-container-glass {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
+  }
+
+  .tree-toolbar-modern {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(var(--primary-6), 0.04);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    
+    :deep(.arco-checkbox-label) {
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
+
+  .tree-viewport {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    
+    &::-webkit-scrollbar { width: 5px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+    }
+  }
+
+  .refined-tree {
+    background: transparent;
+    :deep(.arco-tree-node) {
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      &:hover { background: rgba(var(--primary-6), 0.05); }
+    }
+  }
+
+  .custom-tree-node {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+
+    .node-icon-wrap {
+      color: var(--color-text-3);
+      font-size: 14px;
+      display: flex;
+    }
+
+    .btn-type-tag {
+      background: linear-gradient(135deg, #ff9a44 0%, #fc6076 100%);
+      color: white;
+      border: none;
+      font-weight: 600;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(252, 96, 118, 0.2);
+    }
+
+    .node-perms-hint {
+      font-size: 11px;
+      color: var(--color-text-4);
+      font-family: monospace;
+      margin-left: auto;
+      padding-left: 20px;
+    }
+  }
+
+  .glass-input {
+    background: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    transition: all 0.2s;
+    &:hover, &-focus {
+      background: #fff !important;
+      border-color: rgb(var(--primary-6)) !important;
+      box-shadow: 0 0 0 3px rgba(var(--primary-6), 0.1);
+    }
   }
 </style>

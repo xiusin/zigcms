@@ -355,8 +355,6 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/userInfo", admin, &controllers.system_ext.Admin.user_info);
 
         try registerWithAlias(self.app, "/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
-        try registerWithAlias(self.app, "/system/menu/permissions", menu, &controllers.system_ext.Menu.permissions);
-        try registerWithAlias(self.app, "/system/menu/save-permissions", menu, &controllers.system_ext.Menu.save_permissions);
         try registerWithAlias(self.app, "/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
 
         try registerWithAlias(self.app, "/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
@@ -364,7 +362,6 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
         try registerWithAlias(self.app, "/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
 
-        try registerWithAlias(self.app, "/system/role/button-perms", role, &controllers.system_ext.Role.button_perms);
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
         try registerWithAlias(self.app, "/system/role/permissions/info", role, &controllers.system_ext.Role.role_permissions_info);
         try registerWithAlias(self.app, "/system/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);

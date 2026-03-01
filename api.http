@@ -36,31 +36,6 @@ Content-Type: {{json}}
 
 {}
 
-### 菜单权限查询
-POST {{base}}/system/menu/permissions
-Content-Type: {{json}}
-
-{
-  "menu_id": 1
-}
-
-### 菜单权限保存
-POST {{base}}/system/menu/save-permissions
-Content-Type: {{json}}
-
-{
-  "menu_id": 1,
-  "permissions": ["btn:add", "btn:edit"]
-}
-
-### 角色按钮权限
-POST {{base}}/role/button-perms
-Content-Type: {{json}}
-
-{
-  "role_id": 1
-}
-
 ### 管理员重置密码
 POST {{base}}/system/admin/resetPassword
 Content-Type: {{json}}

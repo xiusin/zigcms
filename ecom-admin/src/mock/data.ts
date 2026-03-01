@@ -168,20 +168,6 @@ export const mockData: Record<
     status: 1,
   }),
   // 角色按钮权限配置
-  '/api/system/role/button-perms': success([
-    { label: '新增', value: 'btn:add' },
-    { label: '编辑', value: 'btn:edit' },
-    { label: '删除', value: 'btn:delete' },
-    { label: '导出', value: 'btn:export' },
-    { label: '导入', value: 'btn:import' },
-    { label: '查询', value: 'btn:query' },
-    { label: '详情', value: 'btn:detail' },
-    { label: '审核', value: 'btn:audit' },
-    { label: '启用', value: 'btn:enable' },
-    { label: '禁用', value: 'btn:disable' },
-    { label: '分配权限', value: 'btn:permission' },
-    { label: '重置密码', value: 'btn:resetPwd' },
-  ]),
 
   // 部门管理
   '/api/department/list': success(
