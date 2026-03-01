@@ -65,6 +65,9 @@ export default async function request(
     },
     ...dconfig,
   };
+  
+  console.log(`[request] ${method.toUpperCase()} ${url}`, params);
+
   switch (method) {
     case 'get':
       return instance.get(url, { params, ...config });

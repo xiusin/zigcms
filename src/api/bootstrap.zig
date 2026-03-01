@@ -255,9 +255,9 @@ pub const Bootstrap = struct {
         if (!self.container.isRegistered(controllers.system_ext.Role)) {
             try self.container.registerSingleton(controllers.system_ext.Role, controllers.system_ext.Role, struct {
                 fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Role {
-                    _ = di;
+                    const l = try di.resolve(logger.Logger);
                     const ctrl = try allocator.create(controllers.system_ext.Role);
-                    ctrl.* = controllers.system_ext.Role.init(allocator);
+                    ctrl.* = controllers.system_ext.Role.init(allocator, l);
                     return ctrl;
                 }
             }.factory, null);
@@ -366,6 +366,7 @@ pub const Bootstrap = struct {
 
         try registerWithAlias(self.app, "/system/role/button-perms", role, &controllers.system_ext.Role.button_perms);
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
+        try registerWithAlias(self.app, "/system/role/permissions/info", role, &controllers.system_ext.Role.role_permissions_info);
         try registerWithAlias(self.app, "/system/role/permissions/save", role, &controllers.system_ext.Role.role_permissions_save);
         try registerWithAlias(self.app, "/system/role/delete", role, &controllers.system_ext.Role.delete);
 

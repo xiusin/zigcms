@@ -6,10 +6,12 @@ const base = @import("base.fn.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const models = @import("../../domain/entities/mod.zig");
 const global = @import("../../core/primitives/global.zig");
+const log_mod = @import("../../application/services/logger/logger.zig");
 
 const Self = @This();
 
 allocator: Allocator,
+logger: *log_mod.Logger,
 
 const SysPermission = struct {
     id: ?i32 = null,
@@ -57,7 +59,7 @@ const OrmSysRole = sql.defineWithConfig(models.SysRole, .{
 const ROLE_CACHE_VERSION_KEY = "sys:role:list:version";
 
 /// 初始化角色扩展控制器。
-pub fn init(allocator: Allocator) Self {
+pub fn init(allocator: Allocator, logger: *log_mod.Logger) Self {
     if (!OrmPermission.hasDb()) {
         OrmPermission.use(global.get_db());
     }
@@ -73,7 +75,10 @@ pub fn init(allocator: Allocator) Self {
     if (!OrmSysRole.hasDb()) {
         OrmSysRole.use(global.get_db());
     }
-    return .{ .allocator = allocator };
+    return .{ 
+        .allocator = allocator,
+        .logger = logger,
+    };
 }
 
 /// 获取按钮权限选项接口。
@@ -84,6 +89,9 @@ pub const role_permissions_save = rolePermissionsSaveImpl;
 
 /// 角色权限查询接口。
 pub const role_permissions_get = rolePermissionsGetImpl;
+
+/// 角色权限查询接口 (新别名避免冲突)。
+pub const role_permissions_info = rolePermissionsGetImpl;
 
 /// 角色删除接口。
 pub const delete = deleteImpl;
@@ -230,6 +238,8 @@ fn rolePermissionsGetImpl(self: *Self, req: zap.Request) !void {
             }
         }
     }
+
+    self.logger.info("[rolePermissionsGetImpl] role_id: {d}", .{role_id});
 
     if (role_id <= 0) return base.send_failed(req, "缺少 role_id 参数");
 

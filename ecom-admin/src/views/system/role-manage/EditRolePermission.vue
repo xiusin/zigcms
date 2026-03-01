@@ -215,23 +215,58 @@
     info.value.button_perms = checked ? [...allBtnPerms.value] : [];
   };
 
-  const expandAll = () => {
-    treeRef.value?.expandAll();
-  };
-
-  const collapseAll = () => {
-    treeRef.value?.collapseAll();
-  };
-
   // 获取菜单树
+  const buildTree = (list: any[]) => {
+    if (!Array.isArray(list)) return [];
+    const map = new Map<number, any>();
+    list.forEach((item) => {
+      const id = Number(item.id);
+      // 核心修复：增加 title 字段供 a-tree 显示，并确保 children 初始化
+      map.set(id, { 
+        ...item, 
+        id, 
+        key: id, 
+        value: id, 
+        title: item.menu_name || item.title || `菜单${id}`,
+        children: [] 
+      });
+    });
+    const roots: any[] = [];
+    list.forEach((item) => {
+      const id = Number(item.id);
+      const parentId = Number(item.pid || 0);
+      const node = map.get(id);
+      if (!node) return;
+      if (parentId > 0 && map.has(parentId)) {
+        map.get(parentId).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    return roots;
+  };
+
   const fetchMenuTree = async () => {
     menuTreeLoading.value = true;
     try {
       const res = await request('/api/system/menu/tree', {});
-      if (res.data?.length) {
-        menuTree.value = res.data;
+      
+      // 穿透拦截器包装：优先取 res.data (如果是数组)，否则取 list/items
+      let list = [];
+      if (Array.isArray(res.data)) {
+        list = res.data;
+      } else if (res.data && Array.isArray(res.data.list)) {
+        list = res.data.list;
+      } else if (res.data && Array.isArray(res.data.items)) {
+        list = res.data.items;
+      }
+
+      if (list.length) {
+        menuTree.value = buildTree(list);
+        console.log('[EditRolePermission] Menu tree built from', list.length, 'items');
       } else {
         menuTree.value = [];
+        console.warn('[EditRolePermission] No menu data found in response');
       }
     } catch (e) {
       menuTree.value = [];
@@ -243,17 +278,28 @@
 
   const fetchRolePermissions = async (roleId: number) => {
     try {
-      const res = await request('/api/system/role/permissions/get', {
+      const url = `/api/system/role/permissions/info?role_id=${roleId}`;
+      console.log('[EditRolePermission] Fetching permissions from:', url);
+      const res = await request(url, {
         role_id: roleId,
       });
-      const menuIds = Array.isArray(res?.data?.menu_ids)
-        ? res.data.menu_ids.map((id: number) => Number(id))
-        : [];
-      const buttonPerms = Array.isArray(res?.data?.button_perms)
-        ? res.data.button_perms
-        : [];
+      console.log('[EditRolePermission] FULL RAW RESPONSE:', res);
+      
+      // 深度查找字段，兼容拦截器包装
+      const findField = (obj: any, field: string): any => {
+        if (!obj) return null;
+        if (Array.isArray(obj[field])) return obj[field];
+        if (obj.data) return findField(obj.data, field);
+        return null;
+      };
 
-      info.value.menu_ids = menuIds;
+      const menuIds = findField(res, 'menu_ids') || [];
+      const buttonPerms = findField(res, 'button_perms') || [];
+
+      console.log('[EditRolePermission] Parsed IDs:', { menuIds, buttonPerms });
+
+      // 转换为数字确保树组件能正确匹配 ID
+      info.value.menu_ids = menuIds.map((id: any) => Number(id));
       info.value.button_perms = buttonPerms;
     } catch (e) {
       console.error('获取角色权限详情失败:', e);
@@ -281,7 +327,7 @@
     }
   };
 
-  function show(item: any) {
+  async function show(item: any) {
     visible.value = true;
     isEditFlag.value = false;
     info.value = {
@@ -293,17 +339,22 @@
       menu_ids: [],
       button_perms: [],
     };
-    // 每次打开弹窗时都重新获取菜单树和按钮权限
-    fetchMenuTree();
-    fetchButtonPerms();
+    
+    // 1. 先加载菜单树基础数据
+    await fetchMenuTree();
+    // 2. 加载按钮权限基础数据
+    await fetchButtonPerms();
+    
     if (item?.id) {
       isEditFlag.value = true;
       Object.assign(info.value, {
         ...item,
-        menu_ids: item.menu_ids || [],
-        button_perms: item.button_perms || [],
+        // 这里不要直接覆盖 menu_ids，等 fetchRolePermissions 返回
+        menu_ids: [], 
+        button_perms: [],
       });
-      fetchRolePermissions(Number(item.id));
+      // 3. 最后根据 roleId 获取当前角色的具体权限
+      await fetchRolePermissions(Number(item.id));
     }
   }
 
