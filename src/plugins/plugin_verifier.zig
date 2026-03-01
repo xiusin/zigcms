@@ -20,7 +20,6 @@ pub const PluginVerifier = struct {
     }
 
     pub fn verifyChecksum(self: *PluginVerifier, path: []const u8, expected: [32]u8) !void {
-        _ = self;
         const file = std.fs.cwd().openFile(path, .{}) catch {
             return VerificationError.FileNotFound;
         };
