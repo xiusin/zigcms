@@ -2514,6 +2514,7 @@ pub fn ModelQuery(comptime T: type) type {
         limit_val: ?u64 = null,
         offset_val: ?u64 = null,
         distinct_flag: bool = false,
+        bind_params: std.ArrayListUnmanaged(query_mod.Value), // 参数绑定
 
         pub fn init(db: *Database, table: []const u8) Self {
             return Self{
@@ -2524,6 +2525,7 @@ pub fn ModelQuery(comptime T: type) type {
                 .order_clauses = .{},
                 .group_fields = .{},
                 .join_clauses = .{},
+                .bind_params = .{},
             };
         }
 
@@ -2551,6 +2553,15 @@ pub fn ModelQuery(comptime T: type) type {
                 self.db.allocator.free(clause);
             }
 
+            // 释放绑定参数
+            for (self.bind_params.items) |param| {
+                switch (param) {
+                    .string_val => |s| self.db.allocator.free(s),
+                    else => {},
+                }
+            }
+            self.bind_params.deinit(self.db.allocator);
+
             // select_fields 和 group_fields 存储的是外部引用（通常是编译时常量），不需要释放
             self.select_fields.deinit(self.db.allocator);
             self.group_fields.deinit(self.db.allocator);
@@ -2573,9 +2584,44 @@ pub fn ModelQuery(comptime T: type) type {
             return self;
         }
 
-        /// WHERE IN
+        /// WHERE IN（使用参数化查询）
         pub fn whereIn(self: *Self, field: []const u8, values: anytype) *Self {
-            const clause = formatWhereIn(self.db.allocator, field, values) catch return self;
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+            
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereIn requires array or slice"),
+            };
+
+            // 构建占位符 "field IN (?, ?, ?)"
+            var placeholders = std.ArrayListUnmanaged(u8){};
+            defer placeholders.deinit(self.db.allocator);
+            
+            placeholders.appendSlice(self.db.allocator, field) catch return self;
+            placeholders.appendSlice(self.db.allocator, " IN (") catch return self;
+            
+            for (values, 0..) |v, i| {
+                if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
+                placeholders.append(self.db.allocator, '?') catch return self;
+                
+                // 添加参数
+                if (ElemType == []const u8 or ElemType == []u8) {
+                    const str_copy = self.db.allocator.dupe(u8, v) catch return self;
+                    self.bind_params.append(self.db.allocator, .{ .string_val = str_copy }) catch {
+                        self.db.allocator.free(str_copy);
+                        return self;
+                    };
+                } else {
+                    self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
+                }
+            }
+            
+            placeholders.append(self.db.allocator, ')') catch return self;
+            
+            const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
             };
@@ -2736,9 +2782,44 @@ pub fn ModelQuery(comptime T: type) type {
             return self.where(field, "<=", val);
         }
 
-        /// WHERE NOT IN
+        /// WHERE NOT IN（使用参数化查询）
         pub fn whereNotIn(self: *Self, field: []const u8, values: anytype) *Self {
-            const clause = formatWhereNotIn(self.db.allocator, field, values) catch return self;
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+            
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereNotIn requires array or slice"),
+            };
+
+            // 构建占位符 "field NOT IN (?, ?, ?)"
+            var placeholders = std.ArrayListUnmanaged(u8){};
+            defer placeholders.deinit(self.db.allocator);
+            
+            placeholders.appendSlice(self.db.allocator, field) catch return self;
+            placeholders.appendSlice(self.db.allocator, " NOT IN (") catch return self;
+            
+            for (values, 0..) |v, i| {
+                if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
+                placeholders.append(self.db.allocator, '?') catch return self;
+                
+                // 添加参数
+                if (ElemType == []const u8 or ElemType == []u8) {
+                    const str_copy = self.db.allocator.dupe(u8, v) catch return self;
+                    self.bind_params.append(self.db.allocator, .{ .string_val = str_copy }) catch {
+                        self.db.allocator.free(str_copy);
+                        return self;
+                    };
+                } else {
+                    self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
+                }
+            }
+            
+            placeholders.append(self.db.allocator, ')') catch return self;
+            
+            const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
             };
@@ -3738,7 +3819,78 @@ pub fn ModelQuery(comptime T: type) type {
                 try sql.appendSlice(self.db.allocator, off_str);
             }
 
-            return sql.toOwnedSlice(self.db.allocator);
+            const final_sql = try sql.toOwnedSlice(self.db.allocator);
+            
+            // 替换占位符为实际参数值（安全转义）
+            if (self.bind_params.items.len > 0) {
+                const replaced = try self.replacePlaceholders(final_sql);
+                self.db.allocator.free(final_sql);
+                return replaced;
+            }
+            
+            return final_sql;
+        }
+        
+        /// 替换 SQL 中的 ? 占位符为实际参数值（安全转义）
+        fn replacePlaceholders(self: *Self, sql: []const u8) ![]u8 {
+            var result = std.ArrayListUnmanaged(u8){};
+            errdefer result.deinit(self.db.allocator);
+            
+            var param_idx: usize = 0;
+            var i: usize = 0;
+            
+            while (i < sql.len) : (i += 1) {
+                if (sql[i] == '?') {
+                    if (param_idx >= self.bind_params.items.len) {
+                        return error.TooFewParameters;
+                    }
+                    
+                    const param = self.bind_params.items[param_idx];
+                    param_idx += 1;
+                    
+                    switch (param) {
+                        .string_val => |s| {
+                            try result.append(self.db.allocator, '\'');
+                            // SQL 标准转义
+                            for (s) |c| {
+                                if (c == '\'') {
+                                    try result.appendSlice(self.db.allocator, "''");
+                                } else {
+                                    try result.append(self.db.allocator, c);
+                                }
+                            }
+                            try result.append(self.db.allocator, '\'');
+                        },
+                        .int_val => |n| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{n});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .float_val => |f| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{f});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .bool_val => |b| {
+                            try result.appendSlice(self.db.allocator, if (b) "1" else "0");
+                        },
+                        .null_val => {
+                            try result.appendSlice(self.db.allocator, "NULL");
+                        },
+                        else => {
+                            return error.UnsupportedParameterType;
+                        },
+                    }
+                } else {
+                    try result.append(self.db.allocator, sql[i]);
+                }
+            }
+            
+            if (param_idx != self.bind_params.items.len) {
+                return error.TooManyParameters;
+            }
+            
+            return result.toOwnedSlice(self.db.allocator);
         }
 
         fn appendWhere(self: *Self, sql: *std.ArrayListUnmanaged(u8)) !void {
@@ -3831,96 +3983,6 @@ pub fn ModelQuery(comptime T: type) type {
             }
 
             return models.toOwnedSlice(alloc);
-        }
-
-        // 使用顶层的 formatWhere 函数
-
-        fn formatWhereIn(allocator: Allocator, field: []const u8, values: anytype) ![]u8 {
-            var sql = std.ArrayListUnmanaged(u8){};
-            errdefer sql.deinit(allocator);
-
-            try sql.appendSlice(allocator, field);
-            try sql.appendSlice(allocator, " IN (");
-
-            const ValuesType = @TypeOf(values);
-            const type_info = @typeInfo(ValuesType);
-            
-            // 获取数组元素类型
-            const ElemType = switch (type_info) {
-                .pointer => |ptr| ptr.child,
-                .array => |arr| arr.child,
-                else => @compileError("whereIn requires array or slice"),
-            };
-
-            for (values, 0..) |v, i| {
-                if (i > 0) try sql.appendSlice(allocator, ", ");
-
-                // 根据元素类型处理
-                if (ElemType == []const u8 or ElemType == []u8) {
-                    // 字符串类型：转义单引号防止 SQL 注入
-                    try sql.append(allocator, '\'');
-                    for (v) |c| {
-                        if (c == '\'') {
-                            try sql.appendSlice(allocator, "''");
-                        } else {
-                            try sql.append(allocator, c);
-                        }
-                    }
-                    try sql.append(allocator, '\'');
-                } else {
-                    // 数值类型：直接格式化
-                    var buf: [32]u8 = undefined;
-                    const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
-                    try sql.appendSlice(allocator, str);
-                }
-            }
-
-            try sql.append(allocator, ')');
-            return sql.toOwnedSlice(allocator);
-        }
-
-        fn formatWhereNotIn(allocator: Allocator, field: []const u8, values: anytype) ![]u8 {
-            var sql = std.ArrayListUnmanaged(u8){};
-            errdefer sql.deinit(allocator);
-
-            try sql.appendSlice(allocator, field);
-            try sql.appendSlice(allocator, " NOT IN (");
-
-            const ValuesType = @TypeOf(values);
-            const type_info = @typeInfo(ValuesType);
-            
-            // 获取数组元素类型
-            const ElemType = switch (type_info) {
-                .pointer => |ptr| ptr.child,
-                .array => |arr| arr.child,
-                else => @compileError("whereNotIn requires array or slice"),
-            };
-
-            for (values, 0..) |v, i| {
-                if (i > 0) try sql.appendSlice(allocator, ", ");
-
-                // 根据元素类型处理
-                if (ElemType == []const u8 or ElemType == []u8) {
-                    // 字符串类型：转义单引号防止 SQL 注入
-                    try sql.append(allocator, '\'');
-                    for (v) |c| {
-                        if (c == '\'') {
-                            try sql.appendSlice(allocator, "''");
-                        } else {
-                            try sql.append(allocator, c);
-                        }
-                    }
-                    try sql.append(allocator, '\'');
-                } else {
-                    // 数值类型：直接格式化
-                    var buf: [32]u8 = undefined;
-                    const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
-                    try sql.appendSlice(allocator, str);
-                }
-            }
-
-            try sql.append(allocator, ')');
-            return sql.toOwnedSlice(allocator);
         }
     };
 }
