@@ -21,7 +21,7 @@ const SysPermission = struct {
     perm_name: []const u8 = "",
     perm_code: []const u8 = "",
     menu_id: i32 = 0,
-    sort: i32 = 0,
+    perm_type: i32 = 2,
     status: i32 = 1,
     created_at: ?i64 = null,
     updated_at: ?i64 = null,
@@ -101,7 +101,6 @@ fn permissionsImpl(self: *Self, req: zap.Request) !void {
 
     var q = OrmPermission.WhereEq("menu_id", menu_id);
     defer q.deinit();
-    _ = q.orderBy("sort", .asc);
 
     const rows = q.get() catch |err| return base.send_error(req, err);
     defer OrmPermission.freeModels(rows);
@@ -141,13 +140,13 @@ fn savePermissionsImpl(self: *Self, req: zap.Request) !void {
     defer delete_q.deinit();
     _ = delete_q.delete() catch |err| return base.send_error(req, err);
 
-    for (permissions_val.array.items, 0..) |perm, idx| {
+    for (permissions_val.array.items) |perm| {
         if (perm != .string) continue;
         _ = OrmPermission.Create(.{
             .perm_name = perm.string,
             .perm_code = perm.string,
             .menu_id = menu_id,
-            .sort = @as(i32, @intCast(idx + 1)),
+            .perm_type = 2,
             .status = 1,
         }) catch |err| return base.send_error(req, err);
     }

@@ -36,6 +36,9 @@ const strings = @import("../../core/utils/strings.zig");
 const json_mod = @import("../../application/services/json/json.zig");
 const sql_errors = @import("../../application/services/sql/sql_errors.zig");
 
+const replacement_marker = "\xEF\xBF\xBD";
+const utf8_preview_limit: usize = 512;
+
 pub const Response = struct {
     code: u32 = 0,
     count: ?u32 = null,
@@ -82,6 +85,7 @@ pub fn send_error(req: zap.Request, e: anyerror) void {
         };
         defer global.get_allocator().free(json);
 
+        warnUtf8Replacement("send_error_sql", json);
         req.setStatus(.internal_server_error);
         req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
         req.sendBody(json) catch {};
@@ -105,6 +109,9 @@ pub fn send_ok(req: zap.Request, v: anytype) void {
         .data = v,
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
+
+    warnUtf8Replacement("send_ok", ser);
+    req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
     req.sendJson(ser) catch return;
 }
 
@@ -125,6 +132,9 @@ pub fn send_layui_table_response(req: zap.Request, v: anytype, count: u64, extra
         .extra = extra,
     }) catch |e| return send_error(req, e);
     defer global.get_allocator().free(ser);
+
+    warnUtf8Replacement("send_layui_table_response", ser);
+    req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
     req.sendJson(ser) catch return;
 }
 
@@ -142,6 +152,8 @@ pub fn send_page_compat(req: zap.Request, v: anytype, count: u64, extra: anytype
 pub fn send_layui_table_custom(allocator: Allocator, response: zap.Response, data: std.StringHashMap(json_mod.Value)) !void {
     const ser = json_mod.JSON.encode(allocator, data) catch |e| return send_error(response, e);
     defer allocator.free(ser);
+    warnUtf8Replacement("send_layui_table_custom", ser);
+    response.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
     response.sendJson(ser) catch return;
 }
 
@@ -152,6 +164,9 @@ pub fn send_failed(req: zap.Request, message: []const u8) void {
         .msg = message,
     }) catch return;
     defer global.get_allocator().free(ser);
+
+    warnUtf8Replacement("send_failed", ser);
+    req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
     req.sendJson(ser) catch return;
 }
 
@@ -163,4 +178,17 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
         }
     }
     return str;
+}
+
+fn warnUtf8Replacement(context: []const u8, payload: []const u8) void {
+    if (payload.len == 0) return;
+    if (std.mem.indexOf(u8, payload, replacement_marker) == null) return;
+
+    const preview_len: usize = if (payload.len > utf8_preview_limit) utf8_preview_limit else payload.len;
+    const preview = payload[0..preview_len];
+
+    logger.warn(
+        "[utf8_guard][response] context={s} detected replacement char, preview={s}",
+        .{ context, preview },
+    );
 }

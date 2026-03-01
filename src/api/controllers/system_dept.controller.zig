@@ -111,9 +111,9 @@ fn deptTreeImpl(self: *Self, req: zap.Request) !void {
     if (keyword.len > max_keyword_len) {
         return base.send_failed(req, "keyword 过长");
     }
-    if (!isAsciiSlice(keyword)) {
-        return base.send_failed(req, "keyword 非 ASCII");
-    }
+    // if (!isAsciiSlice(keyword)) {
+    //     return base.send_failed(req, "keyword 非 ASCII");
+    // }
 
     var q = OrmDept.Query();
     defer q.deinit();

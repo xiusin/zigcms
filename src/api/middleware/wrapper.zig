@@ -210,6 +210,7 @@ pub fn checkAuth(req: zap.Request) CheckResult {
 pub fn sendError(req: zap.Request, message: []const u8) void {
     var buf: [512]u8 = undefined;
     const json = std.fmt.bufPrint(&buf, "{{\"code\":1,\"message\":\"{s}\"}}", .{message}) catch return;
+    base.warnUtf8Replacement("middleware.sendError", json);
     req.setHeader("Content-Type", "application/json") catch {};
     req.sendBody(json) catch {};
 }
@@ -218,6 +219,7 @@ pub fn sendError(req: zap.Request, message: []const u8) void {
 pub fn sendOk(req: zap.Request, data: []const u8) void {
     var buf: [8192]u8 = undefined;
     const json = std.fmt.bufPrint(&buf, "{{\"code\":0,\"data\":{s}}}", .{data}) catch return;
+    base.warnUtf8Replacement("middleware.sendOk", json);
     req.setHeader("Content-Type", "application/json") catch {};
     req.sendBody(json) catch {};
 }

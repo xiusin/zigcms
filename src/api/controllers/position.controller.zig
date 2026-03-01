@@ -20,8 +20,8 @@ const MW = mw.Controller(Self);
 allocator: Allocator,
 
 /// ORM 模型定义
-const OrmPosition = sql.defineWithConfig(models.Position, .{
-    .table_name = "zigcms.position",
+const OrmPosition = sql.defineWithConfig(models.SysPosition, .{
+    .table_name = "sys_position",
     .primary_key = "id",
 });
 
@@ -67,7 +67,8 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     var limit: i32 = 10;
     var sort_field: []const u8 = "sort";
     var sort_dir: []const u8 = "asc";
-    var department_id: ?i32 = null;
+    var dept_id: ?i32 = null;
+    var keyword: []const u8 = "";
 
     var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
         return base.send_error(req, err);
@@ -77,24 +78,35 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     for (params.items) |value| {
         if (strings.eql(value.key, "page")) {
             page = @intCast(strings.to_int(value.value) catch 1);
-        } else if (strings.eql(value.key, "limit")) {
+        } else if (strings.eql(value.key, "limit") or strings.eql(value.key, "page_size") or strings.eql(value.key, "pageSize")) {
             limit = @intCast(strings.to_int(value.value) catch 10);
-        } else if (strings.eql(value.key, "department_id")) {
-            department_id = @intCast(strings.to_int(value.value) catch 0);
+        } else if (strings.eql(value.key, "dept_id") or strings.eql(value.key, "department_id")) {
+            dept_id = @intCast(strings.to_int(value.value) catch 0);
+        } else if (strings.eql(value.key, "keyword")) {
+            keyword = std.mem.trim(u8, value.value, " \t\r\n");
         } else if (strings.starts_with(value.key, "sort[")) {
             sort_field = base.get_sort_field(value.key) orelse "sort";
             sort_dir = value.value;
         }
     }
 
+    if (page <= 0) page = 1;
+    if (limit <= 0) limit = 10;
+
     // 构建查询
-    var q = OrmPosition.Where("is_delete", .eq, @as(i32, 0));
+    var q = OrmPosition.Query();
     defer q.deinit();
 
-    if (department_id) |dept_id| {
-        if (dept_id > 0) {
-            _ = q.where("department_id", .eq, dept_id);
+    if (dept_id) |v| {
+        if (v > 0) {
+            _ = q.whereEq("dept_id", v);
         }
+    }
+
+    if (keyword.len > 0) {
+        const pattern = std.fmt.allocPrint(self.allocator, "%{s}%", .{keyword}) catch return base.send_failed(req, "关键词格式错误");
+        defer self.allocator.free(pattern);
+        _ = q.whereLike("position_name", pattern);
     }
 
     const total = q.count() catch |e| return base.send_error(req, e);
@@ -106,7 +118,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
     const items_slice = q.get() catch |e| return base.send_error(req, e);
     defer OrmPosition.freeModels(items_slice);
 
-    var items = std.ArrayListUnmanaged(models.Position){};
+    var items = std.ArrayListUnmanaged(models.SysPosition){};
     defer items.deinit(self.allocator);
     for (items_slice) |item| {
         items.append(self.allocator, item) catch {};
@@ -138,21 +150,20 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     req.parseBody() catch return base.send_failed(req, "解析请求体失败");
     const body = req.body orelse return base.send_failed(req, "请求体为空");
 
-    const dto = json_mod.JSON.decode(models.Position, self.allocator, body) catch |err| {
+    const dto = json_mod.JSON.decode(models.SysPosition, self.allocator, body) catch |err| {
         std.log.err("解析职位数据失败: {}", .{err});
         return base.send_failed(req, "解析数据失败");
     };
 
     // 验证必填字段
-    if (dto.name.len == 0) {
+    if (dto.position_name.len == 0) {
         return base.send_failed(req, "职位名称不能为空");
     }
 
     // 检查编码唯一性
-    if (dto.code.len > 0) {
-        var check_q = OrmPosition.Where("code", .eq, dto.code);
+    if (dto.position_code.len > 0) {
+        var check_q = OrmPosition.Where("position_code", .eq, dto.position_code);
         defer check_q.deinit();
-        _ = check_q.where("is_delete", .eq, @as(i32, 0));
         if (dto.id) |id| {
             if (id > 0) {
                 _ = check_q.where("id", .neq, id);
@@ -182,17 +193,12 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     return base.send_ok(req, new_item);
 }
 
-/// 删除实现（软删除）
+/// 删除实现（物理删除）
 fn deleteImpl(self: *Self, req: zap.Request) !void {
     _ = self;
-    req.parseQuery();
-    const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
-    const id: i32 = @intCast(strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误"));
+    const id = parseIdFromReq(req) orelse return base.send_failed(req, "缺少 id 参数");
 
-    _ = OrmPosition.Update(id, .{
-        .is_delete = 1,
-        .update_time = std.time.microTimestamp(),
-    }) catch |e| return base.send_error(req, e);
+    _ = OrmPosition.Destroy(id) catch |e| return base.send_error(req, e);
 
     return base.send_ok(req, "删除成功");
 }
@@ -201,13 +207,12 @@ fn deleteImpl(self: *Self, req: zap.Request) !void {
 fn selectImpl(self: *Self, req: zap.Request) !void {
     var q = OrmPosition.Where("status", .eq, @as(i32, 1));
     defer q.deinit();
-    _ = q.where("is_delete", .eq, @as(i32, 0));
     _ = q.orderBy("sort", .asc);
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
     defer OrmPosition.freeModels(items_slice);
 
-    var items = std.ArrayListUnmanaged(models.Position){};
+    var items = std.ArrayListUnmanaged(models.SysPosition){};
     defer items.deinit(self.allocator);
     for (items_slice) |item| {
         items.append(self.allocator, item) catch {};
@@ -216,22 +221,37 @@ fn selectImpl(self: *Self, req: zap.Request) !void {
     base.send_ok(req, items.items);
 }
 
+fn parseIdFromReq(req: zap.Request) ?i32 {
+    req.parseQuery();
+    if (req.getParamSlice("id")) |id_str| {
+        return @intCast(strings.to_int(id_str) catch return null);
+    }
+
+    req.parseBody() catch return null;
+    const body = req.body orelse return null;
+    var parsed = std.json.parseFromSlice(std.json.Value, global.get_allocator(), body, .{}) catch return null;
+    defer parsed.deinit();
+    if (parsed.value != .object) return null;
+    const id_val = parsed.value.object.get("id") orelse return null;
+    if (id_val != .integer) return null;
+    return @intCast(id_val.integer);
+}
+
 /// 按部门筛选实现
 fn byDepartmentImpl(self: *Self, req: zap.Request) !void {
     req.parseQuery();
-    const dept_id_str = req.getParamSlice("department_id") orelse return base.send_failed(req, "缺少部门ID");
+    const dept_id_str = req.getParamSlice("dept_id") orelse req.getParamSlice("department_id") orelse return base.send_failed(req, "缺少部门ID");
     const dept_id: i32 = @intCast(strings.to_int(dept_id_str) catch return base.send_failed(req, "部门ID格式错误"));
 
-    var q = OrmPosition.Where("department_id", .eq, dept_id);
+    var q = OrmPosition.Where("dept_id", .eq, dept_id);
     defer q.deinit();
-    _ = q.where("is_delete", .eq, @as(i32, 0));
     _ = q.where("status", .eq, @as(i32, 1));
     _ = q.orderBy("sort", .asc);
 
     const items_slice = q.get() catch |e| return base.send_error(req, e);
     defer OrmPosition.freeModels(items_slice);
 
-    var items = std.ArrayListUnmanaged(models.Position){};
+    var items = std.ArrayListUnmanaged(models.SysPosition){};
     defer items.deinit(self.allocator);
     for (items_slice) |item| {
         items.append(self.allocator, item) catch {};

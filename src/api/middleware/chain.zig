@@ -37,6 +37,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const jwt = @import("../../core/utils/jwt.zig");
+const base = @import("../controllers/base.fn.zig");
 
 /// JWT 密钥配置（实际项目中应从配置文件读取）
 const JWT_SECRET = "zigcms-jwt-secret-key-2024";
@@ -166,6 +167,7 @@ pub const Context = struct {
         self.abort();
         var buf: [512]u8 = undefined;
         const json = std.fmt.bufPrint(&buf, "{{\"code\":401,\"message\":\"{s}\"}}", .{message}) catch return;
+        base.warnUtf8Replacement("middleware.chain.sendError", json);
         self.req.setHeader("Content-Type", "application/json") catch {};
         self.req.setStatus(.unauthorized);
         self.req.sendBody(json) catch {};
@@ -175,6 +177,7 @@ pub const Context = struct {
     pub fn sendOk(self: *Context, data: []const u8) void {
         var buf: [4096]u8 = undefined;
         const json = std.fmt.bufPrint(&buf, "{{\"code\":0,\"data\":{s}}}", .{data}) catch return;
+        base.warnUtf8Replacement("middleware.chain.sendOk", json);
         self.req.setHeader("Content-Type", "application/json") catch {};
         self.req.sendBody(json) catch {};
     }

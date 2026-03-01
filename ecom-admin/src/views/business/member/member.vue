@@ -272,6 +272,9 @@
         <a-form-item label="邮箱" field="email">
           <a-input v-model="formData.email" placeholder="请输入邮箱" />
         </a-form-item>
+        <a-form-item label="所属部门" field="dept_id">
+          <DepartmentSelect v-model="formData.dept_id" placeholder="请选择所属部门" />
+        </a-form-item>
         <a-form-item label="会员等级" field="level">
           <a-select v-model="formData.level" placeholder="请选择会员等级">
             <a-option :value="1">普通会员</a-option>
@@ -441,6 +444,7 @@
   import request from '@/api/request';
   import { Message } from '@arco-design/web-vue';
   import ActivationCodeManager from '@/components/activation-code-manager/index.vue';
+  import DepartmentSelect from '@/components/select/department-select.vue';
 
   const router = useRouter();
   const route = useRoute();
@@ -505,6 +509,7 @@
     email: '',
     level: 1,
     balance: 0,
+    dept_id: undefined as number | undefined,
   });
 
   const rules = {
@@ -667,6 +672,7 @@
         email: '',
         level: 1,
         balance: 0,
+        dept_id: undefined,
       });
     }
     saveVisible.value = true;

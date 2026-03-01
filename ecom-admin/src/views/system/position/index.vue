@@ -3,21 +3,17 @@
     <a-card>
       <div class="section-toolbar">
         <a-space size="small">
-          <a-select
+          <a-tree-select
             v-model="filterDeptId"
             placeholder="筛选部门"
             size="small"
-            style="width: 200px"
+            style="width: 240px"
+            allow-search
             allow-clear
+            :data="deptTreeData"
+            :field-names="{ key: 'key', title: 'title', children: 'children' }"
             @change="fetchList"
-          >
-            <a-option
-              v-for="dept in deptList"
-              :key="dept.id"
-              :value="dept.id"
-              :label="dept.dept_name"
-            />
-          </a-select>
+          />
           <a-input-search
             v-model="searchKey"
             placeholder="搜索职位名称"
@@ -41,7 +37,7 @@
         @page-change="handlePageChange"
       >
         <template #dept="{ record }">
-          <a-tag color="arcoblue">{{ record.dept_name }}</a-tag>
+          <a-tag color="arcoblue">{{ getDeptName(record.dept_id) }}</a-tag>
         </template>
         <template #status="{ record }">
           <a-switch
@@ -81,6 +77,7 @@
             v-model="form.dept_id"
             :data="deptTreeData"
             placeholder="请选择所属部门"
+            :field-names="{ key: 'key', title: 'title', children: 'children' }"
           />
         </a-form-item>
         <a-form-item label="职位名称" field="position_name">
@@ -124,6 +121,11 @@
     pageSize: 10,
     total: 0,
   });
+  const normalizeDeptId = (value: any): number | null => {
+    if (value === undefined || value === null || value === '') return null;
+    const num = Number(value);
+    return Number.isNaN(num) ? null : num;
+  };
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
@@ -152,6 +154,11 @@
     position_name: [{ required: true, message: '请输入职位名称' }],
     position_code: [{ required: true, message: '请输入职位编码' }],
   };
+  const getDeptName = (deptId: number | null | undefined) => {
+    if (!deptId) return '-';
+    const hit = deptList.value.find((item) => Number(item.id) === Number(deptId));
+    return hit?.dept_name || '-';
+  };
   const modalTitle = computed(() => (form.id ? '编辑职位' : '添加职位'));
 
   const fetchList = () => {
@@ -160,7 +167,7 @@
       page: pagination.current,
       page_size: pagination.pageSize,
       keyword: searchKey.value,
-      dept_id: filterDeptId.value,
+      dept_id: normalizeDeptId(filterDeptId.value),
     })
       .then((res: any) => {
         tableData.value = res.data?.list || [];
@@ -173,20 +180,64 @@
 
   const fetchDeptList = () => {
     request('/api/system/dept/all', {}).then((res: any) => {
-      deptList.value = res.data || [];
+      const raw = res?.data;
+      deptList.value = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.list)
+          ? raw.list
+          : [];
     });
+  };
+
+  const buildDeptTree = (list: any[]): any[] => {
+    if (!Array.isArray(list)) return [];
+    const map = new Map<number, any>();
+    list.forEach((item) => {
+      const id = Number(item.id);
+      map.set(id, {
+        ...item,
+        key: id,
+        value: id,
+        title: item.dept_name || item.title || '',
+        children: [],
+      });
+    });
+
+    const roots: any[] = [];
+    list.forEach((item) => {
+      const id = Number(item.id);
+      const parentId = Number(item.parent_id || 0);
+      const node = map.get(id);
+      if (!node) return;
+      if (parentId > 0 && map.has(parentId)) {
+        map.get(parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    return roots;
   };
 
   const fetchDeptTree = () => {
     request('/api/system/dept/tree', {}).then((res: any) => {
-      deptTreeData.value = res.data || [];
+      const raw = res?.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.list)
+          ? raw.list
+          : Array.isArray(raw?.items)
+            ? raw.items
+            : [];
+      const hasTreeShape = list.length > 0 && 'children' in list[0] && 'title' in list[0];
+      deptTreeData.value = hasTreeShape ? list : buildDeptTree(list);
     });
   };
 
   const handleAdd = () => {
     Object.assign(form, {
       id: 0,
-      dept_id: filterDeptId.value || null,
+      dept_id: normalizeDeptId(filterDeptId.value),
       position_name: '',
       position_code: '',
       description: '',
@@ -199,6 +250,7 @@
   const handleEdit = (record: any) => {
     Object.assign(form, {
       ...record,
+      dept_id: record.dept_id ? Number(record.dept_id) : null,
       status: record.status === 1,
     });
     modalVisible.value = true;
@@ -208,13 +260,19 @@
     const valid = await formRef.value?.validate();
     if (valid) return false;
 
-    await request('/api/system/position/save', {
-      ...form,
-      status: form.status ? 1 : 0,
-    });
-    Message.success(form.id ? '编辑成功' : '添加成功');
-    fetchList();
-    return true;
+    try {
+      await request('/api/system/position/save', {
+        ...form,
+        dept_id: normalizeDeptId(form.dept_id),
+        status: form.status ? 1 : 0,
+      });
+      Message.success(form.id ? '编辑成功' : '添加成功');
+      fetchList();
+      return true;
+    } catch (err: any) {
+      Message.error(err?.msg || err?.message || '保存失败');
+      return false;
+    }
   };
 
   const handleDelete = async (record: any) => {

@@ -360,6 +360,17 @@
         </a-row>
         <a-row :gutter="16">
           <a-col :span="12">
+            <a-form-item label="所属部门" field="dept_id">
+              <a-tree-select
+                v-model="formData.dept_id"
+                :data="deptTreeData"
+                placeholder="请选择所属部门"
+                allow-clear
+                :field-names="{ key: 'key', title: 'title', children: 'children' }"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
             <a-form-item label="性别" field="gender">
               <a-select v-model="formData.gender" placeholder="请选择性别">
                 <a-option :value="0">未知</a-option>
@@ -368,6 +379,8 @@
               </a-select>
             </a-form-item>
           </a-col>
+        </a-row>
+        <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="角色" field="role_ids">
               <a-select
@@ -746,7 +759,7 @@
 
   // ========== 管理员方法 ==========
   const fetchRoleList = () => {
-    safeRequest('获取角色列表', '/api/role/list', { pageSize: 100 })
+    safeRequest('获取角色列表', '/api/system/role/list', { pageSize: 100 })
       .then((res: any) => {
         roleList.value = res.data?.list || [];
         persistRoleCache(roleList.value);
@@ -754,7 +767,7 @@
       .catch(() => {
         Message.warning('获取角色列表失败，2秒后将自动重试');
         window.setTimeout(() => {
-          safeRequest('重试获取角色列表', '/api/role/list', { pageSize: 100 })
+          safeRequest('重试获取角色列表', '/api/system/role/list', { pageSize: 100 })
             .then((res: any) => {
               roleList.value = res.data?.list || [];
               persistRoleCache(roleList.value);
