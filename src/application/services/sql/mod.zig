@@ -4,6 +4,7 @@
 //! - 安全的参数绑定（防SQL注入）
 //! - Laravel 风格的 Eloquent 模型
 //! - 链式查询构建器
+//! - 关系预加载（解决 N+1 查询）
 //! - 事务支持
 //! - 软删除
 //! - 时间戳自动管理
@@ -44,6 +45,7 @@ pub const driver = @import("driver.zig");
 pub const orm = @import("orm.zig");
 pub const interface = @import("interface.zig");
 pub const sql_errors = @import("sql_errors.zig");
+pub const relations = @import("relations.zig");
 
 // 重导出常用类型
 pub const Config = core.Config;
@@ -62,6 +64,10 @@ pub const Model = eloquent.Model;
 pub const QueryBuilder = eloquent.QueryBuilder;
 pub const Op = eloquent.Op;
 pub const ModelOptions = eloquent.ModelOptions;
+
+// 关系预加载
+pub const RelationType = relations.RelationType;
+pub const Relation = relations.Relation;
 
 // 驱动接口（统一抽象）
 pub const Driver = interface.Driver;

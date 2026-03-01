@@ -2501,6 +2501,9 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 /// 模型查询构建器
 pub fn ModelQuery(comptime T: type) type {
     const OrmQueryResult = QueryResult(T);
+    const relations_mod = @import("relations.zig");
+    const EagerLoader = relations_mod.EagerLoader(T);
+    
     return struct {
         const Self = @This();
 
@@ -2516,6 +2519,7 @@ pub fn ModelQuery(comptime T: type) type {
         offset_val: ?u64 = null,
         distinct_flag: bool = false,
         bind_params: std.ArrayListUnmanaged(query_mod.Value), // 参数绑定
+        eager_loader: EagerLoader, // 关系预加载器
 
         pub fn init(db: *Database, table: []const u8) Self {
             return Self{
@@ -2527,6 +2531,7 @@ pub fn ModelQuery(comptime T: type) type {
                 .group_fields = .{},
                 .join_clauses = .{},
                 .bind_params = .{},
+                .eager_loader = EagerLoader.init(db.allocator),
             };
         }
 
@@ -2566,6 +2571,25 @@ pub fn ModelQuery(comptime T: type) type {
             // select_fields 和 group_fields 存储的是外部引用（通常是编译时常量），不需要释放
             self.select_fields.deinit(self.db.allocator);
             self.group_fields.deinit(self.db.allocator);
+            
+            // 释放预加载器
+            self.eager_loader.deinit();
+        }
+        
+        /// 预加载关系（解决 N+1 查询）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        /// _ = q.with(&.{"menus", "permissions"});
+        /// const roles = try q.get();
+        /// ```
+        pub fn with(self: *Self, relations: []const []const u8) *Self {
+            for (relations) |rel| {
+                self.eager_loader.add(rel) catch {};
+            }
+            return self;
         }
 
         /// SELECT 字段
@@ -3478,7 +3502,16 @@ pub fn ModelQuery(comptime T: type) type {
             var result = try self.db.rawQuery(sql, .{});
             defer result.deinit();
 
-            return self.mapResults(&result);
+            const models = try self.mapResults(&result);
+            
+            // 如果有预加载关系，自动加载
+            if (self.eager_loader.relations.count() > 0) {
+                self.eager_loader.load(self.db, models) catch |err| {
+                    logger_mod.err("预加载关系失败: {}", .{err});
+                };
+            }
+            
+            return models;
         }
 
         /// 执行查询（使用 Arena Allocator 自动管理内存）

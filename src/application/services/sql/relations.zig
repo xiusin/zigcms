@@ -45,6 +45,7 @@ pub const RelationType = enum {
 
 /// 关系定义
 pub fn Relation(comptime T: type) type {
+    _ = T; // 标记为已使用
     return struct {
         type: RelationType,
         model: type,
@@ -129,17 +130,112 @@ pub fn EagerLoader(comptime Model: type) type {
             comptime relation_name: []const u8,
             comptime relation: anytype,
         ) !void {
-            _ = self;
-            _ = db;
-            _ = models;
-            _ = relation_name;
-            _ = relation;
+            if (models.len == 0) return;
             
-            // TODO: 实现多对多预加载
+            const RelatedModel = relation.model;
+            const through_table = relation.through orelse return error.MissingThroughTable;
+            const foreign_key = relation.foreign_key;
+            const related_key = relation.related_key orelse return error.MissingRelatedKey;
+            const local_key = relation.local_key orelse "id";
+            
             // 1. 收集所有主键 ID
+            var ids = std.ArrayList(i32).init(self.allocator);
+            defer ids.deinit();
+            
+            for (models) |model| {
+                const id_field = @field(model, local_key);
+                if (id_field) |id| {
+                    try ids.append(id);
+                }
+            }
+            
+            if (ids.items.len == 0) return;
+            
             // 2. 批量查询中间表
-            // 3. 批量查询关联模型
-            // 4. 组装数据到模型
+            const pivot_sql = try std.fmt.allocPrint(
+                self.allocator,
+                "SELECT {s}, {s} FROM {s} WHERE {s} IN (",
+                .{ foreign_key, related_key, through_table, foreign_key }
+            );
+            defer self.allocator.free(pivot_sql);
+            
+            var pivot_query = std.ArrayList(u8).init(self.allocator);
+            defer pivot_query.deinit();
+            
+            try pivot_query.appendSlice(pivot_sql);
+            for (ids.items, 0..) |id, i| {
+                if (i > 0) try pivot_query.appendSlice(", ");
+                const id_str = try std.fmt.allocPrint(self.allocator, "{d}", .{id});
+                defer self.allocator.free(id_str);
+                try pivot_query.appendSlice(id_str);
+            }
+            try pivot_query.appendSlice(")");
+            
+            const pivot_result = try db.rawQuery(pivot_query.items, .{});
+            defer db.freeResult(pivot_result);
+            
+            // 3. 收集关联模型 ID
+            var related_ids = std.ArrayList(i32).init(self.allocator);
+            defer related_ids.deinit();
+            
+            var pivot_map = std.AutoHashMap(i32, std.ArrayList(i32)).init(self.allocator);
+            defer {
+                var it = pivot_map.iterator();
+                while (it.next()) |entry| {
+                    entry.value_ptr.deinit();
+                }
+                pivot_map.deinit();
+            }
+            
+            for (pivot_result.rows) |row| {
+                const fk = try row.getInt(foreign_key);
+                const rk = try row.getInt(related_key);
+                
+                try related_ids.append(rk);
+                
+                var entry = try pivot_map.getOrPut(fk);
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = std.ArrayList(i32).init(self.allocator);
+                }
+                try entry.value_ptr.append(rk);
+            }
+            
+            if (related_ids.items.len == 0) return;
+            
+            // 4. 批量查询关联模型
+            const OrmRelated = @import("orm.zig").defineWithConfig(RelatedModel, .{});
+            var related_q = OrmRelated.query(db);
+            defer related_q.deinit();
+            
+            _ = related_q.whereIn("id", related_ids.items);
+            const related_models = try related_q.get();
+            
+            // 5. 构建关联模型映射
+            var related_map = std.AutoHashMap(i32, RelatedModel).init(self.allocator);
+            defer related_map.deinit();
+            
+            for (related_models) |rm| {
+                const rm_id = @field(rm, "id") orelse continue;
+                try related_map.put(rm_id, rm);
+            }
+            
+            // 6. 组装数据到模型
+            for (models) |*model| {
+                const model_id = @field(model.*, local_key) orelse continue;
+                
+                if (pivot_map.get(model_id)) |rids| {
+                    var related_list = std.ArrayList(RelatedModel).init(self.allocator);
+                    
+                    for (rids.items) |rid| {
+                        if (related_map.get(rid)) |rm| {
+                            try related_list.append(rm);
+                        }
+                    }
+                    
+                    const related_slice = try related_list.toOwnedSlice();
+                    @field(model.*, relation_name) = related_slice;
+                }
+            }
         }
         
         /// 加载一对多关系
@@ -150,13 +246,62 @@ pub fn EagerLoader(comptime Model: type) type {
             comptime relation_name: []const u8,
             comptime relation: anytype,
         ) !void {
-            _ = self;
-            _ = db;
-            _ = models;
-            _ = relation_name;
-            _ = relation;
+            if (models.len == 0) return;
             
-            // TODO: 实现一对多预加载
+            const RelatedModel = relation.model;
+            const foreign_key = relation.foreign_key;
+            const local_key = relation.local_key orelse "id";
+            
+            // 1. 收集所有主键 ID
+            var ids = std.ArrayList(i32).init(self.allocator);
+            defer ids.deinit();
+            
+            for (models) |model| {
+                const id_field = @field(model, local_key);
+                if (id_field) |id| {
+                    try ids.append(id);
+                }
+            }
+            
+            if (ids.items.len == 0) return;
+            
+            // 2. 批量查询关联模型
+            const OrmRelated = @import("orm.zig").defineWithConfig(RelatedModel, .{});
+            var related_q = OrmRelated.query(db);
+            defer related_q.deinit();
+            
+            _ = related_q.whereIn(foreign_key, ids.items);
+            const related_models = try related_q.get();
+            
+            // 3. 按外键分组
+            var grouped = std.AutoHashMap(i32, std.ArrayList(RelatedModel)).init(self.allocator);
+            defer {
+                var it = grouped.iterator();
+                while (it.next()) |entry| {
+                    entry.value_ptr.deinit();
+                }
+                grouped.deinit();
+            }
+            
+            for (related_models) |rm| {
+                const fk = @field(rm, foreign_key) orelse continue;
+                
+                var entry = try grouped.getOrPut(fk);
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = std.ArrayList(RelatedModel).init(self.allocator);
+                }
+                try entry.value_ptr.append(rm);
+            }
+            
+            // 4. 组装数据到模型
+            for (models) |*model| {
+                const model_id = @field(model.*, local_key) orelse continue;
+                
+                if (grouped.get(model_id)) |list| {
+                    const slice = try list.toOwnedSlice();
+                    @field(model.*, relation_name) = slice;
+                }
+            }
         }
         
         /// 加载一对一关系
@@ -167,13 +312,50 @@ pub fn EagerLoader(comptime Model: type) type {
             comptime relation_name: []const u8,
             comptime relation: anytype,
         ) !void {
-            _ = self;
-            _ = db;
-            _ = models;
-            _ = relation_name;
-            _ = relation;
+            if (models.len == 0) return;
             
-            // TODO: 实现一对一预加载
+            const RelatedModel = relation.model;
+            const foreign_key = relation.foreign_key;
+            const local_key = relation.local_key orelse "id";
+            
+            // 1. 收集所有主键 ID
+            var ids = std.ArrayList(i32).init(self.allocator);
+            defer ids.deinit();
+            
+            for (models) |model| {
+                const id_field = @field(model, local_key);
+                if (id_field) |id| {
+                    try ids.append(id);
+                }
+            }
+            
+            if (ids.items.len == 0) return;
+            
+            // 2. 批量查询关联模型
+            const OrmRelated = @import("orm.zig").defineWithConfig(RelatedModel, .{});
+            var related_q = OrmRelated.query(db);
+            defer related_q.deinit();
+            
+            _ = related_q.whereIn(foreign_key, ids.items);
+            const related_models = try related_q.get();
+            
+            // 3. 构建映射
+            var related_map = std.AutoHashMap(i32, RelatedModel).init(self.allocator);
+            defer related_map.deinit();
+            
+            for (related_models) |rm| {
+                const fk = @field(rm, foreign_key) orelse continue;
+                try related_map.put(fk, rm);
+            }
+            
+            // 4. 组装数据到模型
+            for (models) |*model| {
+                const model_id = @field(model.*, local_key) orelse continue;
+                
+                if (related_map.get(model_id)) |rm| {
+                    @field(model.*, relation_name) = rm;
+                }
+            }
         }
         
         /// 加载属于关系
@@ -184,13 +366,50 @@ pub fn EagerLoader(comptime Model: type) type {
             comptime relation_name: []const u8,
             comptime relation: anytype,
         ) !void {
-            _ = self;
-            _ = db;
-            _ = models;
-            _ = relation_name;
-            _ = relation;
+            if (models.len == 0) return;
             
-            // TODO: 实现属于关系预加载
+            const RelatedModel = relation.model;
+            const foreign_key = relation.foreign_key;
+            const owner_key = relation.local_key orelse "id";
+            
+            // 1. 收集所有外键 ID
+            var ids = std.ArrayList(i32).init(self.allocator);
+            defer ids.deinit();
+            
+            for (models) |model| {
+                const fk_field = @field(model, foreign_key);
+                if (fk_field) |fk| {
+                    try ids.append(fk);
+                }
+            }
+            
+            if (ids.items.len == 0) return;
+            
+            // 2. 批量查询关联模型
+            const OrmRelated = @import("orm.zig").defineWithConfig(RelatedModel, .{});
+            var related_q = OrmRelated.query(db);
+            defer related_q.deinit();
+            
+            _ = related_q.whereIn(owner_key, ids.items);
+            const related_models = try related_q.get();
+            
+            // 3. 构建映射
+            var related_map = std.AutoHashMap(i32, RelatedModel).init(self.allocator);
+            defer related_map.deinit();
+            
+            for (related_models) |rm| {
+                const id = @field(rm, owner_key) orelse continue;
+                try related_map.put(id, rm);
+            }
+            
+            // 4. 组装数据到模型
+            for (models) |*model| {
+                const fk = @field(model.*, foreign_key) orelse continue;
+                
+                if (related_map.get(fk)) |rm| {
+                    @field(model.*, relation_name) = rm;
+                }
+            }
         }
     };
 }
