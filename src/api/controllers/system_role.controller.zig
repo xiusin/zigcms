@@ -216,8 +216,23 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     base.send_ok(req, saved_role);
 }
 
+/// 带权限信息的角色响应结构
+const RoleWithPermissions = struct {
+    id: ?i32,
+    role_name: []const u8,
+    role_key: []const u8,
+    sort: i32,
+    status: i32,
+    remark: []const u8,
+    data_scope: i32,
+    created_at: ?i64,
+    updated_at: ?i64,
+    menu_count: usize,
+    menu_ids: []const i32,
+};
+
 /// 角色列表查询（增强版：包含权限信息）
-fn listImpl(_: *Self, req: zap.Request) !void {
+fn listImpl(self: *Self, req: zap.Request) !void {
     // 解析分页参数
     req.parseQuery();
     const page = if (req.getParamSlice("page")) |p| std.fmt.parseInt(u32, p, 10) catch 1 else 1;
@@ -235,9 +250,43 @@ fn listImpl(_: *Self, req: zap.Request) !void {
     
     const total = OrmSysRole.Count() catch 0;
     
-    // 为每个角色添加 menu_ids 字段（通过 JSON 序列化时自动包含）
-    // 前端可以通过 menu_ids.length 显示菜单数量
-    base.send_layui_table_response(req, roles, total, .{});
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
+    // 构建带权限信息的角色列表
+    var roles_with_perms = try arena_alloc.alloc(RoleWithPermissions, roles.len);
+    
+    for (roles, 0..) |role, i| {
+        // 查询该角色的菜单权限
+        var menu_q = OrmRoleMenu.WhereEq("role_id", role.id orelse 0);
+        defer menu_q.deinit();
+        const menus = menu_q.get() catch &[_]models.SysRoleMenu{};
+        defer if (menus.len > 0) OrmRoleMenu.freeModels(@constCast(menus));
+        
+        // 收集 menu_ids
+        var menu_ids = try arena_alloc.alloc(i32, menus.len);
+        for (menus, 0..) |m, j| {
+            menu_ids[j] = m.menu_id;
+        }
+        
+        roles_with_perms[i] = .{
+            .id = role.id,
+            .role_name = role.role_name,
+            .role_key = role.role_key,
+            .sort = role.sort,
+            .status = role.status,
+            .remark = role.remark,
+            .data_scope = role.data_scope,
+            .created_at = role.created_at,
+            .updated_at = role.updated_at,
+            .menu_count = menus.len,
+            .menu_ids = menu_ids,
+        };
+    }
+    
+    base.send_layui_table_response(req, roles_with_perms, total, .{});
 }
 
 /// 查询角色已分配的菜单 ID 列表。
