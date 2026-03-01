@@ -193,7 +193,12 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     std.debug.print("=== 角色保存完成 ===\n\n", .{});
 
     bumpRoleCacheVersion(self.allocator);
-    base.send_ok(req, .{ .id = role_id });
+    
+    // 重新查询角色信息返回
+    const saved_role = (OrmSysRole.Find(role_id) catch null) orelse {
+        return base.send_ok(req, .{ .id = role_id });
+    };
+    base.send_ok(req, saved_role);
 }
 
 /// 查询角色已分配的菜单 ID 列表。
