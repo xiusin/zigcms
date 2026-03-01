@@ -50,6 +50,7 @@ const interface = @import("interface.zig");
 const query_mod = @import("query.zig");
 const soft_deletes = @import("soft_deletes.zig");
 const query_scopes = @import("query_scopes.zig");
+const model_events = @import("model_events.zig");
 const logger_mod = @import("../logger/logger.zig");
 const ParamBuilder = @import("param_builder.zig").ParamBuilder;
 const sql_errors = @import("sql_errors.zig");
@@ -1951,21 +1952,30 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
             _ = try db.exec(sql, .{});
             const id = db.lastInsertId();
+            
+            var result: T = undefined;
             if (id > 0) {
-                return (try find(db, id)) orelse error.CreateFailed;
+                result = (try find(db, id)) orelse return error.CreateFailed;
+            } else {
+                var q = query(db);
+                defer q.deinit();
+                _ = q.orderBy(primaryKey(), .desc);
+                _ = q.limit(1);
+                const rows = try q.get();
+                defer freeModels(rows);
+                if (rows.len > 0) {
+                    result = rows[0];
+                } else {
+                    return error.CreateFailed;
+                }
             }
-
-            var q = query(db);
-            defer q.deinit();
-            _ = q.orderBy(primaryKey(), .desc);
-            _ = q.limit(1);
-            const rows = try q.get();
-            defer freeModels(rows);
-            if (rows.len > 0) {
-                return rows[0];
+            
+            // 触发 created 事件
+            if (comptime model_events.hasEvent(T, .created)) {
+                try model_events.fireEvent(T, .created, &result);
             }
-
-            return error.CreateFailed;
+            
+            return result;
         }
 
         /// 批量插入记录（单条 SQL，性能提升 10-100 倍）
