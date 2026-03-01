@@ -12,9 +12,12 @@ interface MockConfig {
 
 export function viteMockPlugin(config: MockConfig = {}): Plugin {
   const { enable = true, timeout = 300 } = config;
-  // 放行代理
+  // 更精确地指定需要代理的路径，避免拦截菜单等接口
+  // 只有登录认证相关的接口才走真实后端
   const passthroughPrefixes = [
-    '/api/system/',
+    '/api/system/auth/',      // 登录认证
+    '/api/system/user/info',  // 用户信息刷新
+    '/api/system/captcha',    // 验证码
   ];
 
   return {

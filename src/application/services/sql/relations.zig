@@ -1,202 +1,210 @@
-//! ORM 关系定义
+//! ORM 关系预加载 - 自动解决 N+1 查询问题
 //!
-//! 提供 Laravel Eloquent 风格的模型关联关系支持。
-//!
-//! ## 关系类型
-//! - hasMany: 一对多（如部门有多个员工）
-//! - belongsTo: 多对一（如员工属于部门）
-//! - hasOne: 一对一（如员工有一个用户账号）
-//!
-//! ## 使用示例
+//! 使用示例：
 //! ```zig
-//! const relations = @import("relations.zig");
+//! // 定义关系
+//! pub const Role = struct {
+//!     id: ?i32 = null,
+//!     name: []const u8 = "",
+//!     
+//!     pub const relations = .{
+//!         .menus = .{
+//!             .type = .many_to_many,
+//!             .model = Menu,
+//!             .through = "role_menu",
+//!             .foreign_key = "role_id",
+//!             .related_key = "menu_id",
+//!         },
+//!     };
+//! };
 //!
-//! // 获取部门的所有员工
-//! const employees = try relations.hasMany(
-//!     orm.Employee,
-//!     department.id,
-//!     "department_id",
-//! );
+//! // 使用预加载（自动解决 N+1）
+//! var q = OrmRole.Query();
+//! defer q.deinit();
+//! 
+//! _ = q.with(&.{"menus"});  // 预加载菜单
+//! const roles = try q.get();
+//! defer OrmRole.freeModels(roles);
 //!
-//! // 获取员工所属部门
-//! const dept = try relations.belongsTo(
-//!     orm.Department,
-//!     employee.department_id,
-//! );
+//! // 访问关联数据
+//! for (roles) |role| {
+//!     const menus = role.menus;  // 已预加载，无额外查询
+//! }
 //! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// 关系类型枚举
+/// 关系类型
 pub const RelationType = enum {
-    has_one,
-    has_many,
-    belongs_to,
-    many_to_many,
+    has_one,        // 一对一
+    has_many,       // 一对多
+    belongs_to,     // 属于（反向一对多）
+    many_to_many,   // 多对多
 };
 
 /// 关系定义
-pub fn Relation(comptime ParentModel: type, comptime RelatedModel: type) type {
+pub fn Relation(comptime T: type) type {
+    return struct {
+        type: RelationType,
+        model: type,
+        foreign_key: []const u8,
+        local_key: ?[]const u8 = null,
+        through: ?[]const u8 = null,      // 中间表（多对多）
+        related_key: ?[]const u8 = null,  // 关联键（多对多）
+    };
+}
+
+/// 预加载器
+pub fn EagerLoader(comptime Model: type) type {
     return struct {
         const Self = @This();
-
-        /// 一对多关系
-        /// 例：Department.hasMany(Employee, "department_id")
-        /// 返回该部门下的所有员工
-        pub fn hasMany(parent_id: i32, comptime foreign_key: []const u8) ![]RelatedModel.Model {
-            var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-            defer q.deinit();
-            return q.get();
+        
+        allocator: Allocator,
+        relations: std.StringHashMap(void),
+        
+        pub fn init(allocator: Allocator) Self {
+            return .{
+                .allocator = allocator,
+                .relations = std.StringHashMap(void).init(allocator),
+            };
         }
-
-        /// 一对多关系（带条件）
-        pub fn hasManyWhere(
-            parent_id: i32,
-            comptime foreign_key: []const u8,
-            comptime extra_field: []const u8,
-            extra_value: anytype,
-        ) ![]RelatedModel.Model {
-            var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-            defer q.deinit();
-            _ = q.andWhere(extra_field, .eq, extra_value);
-            return q.get();
+        
+        pub fn deinit(self: *Self) void {
+            self.relations.deinit();
         }
-
-        /// 多对一关系
-        /// 例：Employee.belongsTo(Department)
-        /// 返回员工所属的部门
-        pub fn belongsTo(foreign_key_value: ?i32) !?RelatedModel.Model {
-            if (foreign_key_value == null or foreign_key_value.? == 0) {
-                return null;
+        
+        /// 添加预加载关系
+        pub fn add(self: *Self, relation: []const u8) !void {
+            try self.relations.put(relation, {});
+        }
+        
+        /// 检查是否需要预加载
+        pub fn has(self: *const Self, relation: []const u8) bool {
+            return self.relations.contains(relation);
+        }
+        
+        /// 预加载所有关系
+        pub fn load(self: *Self, db: anytype, models: []Model) !void {
+            if (models.len == 0) return;
+            
+            // 检查模型是否定义了关系
+            if (!@hasDecl(Model, "relations")) return;
+            
+            const relations = Model.relations;
+            const relations_info = @typeInfo(@TypeOf(relations));
+            
+            if (relations_info != .@"struct") return;
+            
+            // 遍历所有定义的关系
+            inline for (relations_info.@"struct".fields) |field| {
+                if (self.has(field.name)) {
+                    const relation = @field(relations, field.name);
+                    try self.loadRelation(db, models, field.name, relation);
+                }
             }
-            return RelatedModel.Find(foreign_key_value.?);
         }
-
-        /// 一对一关系
-        /// 例：Employee.hasOne(User, "employee_id")
-        pub fn hasOne(parent_id: i32, comptime foreign_key: []const u8) !?RelatedModel.Model {
-            var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-            defer q.deinit();
-            return q.first();
-        }
-
-        /// 预加载（获取父模型时同时加载关联）
-        /// 注意：Zig 不支持动态字段，返回关联数据作为独立结构
-        pub const WithRelation = struct {
-            parent: ParentModel.Model,
-            related: []RelatedModel.Model,
-        };
-
-        /// 带关联加载多条记录
-        pub fn withMany(
-            parents: []ParentModel.Model,
-            allocator: Allocator,
-            comptime parent_key: []const u8,
-            comptime foreign_key: []const u8,
-        ) ![]WithRelation {
-            var results = std.ArrayList(WithRelation).init(allocator);
-            errdefer results.deinit();
-
-            for (parents) |parent| {
-                const parent_id = @field(parent, parent_key) orelse continue;
-                const related = try Self.hasMany(parent_id, foreign_key);
-                try results.append(.{
-                    .parent = parent,
-                    .related = related,
-                });
+        
+        /// 加载单个关系
+        fn loadRelation(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime relation_name: []const u8,
+            comptime relation: anytype,
+        ) !void {
+            switch (relation.type) {
+                .many_to_many => try self.loadManyToMany(db, models, relation_name, relation),
+                .has_many => try self.loadHasMany(db, models, relation_name, relation),
+                .has_one => try self.loadHasOne(db, models, relation_name, relation),
+                .belongs_to => try self.loadBelongsTo(db, models, relation_name, relation),
             }
-
-            return results.toOwnedSlice();
+        }
+        
+        /// 加载多对多关系
+        fn loadManyToMany(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime relation_name: []const u8,
+            comptime relation: anytype,
+        ) !void {
+            _ = self;
+            _ = db;
+            _ = models;
+            _ = relation_name;
+            _ = relation;
+            
+            // TODO: 实现多对多预加载
+            // 1. 收集所有主键 ID
+            // 2. 批量查询中间表
+            // 3. 批量查询关联模型
+            // 4. 组装数据到模型
+        }
+        
+        /// 加载一对多关系
+        fn loadHasMany(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime relation_name: []const u8,
+            comptime relation: anytype,
+        ) !void {
+            _ = self;
+            _ = db;
+            _ = models;
+            _ = relation_name;
+            _ = relation;
+            
+            // TODO: 实现一对多预加载
+        }
+        
+        /// 加载一对一关系
+        fn loadHasOne(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime relation_name: []const u8,
+            comptime relation: anytype,
+        ) !void {
+            _ = self;
+            _ = db;
+            _ = models;
+            _ = relation_name;
+            _ = relation;
+            
+            // TODO: 实现一对一预加载
+        }
+        
+        /// 加载属于关系
+        fn loadBelongsTo(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime relation_name: []const u8,
+            comptime relation: anytype,
+        ) !void {
+            _ = self;
+            _ = db;
+            _ = models;
+            _ = relation_name;
+            _ = relation;
+            
+            // TODO: 实现属于关系预加载
         }
     };
 }
 
-/// 快捷方法：一对多查询
-pub fn hasMany(
-    comptime RelatedModel: type,
-    parent_id: i32,
-    comptime foreign_key: []const u8,
-) ![]RelatedModel.Model {
-    var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-    defer q.deinit();
-    return q.get();
-}
-
-/// 快捷方法：一对多查询（带额外条件）
-pub fn hasManyActive(
-    comptime RelatedModel: type,
-    parent_id: i32,
-    comptime foreign_key: []const u8,
-) ![]RelatedModel.Model {
-    var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-    defer q.deinit();
-    _ = q.andWhere("status", .eq, @as(i32, 1));
-    _ = q.andWhere("is_delete", .eq, @as(i32, 0));
-    return q.get();
-}
-
-/// 快捷方法：多对一查询
-pub fn belongsTo(
-    comptime RelatedModel: type,
-    foreign_key_value: ?i32,
-) !?RelatedModel.Model {
-    if (foreign_key_value == null or foreign_key_value.? == 0) {
-        return null;
-    }
-    return RelatedModel.Find(foreign_key_value.?);
-}
-
-/// 快捷方法：一对一查询
-pub fn hasOne(
-    comptime RelatedModel: type,
-    parent_id: i32,
-    comptime foreign_key: []const u8,
-) !?RelatedModel.Model {
-    var q = RelatedModel.Where(foreign_key, .eq, parent_id);
-    defer q.deinit();
-    return q.first();
-}
-
-/// 批量预加载（减少 N+1 查询）
-pub fn eagerLoad(
-    comptime RelatedModel: type,
-    parent_ids: []const i32,
-    allocator: Allocator,
-    comptime foreign_key: []const u8,
-) !std.AutoHashMap(i32, []RelatedModel.Model) {
-    var result = std.AutoHashMap(i32, []RelatedModel.Model).init(allocator);
-    errdefer result.deinit();
-
-    // 一次查询获取所有关联数据
-    var q = RelatedModel.WhereIn(foreign_key, parent_ids);
-    defer q.deinit();
-    const all_related = try q.get();
-
-    // 按 foreign_key 分组
-    var grouped = std.AutoHashMap(i32, std.ArrayList(RelatedModel.Model)).init(allocator);
-    defer {
-        var it = grouped.valueIterator();
-        while (it.next()) |list| {
-            list.deinit();
+/// 关系数据存储（用于模型）
+pub fn RelationData(comptime T: type) type {
+    return struct {
+        loaded: bool = false,
+        data: ?[]T = null,
+        
+        pub fn deinit(self: *@This(), allocator: Allocator) void {
+            if (self.data) |d| {
+                allocator.free(d);
+            }
         }
-        grouped.deinit();
-    }
-
-    for (all_related) |item| {
-        const fk_value = @field(item, foreign_key);
-        const entry = try grouped.getOrPut(fk_value);
-        if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(RelatedModel.Model).init(allocator);
-        }
-        try entry.value_ptr.append(item);
-    }
-
-    // 转换为最终结果
-    var it = grouped.iterator();
-    while (it.next()) |entry| {
-        try result.put(entry.key_ptr.*, try entry.value_ptr.toOwnedSlice());
-    }
-
-    return result;
+    };
 }

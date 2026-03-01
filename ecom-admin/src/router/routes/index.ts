@@ -6,10 +6,12 @@ import cms from './modules/cms';
 import exception from './modules/exception';
 import feedback from './modules/feedback';
 import leader from './modules/leader';
+import oauth from './modules/oauth';
 import purchase from './modules/purchase';
 import report from './modules/report';
 import stock from './modules/stock';
 import system from './modules/system';
+import autoTest from './modules/auto-test';
 
 const allModules = [
   business,
@@ -17,10 +19,12 @@ const allModules = [
   exception,
   feedback,
   leader,
+  oauth,
   purchase,
   report,
   stock,
   system,
+  autoTest,
 ];
 
 const externalModules = import.meta.glob('./externalModules/*.ts', {
