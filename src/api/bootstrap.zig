@@ -81,8 +81,9 @@ pub const Bootstrap = struct {
         // Phase 1: 组织/职位/角色（管理员由 system_ext.Admin 接管完整接口）
         try registerCrudWithAlias(self.app, "system/dept", models.SysDept);
         try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
-        try registerCrudWithAlias(self.app, "system/role", models.SysRole);
-        self.crud_count += 3;
+        // 注意：sys_role 使用自定义控制器处理菜单权限关联，不使用通用 CRUD
+        // try registerCrudWithAlias(self.app, "system/role", models.SysRole);
+        self.crud_count += 2;  // 原来是 3，现在是 2
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
@@ -366,6 +367,10 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
         try registerWithAlias(self.app, "/system/role/permissions/info", role, &controllers.system_ext.Role.role_permissions_info);
         try registerWithAlias(self.app, "/system/role/delete", role, &controllers.system_ext.Role.delete);
+
+        // 角色列表使用通用 CRUD（只注册 list 相关路由）
+        try self.app.crud("system/role", models.SysRole);
+        try self.app.crud("api/system/role", models.SysRole);
 
         try registerWithAlias(self.app, "/system/config/refresh-cache", config_ctrl, &controllers.system_ext.Config.refresh_cache);
         try registerWithAlias(self.app, "/system/config/export", config_ctrl, &controllers.system_ext.Config.config_export);
