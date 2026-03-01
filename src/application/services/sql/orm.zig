@@ -2756,6 +2756,40 @@ pub fn ModelQuery(comptime T: type) type {
             return self;
         }
 
+        /// 统计关联数量（不加载关联数据）
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        /// _ = q.withCount(&.{"menus", "users"});
+        /// const roles = try q.get();
+        /// 
+        /// // 访问计数（需要在模型中添加对应字段）
+        /// for (roles) |role| {
+        ///     std.debug.print("菜单数: {d}, 用户数: {d}\n", 
+        ///         .{role.menus_count, role.users_count});
+        /// }
+        /// ```
+        /// 
+        /// 注意：需要在模型中添加 {relation}_count 字段
+        pub fn withCount(self: *Self, relations: []const []const u8) *Self {
+            // 为每个关系添加 COUNT 子查询到 SELECT
+            for (relations) |rel| {
+                // 构建子查询：(SELECT COUNT(*) FROM related_table WHERE ...)
+                const subquery = std.fmt.allocPrint(
+                    self.db.allocator,
+                    "(SELECT COUNT(*) FROM {s} WHERE {s}_id = {s}.id) as {s}_count",
+                    .{ rel, self.table, self.table, rel }
+                ) catch continue;
+                
+                self.select_fields.append(self.db.allocator, subquery) catch {
+                    self.db.allocator.free(subquery);
+                };
+            }
+            return self;
+        }
+
         /// 包含已软删除的记录
         /// 
         /// 使用示例：
