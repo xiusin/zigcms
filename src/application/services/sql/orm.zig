@@ -3030,7 +3030,14 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE IN (子查询 - SQL 字符串)
-        /// 使用: .whereInSub("user_id", "SELECT id FROM admins WHERE active = 1")
+        /// 
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmOrder.Query();
+        /// defer q.deinit();
+        /// _ = q.whereInSub("user_id", "SELECT id FROM users WHERE active = 1");
+        /// const orders = try q.get();
+        /// ```
         pub fn whereInSub(self: *Self, field: []const u8, subquery_sql: []const u8) *Self {
             const clause = std.fmt.allocPrint(self.db.allocator, "{s} IN ({s})", .{ field, subquery_sql }) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
@@ -3038,16 +3045,6 @@ pub fn ModelQuery(comptime T: type) type {
             };
             return self;
         }
-
-        /// WHERE IN (子查询 - QueryBuilder)
-        /// 使用:
-        /// ```zig
-        /// var subquery = User.query(db);
-        /// defer subquery.deinit();
-        /// _ = subquery.select(&.{"id"}).whereEq("active", 1);
-        ///
-        /// var main = Order.query(db);
-        /// defer main.deinit();
         /// _ = main.whereInQuery("user_id", &subquery);
         /// ```
         pub fn whereInQuery(self: *Self, field: []const u8, subquery: anytype) *Self {
