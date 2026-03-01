@@ -3842,24 +3842,33 @@ pub fn ModelQuery(comptime T: type) type {
             try sql.appendSlice(allocator, field);
             try sql.appendSlice(allocator, " IN (");
 
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+            
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereIn requires array or slice"),
+            };
+
             for (values, 0..) |v, i| {
                 if (i > 0) try sql.appendSlice(allocator, ", ");
 
-                const V = @TypeOf(v);
-                // 编译时类型检查
-                if (V == []const u8 or V == []u8) {
+                // 根据元素类型处理
+                if (ElemType == []const u8 or ElemType == []u8) {
                     // 字符串类型：转义单引号防止 SQL 注入
                     try sql.append(allocator, '\'');
                     for (v) |c| {
                         if (c == '\'') {
-                            try sql.appendSlice(allocator, "''"); // SQL 标准转义
+                            try sql.appendSlice(allocator, "''");
                         } else {
                             try sql.append(allocator, c);
                         }
                     }
                     try sql.append(allocator, '\'');
                 } else {
-                    // 数值类型：直接格式化（编译时保证类型安全）
+                    // 数值类型：直接格式化
                     var buf: [32]u8 = undefined;
                     const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
                     try sql.appendSlice(allocator, str);
@@ -3877,24 +3886,33 @@ pub fn ModelQuery(comptime T: type) type {
             try sql.appendSlice(allocator, field);
             try sql.appendSlice(allocator, " NOT IN (");
 
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+            
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereNotIn requires array or slice"),
+            };
+
             for (values, 0..) |v, i| {
                 if (i > 0) try sql.appendSlice(allocator, ", ");
 
-                const V = @TypeOf(v);
-                // 编译时类型检查
-                if (V == []const u8 or V == []u8) {
+                // 根据元素类型处理
+                if (ElemType == []const u8 or ElemType == []u8) {
                     // 字符串类型：转义单引号防止 SQL 注入
                     try sql.append(allocator, '\'');
                     for (v) |c| {
                         if (c == '\'') {
-                            try sql.appendSlice(allocator, "''"); // SQL 标准转义
+                            try sql.appendSlice(allocator, "''");
                         } else {
                             try sql.append(allocator, c);
                         }
                     }
                     try sql.append(allocator, '\'');
                 } else {
-                    // 数值类型：直接格式化（编译时保证类型安全）
+                    // 数值类型：直接格式化
                     var buf: [32]u8 = undefined;
                     const str = std.fmt.bufPrint(&buf, "{d}", .{v}) catch unreachable;
                     try sql.appendSlice(allocator, str);
