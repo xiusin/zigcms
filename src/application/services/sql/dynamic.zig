@@ -337,8 +337,29 @@ pub const DynamicCrud = struct {
         self.allowed_tables = tables;
     }
 
+    /// 验证表名是否安全（只允许字母、数字、下划线）
+    fn validateTableName(table_name: []const u8) !void {
+        if (table_name.len == 0) return error.EmptyTableName;
+        if (table_name.len > 64) return error.TableNameTooLong;
+        
+        // 只允许字母、数字、下划线
+        for (table_name) |c| {
+            if (!std.ascii.isAlphanumeric(c) and c != '_') {
+                return error.InvalidTableName;
+            }
+        }
+        
+        // 不能以数字开头
+        if (std.ascii.isDigit(table_name[0])) {
+            return error.InvalidTableName;
+        }
+    }
+    
     /// 检查表名是否允许
     pub fn isTableAllowed(self: *const DynamicCrud, table_name: []const u8) bool {
+        // 先验证表名格式
+        validateTableName(table_name) catch return false;
+        
         if (self.allowed_tables) |tables| {
             for (tables) |allowed| {
                 if (std.mem.eql(u8, allowed, table_name)) return true;
@@ -350,7 +371,7 @@ pub const DynamicCrud = struct {
 
     /// 发现表结构 (MySQL)
     pub fn discoverSchema(self: *DynamicCrud, table_name: []const u8) !TableSchema {
-        // 检查白名单
+        // 检查白名单（包含格式验证）
         if (!self.isTableAllowed(table_name)) {
             return error.TableNotAllowed;
         }
@@ -360,7 +381,8 @@ pub const DynamicCrud = struct {
             return cached;
         }
 
-        // 查询表结构
+        // 使用参数化查询（虽然表名不能参数化，但已通过严格验证）
+        // 表名已通过 validateTableName 验证，只包含安全字符
         const sql_query = try std.fmt.allocPrint(self.allocator,
             \\SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA, COLUMN_DEFAULT, CHARACTER_MAXIMUM_LENGTH
             \\FROM INFORMATION_SCHEMA.COLUMNS
