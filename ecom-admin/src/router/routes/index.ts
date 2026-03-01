@@ -12,6 +12,7 @@ import report from './modules/report';
 import stock from './modules/stock';
 import system from './modules/system';
 import autoTest from './modules/auto-test';
+import qualityCenter from './modules/quality-center';
 
 const allModules = [
   business,
@@ -25,6 +26,7 @@ const allModules = [
   stock,
   system,
   autoTest,
+  qualityCenter,
 ];
 
 const externalModules = import.meta.glob('./externalModules/*.ts', {

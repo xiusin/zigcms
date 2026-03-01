@@ -8,7 +8,37 @@
     <DashboardSkeleton v-if="isInitialLoading" />
 
     <!-- 主内容 -->
-    <div v-else>
+    <div v-else ref="dashboardContentRef">
+    <!-- 顶部操作栏 -->
+    <div class="dashboard-toolbar">
+      <div class="toolbar-left">
+        <a-space>
+          <icon-shield-check :style="{ fontSize: '20px', color: '#165DFF' }" />
+          <span class="toolbar-title">质量中心</span>
+          <a-tag color="arcoblue" size="small">Dashboard</a-tag>
+        </a-space>
+      </div>
+      <div class="toolbar-right">
+        <a-space>
+          <a-button size="small" @click="handleRefresh" :loading="isRefreshing">
+            <template #icon><icon-refresh /></template>
+            刷新
+          </a-button>
+          <ExportToolbar
+            :dashboard-ref="dashboardContentRef"
+            :module-quality="store.moduleQuality"
+            :overview="store.overview as unknown as Record<string, unknown>"
+            :bug-distribution="store.bugDistribution as unknown as Record<string, unknown>[]"
+            :feedback-distribution="store.feedbackDistribution as unknown as Record<string, unknown>[]"
+          />
+          <a-button size="small" @click="showLayoutConfig = true">
+            <template #icon><icon-settings /></template>
+            自定义布局
+          </a-button>
+        </a-space>
+      </div>
+    </div>
+
     <!-- 顶部统计卡片区域 -->
     <a-row :gutter="16" class="stat-cards">
       <a-col :xs="12" :sm="6" :md="6" :lg="3">
@@ -367,6 +397,12 @@
       v-model:visible="showFeedbackToTaskModal"
       @success="handleFeedbackToTaskSuccess"
     />
+
+    <!-- 布局配置抽屉 -->
+    <LayoutConfig
+      v-model:visible="showLayoutConfig"
+      @save="handleLayoutSave"
+    />
     </div>
   </div>
 </template>
@@ -381,6 +417,9 @@ import QualityTrendChart from '../components/QualityTrendChart.vue';
 import BugDistributionChart from '../components/BugDistributionChart.vue';
 import FeedbackDistributionChart from '../components/FeedbackDistributionChart.vue';
 import DashboardSkeleton from '../components/DashboardSkeleton.vue';
+import ExportToolbar from '../components/ExportToolbar.vue';
+import LayoutConfig from '../components/LayoutConfig.vue';
+import type { DashboardCardConfig } from '../components/LayoutConfig.vue';
 import type { AIQualityInsight } from '@/types/quality-center';
 
 const router = useRouter();
@@ -388,9 +427,12 @@ const store = useQualityCenterStore();
 
 // ========== 状态 ==========
 const isInitialLoading = ref(true);
+const isRefreshing = ref(false);
 const trendPeriod = ref<'week' | 'month' | 'quarter'>('week');
 const activityFilter = ref<string | undefined>(undefined);
 const showFeedbackToTaskModal = ref(false);
+const showLayoutConfig = ref(false);
+const dashboardContentRef = ref<HTMLElement | null>(null);
 
 // ========== 计算属性 ==========
 const passRateColor = computed(() => {
@@ -523,6 +565,27 @@ function handleFeedbackToTaskSuccess() {
   store.fetchActivities({ limit: 10 });
 }
 
+/** 刷新Dashboard数据 */
+async function handleRefresh() {
+  isRefreshing.value = true;
+  try {
+    await store.fetchDashboardAll();
+    Message.success('数据已刷新');
+    console.log('[质量中心][Dashboard刷新][成功]');
+  } catch (error) {
+    console.error('[质量中心][Dashboard刷新][失败]', error);
+    Message.error('刷新失败，请重试');
+  } finally {
+    isRefreshing.value = false;
+  }
+}
+
+/** 布局配置保存回调 */
+function handleLayoutSave(config: { cards: DashboardCardConfig[]; statCards: string[] }) {
+  console.log('[质量中心][布局配置][已保存]', config);
+  Message.success('布局已更新，刷新页面后生效');
+}
+
 // ========== 生命周期 ==========
 onMounted(async () => {
   try {
@@ -544,6 +607,25 @@ onMounted(async () => {
   padding: 16px;
   background: var(--color-bg-1);
   min-height: 100%;
+}
+
+// 顶部操作栏
+.dashboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--color-bg-2);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  .toolbar-left {
+    .toolbar-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-1);
+    }
+  }
 }
 
 .stat-cards {

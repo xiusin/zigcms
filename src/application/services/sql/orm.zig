@@ -4260,6 +4260,16 @@ pub fn ModelQuery(comptime T: type) type {
 
         /// 删除匹配的记录
         pub fn delete(self: *Self) !u64 {
+            // 安全检查：防止无条件删除
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            const should_add_soft_delete = has_soft_deletes and has_deleted_at;
+            
+            if (self.where_clauses.items.len == 0 and !should_add_soft_delete) {
+                std.log.err("[ORM] 拒绝无条件删除操作: DELETE FROM {s} (必须提供 WHERE 条件)", .{self.table});
+                return error.DeleteWithoutCondition;
+            }
+            
             var sql = std.ArrayListUnmanaged(u8){};
             defer sql.deinit(self.db.allocator);
 
@@ -4446,7 +4456,7 @@ pub fn ModelQuery(comptime T: type) type {
             const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
             const should_add_soft_delete = has_soft_deletes and has_deleted_at;
             
-            var has_where = self.where_clauses.items.len > 0;
+            var has_where = false;
             
             // 添加软删除条件
             if (should_add_soft_delete) {
