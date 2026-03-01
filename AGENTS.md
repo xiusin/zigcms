@@ -1649,13 +1649,173 @@ pub const UserService = struct {
 };
 ```
 
+### 案例 4：ORM 关系预加载（推荐）
+
+**场景**：使用关系预加载自动解决 N+1 查询
+
+#### 4.1 定义关系
+
+```zig
+// src/domain/entities/role.model.zig
+pub const Role = struct {
+    id: ?i32 = null,
+    name: []const u8 = "",
+    
+    // 关联数据字段（可选）
+    menus: ?[]Menu = null,
+    permissions: ?[]Permission = null,
+    
+    // 定义关系
+    pub const relations = .{
+        .menus = .{
+            .type = .many_to_many,
+            .model = Menu,
+            .through = "role_menu",
+            .foreign_key = "role_id",
+            .related_key = "menu_id",
+        },
+        .permissions = .{
+            .type = .many_to_many,
+            .model = Permission,
+            .through = "role_permission",
+            .foreign_key = "role_id",
+            .related_key = "permission_id",
+        },
+    };
+};
+```
+
+#### 4.2 使用预加载（推荐）
+
+```zig
+// ✅ 推荐：使用关系预加载
+pub fn list(req: zap.Request) !void {
+    var q = OrmRole.Query();
+    defer q.deinit();
+    
+    // 一行代码解决 N+1 查询
+    _ = q.with(&.{"menus"});
+    
+    const roles = try q.get();
+    defer OrmRole.freeModels(roles);
+    
+    // 关联数据已预加载，无额外查询
+    for (roles) |role| {
+        if (role.menus) |menus| {
+            for (menus) |menu| {
+                std.debug.print("菜单: {s}\n", .{menu.name});
+            }
+        }
+    }
+    
+    try base.send_success(req, roles);
+}
+```
+
+#### 4.3 多关系预加载
+
+```zig
+// ✅ 同时预加载多个关系
+var q = OrmRole.Query();
+defer q.deinit();
+
+_ = q.where("status", "=", 1)
+     .with(&.{ "menus", "permissions" })  // 预加载多个关系
+     .limit(20);
+
+const roles = try q.get();
+defer OrmRole.freeModels(roles);
+
+for (roles) |role| {
+    // 访问菜单（已预加载）
+    if (role.menus) |menus| {
+        std.debug.print("菜单数: {d}\n", .{menus.len});
+    }
+    
+    // 访问权限（已预加载）
+    if (role.permissions) |perms| {
+        std.debug.print("权限数: {d}\n", .{perms.len});
+    }
+}
+```
+
+#### 4.4 关系类型
+
+| 类型 | 场景 | 示例 |
+|------|------|------|
+| `many_to_many` | 多对多 | 角色-菜单、用户-标签 |
+| `has_many` | 一对多 | 用户-文章、分类-产品 |
+| `has_one` | 一对一 | 用户-资料 |
+| `belongs_to` | 属于 | 文章-用户 |
+
+#### 4.5 性能对比
+
+| 方案 | 查询次数 | 性能 |
+|------|----------|------|
+| ❌ N+1 查询 | 1 + 10 + 30 = 41 次 | 慢 |
+| ✅ 手动批量查询 | 1 + 1 + 1 = 3 次 | 快（但代码复杂） |
+| ✅ 关系预加载 | 1 + 1 + 1 = 3 次 | 快（代码简洁） |
+
+**性能提升：93%**
+
+#### 4.6 最佳实践
+
+1. **优先使用关系预加载**：
+   ```zig
+   // ✅ 推荐
+   _ = q.with(&.{"menus"});
+   
+   // ❌ 避免手动批量查询（除非特殊需求）
+   ```
+
+2. **只预加载需要的关系**：
+   ```zig
+   // ✅ 推荐
+   _ = q.with(&.{"menus"});
+   
+   // ❌ 避免预加载所有关系
+   _ = q.with(&.{ "menus", "permissions", "users", "logs" });
+   ```
+
+3. **结合条件查询**：
+   ```zig
+   _ = q.where("status", "=", 1)
+        .with(&.{"menus"})
+        .limit(10);
+   ```
+
+4. **访问前检查 null**：
+   ```zig
+   if (role.menus) |menus| {
+       // 使用 menus
+   }
+   ```
+
+5. **自动内存管理**：
+   ```zig
+   const roles = try q.get();
+   defer OrmRole.freeModels(roles);  // 自动释放关联数据
+   ```
+
+#### 4.7 注意事项
+
+- **关联字段必须是 optional**：`menus: ?[]Menu = null`
+- **不影响写入**：关系定义只在查询时生效
+- **向后兼容**：不使用 `with()` 时保持原有行为
+- **类型安全**：编译时检查关系定义
+- **内存安全**：自动管理关联数据生命周期
+
+**参考文档**：
+- `docs/orm_relations_design.md` - 设计方案
+- `docs/orm_relations_usage.md` - 使用指南
+
 ### 总结
 
 ZigCMS 开发范式强调：
 1. **内存安全**：RAII + Arena + 借用引用
 2. **SQL 安全**：参数化查询 + 注入防护
 3. **架构清晰**：整洁架构 + 依赖倒置
-4. **性能优化**：批量查询 + 缓存策略
+4. **性能优化**：关系预加载 + 批量查询 + 缓存策略
 5. **代码质量**：显式错误处理 + 资源管理
 
 遵循这些范式，可以编写出安全、高效、易维护的 ZigCMS 应用。
