@@ -63,21 +63,47 @@ pub fn EagerLoader(comptime Model: type) type {
         
         allocator: Allocator,
         relations: std.StringHashMap(void),
+        nested_relations: std.StringHashMap(std.ArrayList([]const u8)), // 嵌套关系
         
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
                 .relations = std.StringHashMap(void).init(allocator),
+                .nested_relations = std.StringHashMap(std.ArrayList([]const u8)).init(allocator),
             };
         }
         
         pub fn deinit(self: *Self) void {
+            // 清理嵌套关系
+            var it = self.nested_relations.iterator();
+            while (it.next()) |entry| {
+                entry.value_ptr.deinit(self.allocator);
+            }
+            self.nested_relations.deinit();
             self.relations.deinit();
         }
         
-        /// 添加预加载关系
+        /// 添加预加载关系（支持嵌套：menus.permissions）
         pub fn add(self: *Self, relation: []const u8) !void {
-            try self.relations.put(relation, {});
+            // 检查是否是嵌套关系
+            if (std.mem.indexOf(u8, relation, ".")) |dot_pos| {
+                // 嵌套关系：menus.permissions
+                const parent = relation[0..dot_pos];
+                const child = relation[dot_pos + 1 ..];
+                
+                // 添加父关系
+                try self.relations.put(parent, {});
+                
+                // 添加子关系到嵌套映射
+                var entry = try self.nested_relations.getOrPut(parent);
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = std.ArrayList([]const u8){};
+                }
+                try entry.value_ptr.append(self.allocator, child);
+            } else {
+                // 普通关系
+                try self.relations.put(relation, {});
+            }
         }
         
         /// 检查是否需要预加载
@@ -102,8 +128,71 @@ pub fn EagerLoader(comptime Model: type) type {
                 if (self.has(field.name)) {
                     const relation = @field(relations, field.name);
                     try self.loadRelation(db, models, field.name, relation);
+                    
+                    // 加载嵌套关系
+                    if (self.nested_relations.get(field.name)) |nested| {
+                        try self.loadNestedRelations(db, models, field.name, nested.items);
+                    }
                 }
             }
+        }
+        
+        /// 加载嵌套关系
+        fn loadNestedRelations(
+            self: *Self,
+            db: anytype,
+            models: []Model,
+            comptime parent_name: []const u8,
+            child_relations: []const []const u8,
+        ) !void {
+            // 获取父关系的数据
+            for (models) |model| {
+                const parent_data = @field(model, parent_name);
+                
+                // 检查父数据类型
+                const parent_type = @TypeOf(parent_data);
+                const parent_info = @typeInfo(parent_type);
+                
+                if (parent_info == .optional) {
+                    if (parent_data) |data| {
+                        const data_info = @typeInfo(@TypeOf(data));
+                        if (data_info == .pointer and data_info.pointer.size == .slice) {
+                            // 父数据是切片（一对多/多对多）
+                            const ChildModel = std.meta.Child(@TypeOf(data));
+                            try self.loadNestedForSlice(ChildModel, db, data, child_relations);
+                        } else {
+                            // 父数据是单个对象（一对一）
+                            const ChildModel = @TypeOf(data);
+                            var slice = [_]ChildModel{data};
+                            try self.loadNestedForSlice(ChildModel, db, &slice, child_relations);
+                        }
+                    }
+                }
+            }
+        }
+        
+        /// 为切片数据加载嵌套关系
+        fn loadNestedForSlice(
+            self: *Self,
+            comptime ChildModel: type,
+            db: anytype,
+            children: []ChildModel,
+            child_relations: []const []const u8,
+        ) !void {
+            if (children.len == 0) return;
+            
+            // 为子模型创建 EagerLoader
+            const ChildLoader = EagerLoader(ChildModel);
+            var child_loader = ChildLoader.init(self.allocator);
+            defer child_loader.deinit();
+            
+            // 添加子关系
+            for (child_relations) |rel| {
+                try child_loader.add(rel);
+            }
+            
+            // 加载子关系
+            try child_loader.load(db, children);
         }
         
         /// 加载单个关系
