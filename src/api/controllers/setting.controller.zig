@@ -39,17 +39,25 @@ pub fn init(allocator: Allocator) Self {
 
 /// 获取所有设置
 pub fn get(self: Self, req: zap.Request) !void {
-    // 使用 ORM 获取所有设置
-    const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
-    defer Setting.freeModels(settings_slice);
-
-    var config = std.StringHashMap([]const u8).init(self.allocator);
-    defer config.deinit();
-
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
+    // 使用 getWithArena 自动管理 ORM 内存
+    var q = Setting.Query();
+    defer q.deinit();
+    
+    var result = try q.getWithArena(arena_alloc);
+    const settings_slice = result.items();
+    
+    var config = std.StringHashMap([]const u8).init(arena_alloc);
+    
     for (settings_slice) |item| {
-        config.put(item.key, item.value) catch {};
+        // 字符串已由 Arena 管理，无需手动深拷贝
+        try config.put(item.key, item.value);
     }
-
+    
     return base.send_ok(req, config);
 }
 
@@ -87,18 +95,26 @@ pub fn save(self: Self, req: zap.Request) !void {
 
 /// 获取上传配置
 pub fn get_upload_config(self: Self, req: zap.Request) !void {
-    // 获取所有设置
-    const settings_slice = Setting.All() catch |e| return base.send_error(req, e);
-    defer Setting.freeModels(settings_slice);
-
+    // 使用 Arena 分配器管理所有临时内存
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+    
+    // 使用 getWithArena 自动管理 ORM 内存
+    var q = Setting.Query();
+    defer q.deinit();
+    
+    var result = try q.getWithArena(arena_alloc);
+    const settings_slice = result.items();
+    
     // 构建配置映射
-    var config_map = std.StringHashMap([]const u8).init(self.allocator);
-    defer config_map.deinit();
-
+    var config_map = std.StringHashMap([]const u8).init(arena_alloc);
+    
     for (settings_slice) |item| {
-        config_map.put(item.key, item.value) catch {};
+        // 字符串已由 Arena 管理，无需手动深拷贝
+        try config_map.put(item.key, item.value);
     }
-
+    
     const config = .{
         .upload_provider = config_map.get("upload_provider") orelse "local",
         .local = .{
@@ -121,7 +137,7 @@ pub fn get_upload_config(self: Self, req: zap.Request) !void {
             .domain = config_map.get("upload_oss_domain") orelse "",
         },
     };
-
+    
     return base.send_ok(req, config);
 }
 
@@ -196,8 +212,7 @@ pub fn test_upload_config(self: Self, req: zap.Request) !void {
 }
 
 /// 保存单个设置项的辅助方法
-fn saveSetting(self: Self, key: []const u8, value: []const u8) !void {
-    _ = self;
+fn saveSetting(_: Self, key: []const u8, value: []const u8) !void {
     // 先删除已存在的 key
     var del_q = Setting.WhereEq("key", key);
     defer del_q.deinit();
