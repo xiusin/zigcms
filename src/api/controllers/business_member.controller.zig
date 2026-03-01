@@ -94,10 +94,11 @@ fn tagAddImpl(self: *Self, req: zap.Request) !void {
 
     for (member_ids_val.array.items) |member_id_val| {
         if (member_id_val != .integer) continue;
-        _ = OrmMemberTagRel.Create(.{
+        var created = OrmMemberTagRel.Create(.{
             .member_id = @as(i32, @intCast(member_id_val.integer)),
             .tag_id = tag_id,
         }) catch |err| return base.send_error(req, err);
+        OrmMemberTagRel.freeModel(&created);
         affected += 1;
     }
 
@@ -132,7 +133,7 @@ fn pointRechargeImpl(self: *Self, req: zap.Request) !void {
     }
 
     _ = OrmMember.Update(dto.member_id, member) catch |err| return base.send_error(req, err);
-    _ = OrmMemberPointLog.Create(.{
+    var point_log = OrmMemberPointLog.Create(.{
         .member_id = dto.member_id,
         .change_type = dto.change_type,
         .points = dto.points,
@@ -140,6 +141,7 @@ fn pointRechargeImpl(self: *Self, req: zap.Request) !void {
         .operator_id = dto.operator_id,
         .created_at = std.time.timestamp(),
     }) catch |err| return base.send_error(req, err);
+    OrmMemberPointLog.freeModel(&point_log);
 
     base.send_ok(req, .{ .member_id = dto.member_id, .points = member.points });
 }
@@ -173,7 +175,7 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
     }
 
     _ = OrmMember.Update(dto.member_id, member) catch |err| return base.send_error(req, err);
-    _ = OrmMemberBalanceLog.Create(.{
+    var balance_log = OrmMemberBalanceLog.Create(.{
         .member_id = dto.member_id,
         .change_type = dto.change_type,
         .amount = dto.amount,
@@ -182,6 +184,7 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
         .operator_id = dto.operator_id,
         .created_at = std.time.timestamp(),
     }) catch |err| return base.send_error(req, err);
+    OrmMemberBalanceLog.freeModel(&balance_log);
 
     base.send_ok(req, .{ .member_id = dto.member_id, .balance = member.balance });
 }

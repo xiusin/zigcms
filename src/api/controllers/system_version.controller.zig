@@ -129,7 +129,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     const key = try std.fmt.allocPrint(self.allocator, "version:{d}", .{std.time.microTimestamp()});
     defer self.allocator.free(key);
 
-    _ = OrmConfig.Create(.{
+    var created = OrmConfig.Create(.{
         .config_name = dto.title,
         .config_key = key,
         .config_group = "version",
@@ -139,6 +139,7 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
         .sort = std.time.timestamp(),
         .status = dto.status,
     }) catch |e| return base.send_error(req, e);
+    OrmConfig.freeModel(&created);
 
     base.send_ok(req, "保存成功");
 }

@@ -51,7 +51,7 @@ fn runImpl(self: *Self, req: zap.Request) !void {
     task.last_run_time = now;
     _ = OrmTask.Update(dto.id, task) catch |err| return base.send_error(req, err);
 
-    _ = OrmTaskLog.Create(.{
+    var task_log = OrmTaskLog.Create(.{
         .task_id = dto.id,
         .task_name = task.task_name,
         .start_time = now,
@@ -62,6 +62,7 @@ fn runImpl(self: *Self, req: zap.Request) !void {
         .error_message = "",
         .created_at = now,
     }) catch |err| return base.send_error(req, err);
+    OrmTaskLog.freeModel(&task_log);
 
     base.send_ok(req, "任务执行成功");
 }

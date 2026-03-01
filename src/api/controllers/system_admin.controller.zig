@@ -834,10 +834,11 @@ fn replaceAdminRoles(admin_id: i32, role_ids: []const i32) !void {
     _ = delete_q.delete() catch |err| return err;
 
     for (role_ids) |rid| {
-        _ = OrmAdminRole.Create(.{
+        var created = OrmAdminRole.Create(.{
             .admin_id = admin_id,
             .role_id = rid,
         }) catch |err| return err;
+        OrmAdminRole.freeModel(&created);
     }
 }
 
@@ -966,10 +967,11 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     _ = delete_q.delete() catch |err| return base.send_error(req, err);
 
     for (valid_role_ids.items) |role_id_num| {
-        _ = OrmAdminRole.Create(.{
+        var created = OrmAdminRole.Create(.{
             .admin_id = admin_id,
             .role_id = role_id_num,
         }) catch |err| return base.send_error(req, err);
+        OrmAdminRole.freeModel(&created);
     }
 
     const old_role_ids_text = joinRoleIds(self.allocator, old_norm) catch return base.send_failed(req, "角色审计数据构建失败");
@@ -981,16 +983,19 @@ fn assignRolesImpl(self: *Self, req: zap.Request) !void {
     const old_role_ids_value = if (old_role_ids_text.len == 0) "[]" else old_role_ids_text;
     const new_role_ids_value = if (new_role_ids_text.len == 0) "[]" else new_role_ids_text;
 
-    _ = OrmAdminRoleAudit.Create(.{
+    if (OrmAdminRoleAudit.Create(.{
         .admin_id = admin_id,
         .operator_id = operator.operator_id,
         .operator_name = operator.operator_name,
         .old_role_ids = old_role_ids_value,
         .new_role_ids = new_role_ids_value,
         .request_ip = request_ip,
-    }) catch |err| {
+    })) |audit_record| {
+        var audit_mut = audit_record;
+        OrmAdminRoleAudit.freeModel(&audit_mut);
+    } else |err| {
         std.log.err("写入管理员角色审计失败 admin_id={d} err={}", .{ admin_id, err });
-    };
+    }
 
     if (tx_started) {
         db.commit() catch |err| return base.send_error(req, err);

@@ -110,7 +110,8 @@ fn importImpl(self: *Self, req: zap.Request) !void {
                 imported += 1;
             }
         } else {
-            _ = OrmConfig.Create(dto) catch |err| return base.send_error(req, err);
+            var created = OrmConfig.Create(dto) catch |err| return base.send_error(req, err);
+            OrmConfig.freeModel(&created);
             imported += 1;
         }
     }
