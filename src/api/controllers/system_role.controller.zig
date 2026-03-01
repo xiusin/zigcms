@@ -89,6 +89,10 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     req.parseBody() catch return base.send_failed(req, "解析请求体失败");
     const body = req.body orelse return base.send_failed(req, "请求体为空");
 
+    // 打印原始请求体
+    std.debug.print("\n=== 角色保存请求 ===\n", .{});
+    std.debug.print("请求体: {s}\n", .{body});
+
     var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
         return base.send_failed(req, "请求体格式错误");
     };
@@ -97,6 +101,13 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
     if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
 
     const data = parsed.value.object;
+    
+    // 打印所有字段
+    std.debug.print("JSON 字段列表:\n", .{});
+    var it = data.iterator();
+    while (it.next()) |entry| {
+        std.debug.print("  - {s}: {s}\n", .{entry.key_ptr.*, @tagName(entry.value_ptr.*)});
+    }
     
     // 1. 提取角色基础信息
     const id_val = data.get("id");
@@ -134,25 +145,52 @@ fn saveImpl(self: *Self, req: zap.Request) !void {
 
     if (role_id <= 0) return base.send_failed(req, "保存角色失败");
 
+    std.debug.print("角色ID: {d}\n", .{role_id});
+
     // 3. 更新权限关联 (如果有 menu_ids 参数)
     if (data.get("menu_ids")) |menu_ids_val| {
+        std.debug.print("检测到 menu_ids 字段，类型: {s}\n", .{@tagName(menu_ids_val)});
         if (menu_ids_val == .array) {
+            std.debug.print("menu_ids 是数组，长度: {d}\n", .{menu_ids_val.array.items.len});
+            
             // 清理旧关联
             var delete_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
             defer delete_menu_q.deinit();
-            _ = delete_menu_q.delete() catch |err| return base.send_error(req, err);
+            const deleted = delete_menu_q.delete() catch |err| {
+                std.debug.print("删除旧关联失败: {}\n", .{err});
+                return base.send_error(req, err);
+            };
+            std.debug.print("删除了 {d} 条旧关联\n", .{deleted});
 
             // 写入新关联
+            var created_count: usize = 0;
             for (menu_ids_val.array.items) |m_id_val| {
-                if (m_id_val != .integer) continue;
+                if (m_id_val != .integer) {
+                    std.debug.print("跳过非整数类型的 menu_id: {s}\n", .{@tagName(m_id_val)});
+                    continue;
+                }
+                const menu_id = @as(i32, @intCast(m_id_val.integer));
+                std.debug.print("创建关联: role_id={d}, menu_id={d}\n", .{role_id, menu_id});
+                
                 var created_menu = OrmRoleMenu.Create(.{
                     .role_id = role_id,
-                    .menu_id = @as(i32, @intCast(m_id_val.integer)),
-                }) catch |err| return base.send_error(req, err);
+                    .menu_id = menu_id,
+                }) catch |err| {
+                    std.debug.print("创建关联失败: role_id={d}, menu_id={d}, err={}\n", .{role_id, menu_id, err});
+                    return base.send_error(req, err);
+                };
                 OrmRoleMenu.freeModel(&created_menu);
+                created_count += 1;
             }
+            std.debug.print("成功创建 {d} 条新关联\n", .{created_count});
+        } else {
+            std.debug.print("menu_ids 不是数组类型: {s}\n", .{@tagName(menu_ids_val)});
         }
+    } else {
+        std.debug.print("请求中没有 menu_ids 字段\n", .{});
     }
+
+    std.debug.print("=== 角色保存完成 ===\n\n", .{});
 
     bumpRoleCacheVersion(self.allocator);
     base.send_ok(req, .{ .id = role_id });
