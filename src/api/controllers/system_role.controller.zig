@@ -253,16 +253,26 @@ fn rolePermissionsGetImpl(self: *Self, req: zap.Request) !void {
 
     if (role_id <= 0) return base.send_failed(req, "缺少 role_id 参数");
 
+    std.debug.print("\n查询角色权限: role_id={d}\n", .{role_id});
+
     var role_menu_q = OrmRoleMenu.WhereEq("role_id", role_id);
     defer role_menu_q.deinit();
-    const role_menus = role_menu_q.get() catch |err| return base.send_error(req, err);
+    const role_menus = role_menu_q.get() catch |err| {
+        std.debug.print("查询失败: {}\n", .{err});
+        return base.send_error(req, err);
+    };
     defer OrmRoleMenu.freeModels(role_menus);
+
+    std.debug.print("查询到 {d} 条记录\n", .{role_menus.len});
 
     var menu_ids = std.ArrayListUnmanaged(i32){};
     defer menu_ids.deinit(self.allocator);
     for (role_menus) |row| {
+        std.debug.print("  - menu_id: {d}\n", .{row.menu_id});
         menu_ids.append(self.allocator, row.menu_id) catch {};
     }
+
+    std.debug.print("返回 menu_ids: {any}\n\n", .{menu_ids.items});
 
     // 只返回 menu_ids，前端树会根据此 ID 自动勾选对应的菜单或按钮
     base.send_ok(req, .{
