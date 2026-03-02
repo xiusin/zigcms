@@ -91,6 +91,17 @@ pub const CrudGeneratorTool = struct {
                 if (v == .string) v.string else null 
                 else null;
             
+            // 解析搜索和过滤标志
+            const searchable = if (field_value.object.get("searchable")) |v| 
+                if (v == .bool) v.bool else false 
+                else false;
+            const filterable = if (field_value.object.get("filterable")) |v| 
+                if (v == .bool) v.bool else false 
+                else false;
+            const sortable = if (field_value.object.get("sortable")) |v| 
+                if (v == .bool) v.bool else false 
+                else false;
+            
             try fields.append(.{
                 .name = field_name.string,
                 .type = field_type.string,
@@ -100,6 +111,9 @@ pub const CrudGeneratorTool = struct {
                 .min_value = min_value,
                 .max_value = max_value,
                 .pattern = pattern,
+                .searchable = searchable,
+                .filterable = filterable,
+                .sortable = sortable,
             });
         }
         
@@ -139,6 +153,16 @@ pub const CrudGeneratorTool = struct {
         var code = std.array_list.AlignedManaged(u8, null).init(allocator);
         const writer = code.writer();
         
+        // 检查是否有可搜索或可过滤的字段
+        var has_searchable = false;
+        var has_filterable = false;
+        var has_sortable = false;
+        for (fields) |field| {
+            if (field.searchable) has_searchable = true;
+            if (field.filterable) has_filterable = true;
+            if (field.sortable) has_sortable = true;
+        }
+        
         // 文件头注释
         try writer.print("//! {s} 控制器\n", .{name});
         try writer.writeAll("//! 自动生成 - 包含完整 ORM 集成和字段验证\n");
@@ -172,12 +196,26 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("        return .{ .allocator = allocator };\n");
         try writer.writeAll("    }\n\n");
         
-        // list 方法（带分页）
-        try writer.writeAll("    /// 列表查询（带分页）\n");
+        // list 方法（带分页、搜索、过滤）
+        try writer.writeAll("    /// 列表查询（带分页、搜索、过滤）\n");
         try writer.writeAll("    ///\n");
         try writer.writeAll("    /// ## 参数\n");
         try writer.writeAll("    /// - page: 页码（默认 1）\n");
         try writer.writeAll("    /// - page_size: 每页数量（默认 20）\n");
+        if (has_searchable) {
+            try writer.writeAll("    /// - keyword: 搜索关键词（可选）\n");
+        }
+        if (has_filterable) {
+            for (fields) |field| {
+                if (field.filterable) {
+                    try writer.print("    /// - {s}: 过滤 {s}（可选）\n", .{ field.name, field.name });
+                }
+            }
+        }
+        if (has_sortable) {
+            try writer.writeAll("    /// - sort_by: 排序字段（默认 id）\n");
+            try writer.writeAll("    /// - sort_order: 排序方向（默认 DESC）\n");
+        }
         try writer.writeAll("    ///\n");
         try writer.writeAll("    /// ## 返回\n");
         try writer.writeAll("    /// - items: 数据列表\n");
@@ -190,10 +228,90 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("        // 获取分页参数\n");
         try writer.writeAll("        const page = mutable_req.getParamInt(\"page\", i32, 1) catch 1;\n");
         try writer.writeAll("        const page_size = mutable_req.getParamInt(\"page_size\", i32, 20) catch 20;\n\n");
+        
+        // 添加搜索参数
+        if (has_searchable) {
+            try writer.writeAll("        // 获取搜索参数\n");
+            try writer.writeAll("        const keyword = mutable_req.getParam(\"keyword\");\n\n");
+        }
+        
+        // 添加过滤参数
+        if (has_filterable) {
+            try writer.writeAll("        // 获取过滤参数\n");
+            for (fields) |field| {
+                if (field.filterable) {
+                    if (std.mem.eql(u8, field.type, "string")) {
+                        try writer.print("        const {s}_filter = mutable_req.getParam(\"{s}\");\n", .{ field.name, field.name });
+                    } else if (std.mem.eql(u8, field.type, "int") or std.mem.eql(u8, field.type, "timestamp")) {
+                        try writer.print("        const {s}_filter = mutable_req.getParamInt(\"{s}\", i32, 0) catch null;\n", .{ field.name, field.name });
+                    } else if (std.mem.eql(u8, field.type, "bool")) {
+                        try writer.print("        const {s}_filter = mutable_req.getParam(\"{s}\");\n", .{ field.name, field.name });
+                    }
+                }
+            }
+            try writer.writeAll("\n");
+        }
+        
+        // 添加排序参数
+        if (has_sortable) {
+            try writer.writeAll("        // 获取排序参数\n");
+            try writer.writeAll("        const sort_by = mutable_req.getParam(\"sort_by\") orelse \"id\";\n");
+            try writer.writeAll("        const sort_order = mutable_req.getParam(\"sort_order\") orelse \"DESC\";\n\n");
+        }
+        
         try writer.writeAll("        // 查询数据\n");
         try writer.print("        var q = Orm{s}.Query();\n", .{name});
         try writer.writeAll("        defer q.deinit();\n\n");
-        try writer.writeAll("        _ = q.orderBy(\"id\", \"DESC\")\n");
+        
+        // 添加搜索条件
+        if (has_searchable) {
+            try writer.writeAll("        // 搜索条件\n");
+            try writer.writeAll("        if (keyword) |kw| {\n");
+            var first = true;
+            for (fields) |field| {
+                if (field.searchable and std.mem.eql(u8, field.type, "string")) {
+                    if (first) {
+                        try writer.print("            _ = q.where(\"{s}\", \"LIKE\", try std.fmt.allocPrint(self.allocator, \"%{{s}}%\", .{{kw}}));\n", .{field.name});
+                        first = false;
+                    } else {
+                        try writer.print("            _ = q.orWhere(\"{s}\", \"LIKE\", try std.fmt.allocPrint(self.allocator, \"%{{s}}%\", .{{kw}}));\n", .{field.name});
+                    }
+                }
+            }
+            try writer.writeAll("        }\n\n");
+        }
+        
+        // 添加过滤条件
+        if (has_filterable) {
+            try writer.writeAll("        // 过滤条件\n");
+            for (fields) |field| {
+                if (field.filterable) {
+                    if (std.mem.eql(u8, field.type, "string")) {
+                        try writer.print("        if ({s}_filter) |filter| {{\n", .{field.name});
+                        try writer.print("            _ = q.where(\"{s}\", \"=\", filter);\n", .{field.name});
+                        try writer.writeAll("        }\n");
+                    } else if (std.mem.eql(u8, field.type, "int") or std.mem.eql(u8, field.type, "timestamp")) {
+                        try writer.print("        if ({s}_filter) |filter| {{\n", .{field.name});
+                        try writer.print("            _ = q.where(\"{s}\", \"=\", filter);\n", .{field.name});
+                        try writer.writeAll("        }\n");
+                    } else if (std.mem.eql(u8, field.type, "bool")) {
+                        try writer.print("        if ({s}_filter) |filter| {{\n", .{field.name});
+                        try writer.print("            const bool_val = std.mem.eql(u8, filter, \"true\") or std.mem.eql(u8, filter, \"1\");\n");
+                        try writer.print("            _ = q.where(\"{s}\", \"=\", bool_val);\n", .{field.name});
+                        try writer.writeAll("        }\n");
+                    }
+                }
+            }
+            try writer.writeAll("\n");
+        }
+        
+        // 添加排序
+        if (has_sortable) {
+            try writer.writeAll("        // 排序\n");
+            try writer.writeAll("        _ = q.orderBy(sort_by, sort_order)\n");
+        } else {
+            try writer.writeAll("        _ = q.orderBy(\"id\", \"DESC\")\n");
+        }
         try writer.writeAll("             .limit(page_size)\n");
         try writer.writeAll("             .offset((page - 1) * page_size);\n\n");
         try writer.print("        const items = try q.get();\n");
@@ -498,7 +616,6 @@ pub const CrudGeneratorTool = struct {
 };
 
 /// 字段定义
-/// 字段定义
 const Field = struct {
     name: []const u8,
     type: []const u8,
@@ -508,4 +625,7 @@ const Field = struct {
     min_value: ?i64 = null,
     max_value: ?i64 = null,
     pattern: ?[]const u8 = null,
+    searchable: bool = false,  // 是否可搜索
+    filterable: bool = false,  // 是否可过滤
+    sortable: bool = false,    // 是否可排序
 };
