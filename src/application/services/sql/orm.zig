@@ -4245,10 +4245,13 @@ pub fn ModelQuery(comptime T: type) type {
             try self.appendWhere(&sql);
 
             const sql_str = try sql.toOwnedSlice(self.db.allocator);
-
             defer self.db.allocator.free(sql_str);
 
-            var result = try self.db.rawQuery(sql_str, .{});
+            // 替换 SQL 中的 ? 占位符为实际参数值
+            const final_sql = try self.replacePlaceholders(sql_str);
+            defer self.db.allocator.free(final_sql);
+
+            var result = try self.db.rawQuery(final_sql, .{});
             defer result.deinit();
 
             if (result.next()) {
@@ -4455,13 +4458,13 @@ pub fn ModelQuery(comptime T: type) type {
             const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
             const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
             const should_add_soft_delete = has_soft_deletes and has_deleted_at;
-            
+
             var has_where = false;
-            
+
             // 添加软删除条件
             if (should_add_soft_delete) {
                 const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
-                
+
                 switch (self.soft_delete_mode) {
                     .exclude_trashed => {
                         // 默认：排除已删除（deleted_at IS NULL）
@@ -4490,7 +4493,7 @@ pub fn ModelQuery(comptime T: type) type {
                     },
                 }
             }
-            
+
             // 添加用户定义的 WHERE 条件
             if (self.where_clauses.items.len > 0) {
                 if (!has_where) {
@@ -4498,7 +4501,7 @@ pub fn ModelQuery(comptime T: type) type {
                 } else {
                     try sql.appendSlice(self.db.allocator, " AND ");
                 }
-                
+
                 for (self.where_clauses.items, 0..) |clause, i| {
                     if (i > 0) try sql.appendSlice(self.db.allocator, " AND ");
                     try sql.appendSlice(self.db.allocator, clause);
