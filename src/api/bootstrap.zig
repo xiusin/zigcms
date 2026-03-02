@@ -477,9 +477,10 @@ pub const Bootstrap = struct {
         
         self.route_count += 2;
         
+        // 注意：MCP 路由注册到主 HTTP 服务器，使用 API 端口而不是 MCP 配置的端口
         logger.info("✅ MCP 服务已启用: {s}:{d}{s}", .{
-            config.mcp.transport.host,
-            config.mcp.transport.port,
+            config.api.host,
+            config.api.port,
             config.mcp.transport.sse_path,
         });
     }
@@ -528,13 +529,13 @@ pub const Bootstrap = struct {
         if (config.mcp.enabled) {
             logger.info("║    状态: ✅ 已启用", .{});
             logger.info("║    SSE 端点: http://{s}:{d}{s}", .{
-                config.mcp.transport.host,
-                config.mcp.transport.port,
+                config.api.host,
+                config.api.port,
                 config.mcp.transport.sse_path,
             });
             logger.info("║    消息端点: http://{s}:{d}{s}", .{
-                config.mcp.transport.host,
-                config.mcp.transport.port,
+                config.api.host,
+                config.api.port,
                 config.mcp.transport.message_path,
             });
             logger.info("║    工具数量: 10 个", .{});

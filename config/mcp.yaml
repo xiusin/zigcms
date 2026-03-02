@@ -11,10 +11,10 @@ transport:
   # 传输类型: sse (Server-Sent Events) 或 stdio (标准输入输出)
   type: "sse"
   
-  # 监听地址
+  # 监听地址（注意：MCP 路由注册到主 HTTP 服务器，实际使用 API 配置的地址和端口）
   host: "127.0.0.1"
   
-  # 监听端口
+  # 监听端口（注意：此端口配置已废弃，MCP 使用主 HTTP 服务器端口，见 config/api.yaml）
   port: 8889
   
   # SSE 端点路径
