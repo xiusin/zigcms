@@ -18,7 +18,6 @@ pub const FileReadTool = struct {
     
     /// 获取工具信息
     pub fn getInfo(self: *const FileReadTool) protocol.ToolInfo {
-        _ = self;
         return .{
             .name = "file_read",
             .description = "Read file content with security checks",

@@ -26,7 +26,6 @@ pub const ProjectStructureTool = struct {
     
     /// 获取工具信息
     pub fn getInfo(self: *const ProjectStructureTool) protocol.ToolInfo {
-        _ = self;
         return .{
             .name = "project_structure",
             .description = "Get ZigCMS project structure and architecture information",

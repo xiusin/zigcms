@@ -26,7 +26,6 @@ pub const FileSearchTool = struct {
     
     /// 获取工具信息
     pub fn getInfo(self: *const FileSearchTool) protocol.ToolInfo {
-        _ = self;
         return .{
             .name = "file_search",
             .description = "Search files by name or content in ZigCMS project",

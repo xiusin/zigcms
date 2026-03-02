@@ -106,8 +106,6 @@ pub const SseTransport = struct {
     
     /// 发送 SSE 事件
     fn sendEvent(self: *SseTransport, req: *zap.Request, event: []const u8, data: []const u8) !void {
-        _ = self;
-        
         const message = try std.fmt.allocPrint(
             self.allocator,
             "event: {s}\ndata: {s}\n\n",

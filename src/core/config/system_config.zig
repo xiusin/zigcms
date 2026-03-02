@@ -21,6 +21,7 @@ const SharedConfig = @import("../mod.zig").SharedConfig;
 pub const DomainConfig = @import("../../domain/mod.zig").DomainConfig;
 pub const AppConfig = @import("../../application/mod.zig").AppConfig;
 pub const ServerConfig = @import("../../api/Api.zig").ServerConfig;
+pub const McpConfig = @import("mcp.zig").McpConfig;
 
 /// API 层配置 (对应 api.toml)
 pub const ApiConfig = ServerConfig;
@@ -46,6 +47,9 @@ pub const SystemConfig = struct {
 
     /// 共享层配置 (shared.toml)
     shared: SharedConfig = .{},
+
+    /// MCP 配置 (mcp.yaml)
+    mcp: McpConfig = .{},
 
     /// 打印所有配置信息
     pub fn print(self: *const SystemConfig) void {

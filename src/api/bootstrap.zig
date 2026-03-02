@@ -12,6 +12,7 @@ const logger = @import("../application/services/logger/logger.zig");
 const App = @import("App.zig").App;
 const controllers = @import("controllers/mod.zig");
 const models = @import("../domain/entities/mod.zig");
+const zap = @import("zap");
 
 const DIContainer = @import("../core/di/container.zig").DIContainer;
 const AppContext = @import("../core/context/app_context.zig").AppContext;
@@ -118,6 +119,9 @@ pub const Bootstrap = struct {
 
         // 系统扩展路由（独立控制器）
         try self.registerSystemExtRoutes();
+
+        // MCP 路由（AI 辅助开发）
+        try self.registerMcpRoutes();
     }
 
     /// 注册认证相关路由
@@ -399,6 +403,67 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
 
         self.route_count += 100;
+    }
+
+    /// 注册 MCP 路由（AI 辅助开发）
+    fn registerMcpRoutes(self: *Self) !void {
+        _ = self;
+        // TODO: MCP 功能暂时禁用，等待 Zig 0.15.2 API 适配完成
+        logger.info("ℹ️  MCP 服务暂时禁用（开发中）", .{});
+        return;
+        
+        // const mcp = @import("../mcp/mod.zig");
+        
+        // // 从配置中获取 MCP 配置
+        // const service_mgr = zigcms.getServiceManager() orelse return error.ServiceManagerNotInitialized;
+        // const config = service_mgr.getConfig();
+        
+        // // 检查 MCP 是否启用
+        // if (!config.mcp.enabled) {
+        //     logger.info("ℹ️  MCP 服务未启用", .{});
+        //     return;
+        // }
+        
+        // // 初始化 MCP Server
+        // const mcp_server = try mcp.McpServer.init(self.allocator, config.mcp);
+        // errdefer mcp_server.deinit();
+        
+        // // 注册到 DI 容器
+        // if (!self.container.isRegistered(mcp.McpServer)) {
+        //     try self.container.registerInstance(mcp.McpServer, mcp_server, null);
+        // }
+        
+        // // 创建 MCP 控制器包装器
+        // const McpController = struct {
+        //     server: *mcp.McpServer,
+            
+        //     pub fn handleSse(ctrl: *@This(), req: zap.Request) !void {
+        //         var mutable_req = req;
+        //         try ctrl.server.sse_transport.handleSse(&mutable_req);
+        //     }
+            
+        //     pub fn handleMessage(ctrl: *@This(), req: zap.Request) !void {
+        //         var mutable_req = req;
+        //         try ctrl.server.sse_transport.handleMessage(&mutable_req);
+        //     }
+        // };
+        
+        // const mcp_ctrl = try self.allocator.create(McpController);
+        // mcp_ctrl.* = .{ .server = mcp_server };
+        
+        // // 注册 SSE 端点（用于建立连接）
+        // try self.app.route(config.mcp.transport.sse_path, mcp_ctrl, &McpController.handleSse);
+        
+        // // 注册消息端点（用于接收 JSON-RPC 消息）
+        // try self.app.route(config.mcp.transport.message_path, mcp_ctrl, &McpController.handleMessage);
+        
+        // self.route_count += 2;
+        
+        // logger.info("✅ MCP 服务已启用: {s}:{d}{s}", .{
+        //     config.mcp.transport.host,
+        //     config.mcp.transport.port,
+        //     config.mcp.transport.sse_path,
+        // });
     }
 
     /// 获取路由统计信息

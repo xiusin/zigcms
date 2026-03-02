@@ -26,11 +26,7 @@ pub const JsonRpcHandler = struct {
     
     /// 序列化响应
     pub fn serializeResponse(self: *JsonRpcHandler, response: types.JsonRpcResponse) ![]const u8 {
-        return try std.json.stringifyAlloc(
-            self.allocator,
-            response,
-            .{},
-        );
+        return try std.json.stringifyAlloc(self.allocator, response, .{});
     }
     
     /// 验证请求
