@@ -157,6 +157,9 @@ pub const Bootstrap = struct {
         // 自动化测试路由
         try self.registerAutoTestRoutes();
 
+        // 质量中心路由
+        try self.registerQualityCenterRoutes();
+
         // MCP 路由（AI 辅助开发）
         try self.registerMcpRoutes();
     }
@@ -187,7 +190,25 @@ pub const Bootstrap = struct {
         try self.app.route("/api/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
         try self.app.route("/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
         try self.app.route("/api/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
-        self.route_count += 8;
+        
+        // 注册 OAuth 控制器
+        if (!self.container.isRegistered(controllers.auth.OAuth)) {
+            try self.container.registerSingleton(controllers.auth.OAuth, controllers.auth.OAuth, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.auth.OAuth {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.auth.OAuth);
+                    ctrl.* = controllers.auth.OAuth.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+        
+        const oauth = try self.container.resolve(controllers.auth.OAuth);
+        try self.app.route("/api/oauth/callback", oauth, &controllers.auth.OAuth.callback);
+        try self.app.route("/api/oauth/bind/list", oauth, &controllers.auth.OAuth.bindList);
+        try self.app.route("/api/oauth/unbind", oauth, &controllers.auth.OAuth.unbind);
+        
+        self.route_count += 11;
     }
 
     /// 注册公共接口路由
@@ -502,6 +523,85 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/auto-test/statistics", ctrl, Auth.requireAuth(&AutoTest.statistics));
 
         self.route_count += 7;
+    }
+
+    /// 注册质量中心路由
+    fn registerQualityCenterRoutes(self: *Self) !void {
+        const QC = controllers.quality_center.QualityCenter;
+        const wrapper = @import("middleware/wrapper.zig");
+        const Auth = wrapper.Controller(QC);
+
+        if (!self.container.isRegistered(QC)) {
+            try self.container.registerSingleton(QC, QC, struct {
+                fn factory(_: *DIContainer, allocator: std.mem.Allocator) anyerror!*QC {
+                    const ctrl = try allocator.create(QC);
+                    ctrl.* = QC.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const ctrl = try self.container.resolve(QC);
+
+        const registerWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, c: anytype, handler: anytype) !void {
+                app.route("/api" ++ path, c, handler) catch |err| switch (err) {
+                    else => {
+                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
+                    },
+                };
+            }
+        }.exec;
+
+        // Dashboard 统计
+        try registerWithAlias(self.app, "/quality-center/overview", ctrl, Auth.requireAuth(&QC.overview));
+        try registerWithAlias(self.app, "/quality-center/trend", ctrl, Auth.requireAuth(&QC.trend));
+        try registerWithAlias(self.app, "/quality-center/module-quality", ctrl, Auth.requireAuth(&QC.module_quality));
+        try registerWithAlias(self.app, "/quality-center/bug-distribution", ctrl, Auth.requireAuth(&QC.bug_distribution));
+        try registerWithAlias(self.app, "/quality-center/feedback-distribution", ctrl, Auth.requireAuth(&QC.feedback_distribution));
+
+        // 反馈与测试联动
+        try registerWithAlias(self.app, "/quality-center/feedback-to-task", ctrl, Auth.requireAuth(&QC.feedback_to_task));
+        try registerWithAlias(self.app, "/quality-center/bug-to-feedback", ctrl, Auth.requireAuth(&QC.bug_to_feedback));
+        try registerWithAlias(self.app, "/quality-center/link-records", ctrl, Auth.requireAuth(&QC.link_records));
+
+        // 活动流 + AI 洞察
+        try registerWithAlias(self.app, "/quality-center/activities", ctrl, Auth.requireAuth(&QC.activities));
+        try registerWithAlias(self.app, "/quality-center/ai-insights", ctrl, Auth.requireAuth(&QC.ai_insights));
+
+        // 定时报表 CRUD
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports", ctrl, Auth.requireAuth(&QC.scheduled_report_list));
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports/create", ctrl, Auth.requireAuth(&QC.scheduled_report_create));
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports/update", ctrl, Auth.requireAuth(&QC.scheduled_report_update));
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports/delete", ctrl, Auth.requireAuth(&QC.scheduled_report_delete));
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports/toggle", ctrl, Auth.requireAuth(&QC.scheduled_report_toggle));
+        try registerWithAlias(self.app, "/quality-center/scheduled-reports/trigger", ctrl, Auth.requireAuth(&QC.scheduled_report_trigger));
+
+        // 报表历史
+        try registerWithAlias(self.app, "/quality-center/report-history", ctrl, Auth.requireAuth(&QC.report_history));
+
+        // Bug 关联 + 反馈分类
+        try registerWithAlias(self.app, "/quality-center/bug-links", ctrl, Auth.requireAuth(&QC.bug_links));
+        try registerWithAlias(self.app, "/quality-center/feedback-classification", ctrl, Auth.requireAuth(&QC.feedback_classification));
+
+        // 报表模板 CRUD
+        try registerWithAlias(self.app, "/quality-center/report-templates", ctrl, Auth.requireAuth(&QC.report_template_list));
+        try registerWithAlias(self.app, "/quality-center/report-templates/create", ctrl, Auth.requireAuth(&QC.report_template_create));
+        try registerWithAlias(self.app, "/quality-center/report-templates/update", ctrl, Auth.requireAuth(&QC.report_template_update));
+        try registerWithAlias(self.app, "/quality-center/report-templates/delete", ctrl, Auth.requireAuth(&QC.report_template_delete));
+
+        // 邮件模板 CRUD
+        try registerWithAlias(self.app, "/quality-center/email-templates", ctrl, Auth.requireAuth(&QC.email_template_list));
+        try registerWithAlias(self.app, "/quality-center/email-templates/create", ctrl, Auth.requireAuth(&QC.email_template_create));
+        try registerWithAlias(self.app, "/quality-center/email-templates/update", ctrl, Auth.requireAuth(&QC.email_template_update));
+        try registerWithAlias(self.app, "/quality-center/email-templates/delete", ctrl, Auth.requireAuth(&QC.email_template_delete));
+        try registerWithAlias(self.app, "/quality-center/email-templates/preview", ctrl, Auth.requireAuth(&QC.email_template_preview));
+
+        // AI 分析
+        try registerWithAlias(self.app, "/quality-center/ai-analysis", ctrl, Auth.requireAuth(&QC.ai_analysis));
+        try registerWithAlias(self.app, "/quality-center/ai-analysis/history", ctrl, Auth.requireAuth(&QC.ai_analysis_history));
+
+        self.route_count += 30;
     }
 
     /// 注册 MCP 路由（AI 辅助开发）

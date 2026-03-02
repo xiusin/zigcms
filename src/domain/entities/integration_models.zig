@@ -109,10 +109,10 @@ pub const SysRole = struct {
     data_scope: i32 = 1,
     created_at: ?i64 = null,
     updated_at: ?i64 = null,
-    
+
     // 关联数据字段（可选）
     menus: ?[]SysMenu = null,
-    
+
     // 定义关系
     pub const relations = .{
         .menus = .{
@@ -181,6 +181,7 @@ pub const SysConfig = struct {
 pub const SysDict = struct {
     id: ?i32 = null,
     category_code: []const u8 = "",
+    category_name: []const u8 = "",
     dict_name: []const u8 = "",
     dict_code: []const u8 = "",
     remark: []const u8 = "",

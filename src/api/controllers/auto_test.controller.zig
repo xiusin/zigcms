@@ -44,6 +44,50 @@ const TestReportRow = struct {
     updated_at: ?[]const u8 = null,
 };
 
+/// 测试报告响应 DTO（字段名匹配前端类型定义）
+const TestReportDto = struct {
+    id: ?i32 = null,
+    name: []const u8 = "",
+    type: []const u8 = "unit",
+    status: []const u8 = "pending",
+    total_cases: i32 = 0,
+    passed_cases: i32 = 0,
+    failed_cases: i32 = 0,
+    skipped_cases: i32 = 0,
+    pass_rate: i32 = 0,
+    duration_ms: i32 = 0,
+    error_message: []const u8 = "",
+    stack_trace: []const u8 = "",
+    test_target: []const u8 = "",
+    triggered_by: []const u8 = "manual",
+    environment: []const u8 = "{}",
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
+};
+
+/// 将 ORM 行转换为报告 DTO
+fn toReportDto(row: TestReportRow) TestReportDto {
+    return .{
+        .id = row.id,
+        .name = row.name,
+        .type = row.test_type,
+        .status = row.status,
+        .total_cases = row.total_cases,
+        .passed_cases = row.passed_cases,
+        .failed_cases = row.failed_cases,
+        .skipped_cases = row.skipped_cases,
+        .pass_rate = row.pass_rate,
+        .duration_ms = row.duration_ms,
+        .error_message = row.error_message,
+        .stack_trace = row.stack_trace,
+        .test_target = row.test_target,
+        .triggered_by = row.triggered_by,
+        .environment = row.environment,
+        .created_at = row.created_at,
+        .updated_at = row.updated_at,
+    };
+}
+
 /// Bug 分析行结构
 const BugAnalysisRow = struct {
     id: ?i32 = null,
@@ -66,6 +110,96 @@ const BugAnalysisRow = struct {
     created_at: ?[]const u8 = null,
     updated_at: ?[]const u8 = null,
 };
+
+/// Bug 分析响应 DTO（字段名匹配前端类型定义）
+const BugAnalysisDto = struct {
+    id: ?i32 = null,
+    title: []const u8 = "",
+    description: []const u8 = "",
+    type: []const u8 = "unknown",
+    severity: i32 = 2,
+    priority: i32 = 2,
+    status: []const u8 = "pending",
+    issue_location: []const u8 = "unknown",
+    file_path: []const u8 = "",
+    line_number: i32 = 0,
+    root_cause: []const u8 = "",
+    suggested_fix: []const u8 = "",
+    confidence_score: i32 = 0,
+    auto_fix_attempted: bool = false,
+    auto_fix_result: []const u8 = "{}",
+    test_report_id: ?i32 = null,
+    feedback_id: ?i32 = null,
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
+};
+
+/// 将 ORM 行转换为前端 DTO
+fn toBugDto(row: BugAnalysisRow) BugAnalysisDto {
+    return .{
+        .id = row.id,
+        .title = row.title,
+        .description = row.description,
+        .type = row.bug_type,
+        .severity = severityToInt(row.severity),
+        .priority = priorityToInt(row.priority),
+        .status = row.status,
+        .issue_location = row.issue_location,
+        .file_path = row.file_path,
+        .line_number = row.line_number,
+        .root_cause = row.root_cause,
+        .suggested_fix = row.suggested_fix,
+        .confidence_score = row.confidence_score,
+        .auto_fix_attempted = row.auto_fix_attempted != 0,
+        .auto_fix_result = row.auto_fix_result,
+        .test_report_id = row.test_report_id,
+        .feedback_id = row.feedback_id,
+        .created_at = row.created_at,
+        .updated_at = row.updated_at,
+    };
+}
+
+/// severity 字符串转数字（匹配前端 BugSeverity 枚举）
+fn severityToInt(s: []const u8) i32 {
+    if (std.mem.eql(u8, s, "critical") or std.mem.eql(u8, s, "p0")) return 0;
+    if (std.mem.eql(u8, s, "high") or std.mem.eql(u8, s, "p1")) return 1;
+    if (std.mem.eql(u8, s, "medium") or std.mem.eql(u8, s, "p2")) return 2;
+    if (std.mem.eql(u8, s, "low") or std.mem.eql(u8, s, "p3")) return 3;
+    if (std.mem.eql(u8, s, "trivial") or std.mem.eql(u8, s, "p4")) return 4;
+    return 2;
+}
+
+/// priority 字符串转数字（匹配前端 TaskPriority 枚举）
+fn priorityToInt(s: []const u8) i32 {
+    if (std.mem.eql(u8, s, "urgent") or std.mem.eql(u8, s, "p0")) return 0;
+    if (std.mem.eql(u8, s, "high") or std.mem.eql(u8, s, "p1")) return 1;
+    if (std.mem.eql(u8, s, "medium") or std.mem.eql(u8, s, "p2")) return 2;
+    if (std.mem.eql(u8, s, "low") or std.mem.eql(u8, s, "p3")) return 3;
+    return 2;
+}
+
+/// severity 数字转字符串（前端提交时转为 DB 存储值）
+fn severityFromInt(v: i64) []const u8 {
+    return switch (v) {
+        0 => "critical",
+        1 => "high",
+        2 => "medium",
+        3 => "low",
+        4 => "trivial",
+        else => "medium",
+    };
+}
+
+/// priority 数字转字符串
+fn priorityFromInt(v: i64) []const u8 {
+    return switch (v) {
+        0 => "urgent",
+        1 => "high",
+        2 => "medium",
+        3 => "low",
+        else => "medium",
+    };
+}
 
 allocator: Allocator,
 
@@ -122,7 +256,7 @@ fn reportCreateImpl(self: *Self, req: zap.Request) !void {
 
     var created = OrmTestReport.Create(.{
         .name = if (data.get("name")) |v| v.string else "未命名报告",
-        .test_type = if (data.get("test_type")) |v| v.string else "unit",
+        .test_type = if (data.get("type")) |v| v.string else if (data.get("test_type")) |v| v.string else "unit",
         .status = if (data.get("status")) |v| v.string else "completed",
         .total_cases = if (data.get("total_cases")) |v| @as(i32, @intCast(v.integer)) else 0,
         .passed_cases = if (data.get("passed_cases")) |v| @as(i32, @intCast(v.integer)) else 0,
@@ -140,7 +274,7 @@ fn reportCreateImpl(self: *Self, req: zap.Request) !void {
     }) catch |err| return base.send_error(req, err);
     defer OrmTestReport.freeModel(&created);
 
-    base.send_ok(req, created);
+    base.send_ok(req, toReportDto(created));
 }
 
 /// 获取测试报告列表
@@ -186,10 +320,10 @@ fn reportListImpl(self: *Self, req: zap.Request) !void {
     const rows = q.get() catch |err| return base.send_error(req, err);
     defer OrmTestReport.freeModels(rows);
 
-    var items = std.ArrayListUnmanaged(TestReportRow){};
+    var items = std.ArrayListUnmanaged(TestReportDto){};
     defer items.deinit(self.allocator);
     for (rows) |row| {
-        items.append(self.allocator, row) catch {};
+        items.append(self.allocator, toReportDto(row)) catch {};
     }
 
     base.send_layui_table_response(req, items.items, total, .{});
@@ -206,7 +340,7 @@ fn reportDetailImpl(self: *Self, req: zap.Request) !void {
         return base.send_failed(req, "报告不存在");
     };
 
-    base.send_ok(req, report);
+    base.send_ok(req, toReportDto(report));
 }
 
 /// 创建 Bug 分析
@@ -230,9 +364,17 @@ fn bugCreateImpl(self: *Self, req: zap.Request) !void {
     var created = OrmBugAnalysis.Create(.{
         .title = title,
         .description = if (data.get("description")) |v| v.string else "",
-        .bug_type = if (data.get("bug_type")) |v| v.string else "unknown",
-        .severity = if (data.get("severity")) |v| v.string else "medium",
-        .priority = if (data.get("priority")) |v| v.string else "medium",
+        .bug_type = if (data.get("type")) |v| v.string else if (data.get("bug_type")) |v| v.string else "unknown",
+        .severity = if (data.get("severity")) |v| switch (v) {
+            .string => |s| s,
+            .integer => |n| severityFromInt(n),
+            else => "medium",
+        } else "medium",
+        .priority = if (data.get("priority")) |v| switch (v) {
+            .string => |s| s,
+            .integer => |n| priorityFromInt(n),
+            else => "medium",
+        } else "medium",
         .status = if (data.get("status")) |v| v.string else "pending",
         .issue_location = if (data.get("issue_location")) |v| v.string else "unknown",
         .file_path = if (data.get("file_path")) |v| v.string else "",
@@ -246,7 +388,7 @@ fn bugCreateImpl(self: *Self, req: zap.Request) !void {
     }) catch |err| return base.send_error(req, err);
     defer OrmBugAnalysis.freeModel(&created);
 
-    base.send_ok(req, created);
+    base.send_ok(req, toBugDto(created));
 }
 
 /// 获取 Bug 列表
@@ -298,10 +440,10 @@ fn bugListImpl(self: *Self, req: zap.Request) !void {
     const rows = q.get() catch |err| return base.send_error(req, err);
     defer OrmBugAnalysis.freeModels(rows);
 
-    var items = std.ArrayListUnmanaged(BugAnalysisRow){};
+    var items = std.ArrayListUnmanaged(BugAnalysisDto){};
     defer items.deinit(self.allocator);
     for (rows) |row| {
-        items.append(self.allocator, row) catch {};
+        items.append(self.allocator, toBugDto(row)) catch {};
     }
 
     base.send_layui_table_response(req, items.items, total, .{});

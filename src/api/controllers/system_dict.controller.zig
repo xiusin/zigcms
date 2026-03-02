@@ -1,323 +1,482 @@
 /// 系统字典控制器
 const std = @import("std");
 const zap = @import("zap");
+const Allocator = std.mem.Allocator;
+
 const base = @import("base.fn.zig");
-const models = @import("../../domain/entities/sys_dict.model.zig");
-const zigcms = @import("root");
+const sql = @import("../../application/services/sql/orm.zig");
+const models = @import("../../domain/entities/mod.zig");
+const global = @import("../../core/primitives/global.zig");
+const json_mod = @import("../../application/services/json/json.zig");
 
 pub const Dict = struct {
-    allocator: std.mem.Allocator,
-    
-    pub fn init(allocator: std.mem.Allocator) Dict {
+    const Self = @This();
+
+    allocator: Allocator,
+
+    const OrmDict = sql.defineWithConfig(models.SysDict, .{
+        .table_name = "zigcms.sys_dict",
+        .primary_key = "id",
+    });
+
+    const OrmDictItem = sql.defineWithConfig(models.SysDictItem, .{
+        .table_name = "zigcms.sys_dict_item",
+        .primary_key = "id",
+    });
+
+    /// 初始化字典控制器
+    pub fn init(allocator: Allocator) Self {
+        const db = global.get_db();
+        if (!OrmDict.hasDb()) OrmDict.use(db);
+        if (!OrmDictItem.hasDb()) OrmDictItem.use(db);
         return .{ .allocator = allocator };
     }
-    
+
+    // ==================== 公开路由处理器 ====================
+    pub const list = listImpl;
+    pub const save = saveImpl;
+    pub const delete = deleteImpl;
+    pub const set = setImpl;
+    pub const items = itemsImpl;
+    pub const itemSave = itemSaveImpl;
+    pub const itemDelete = itemDeleteImpl;
+    pub const itemSet = itemSetImpl;
+
+    // ==================== 字典 CRUD ====================
+
     /// 获取字典列表
-    pub fn list(self: *Dict, req: zap.Request) !void {
-        const page = req.getParamInt("page") orelse 1;
-        const page_size = req.getParamInt("page_size") orelse 20;
-        const keyword = req.getParam("keyword");
-        const category = req.getParam("category");
-        
-        const service_mgr = zigcms.getServiceManager() orelse return error.ServiceManagerNotInitialized;
-        const db = service_mgr.getDatabase();
-        
-        // 构建查询
-        const OrmDict = @import("root").Orm(models.SysDict, "sys_dict");
+    fn listImpl(self: *Self, req: zap.Request) !void {
+        req.parseQuery();
+
+        var page: i32 = 1;
+        var page_size: i32 = 10;
+        var keyword: ?[]const u8 = null;
+        var category: ?[]const u8 = null;
+
+        var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
+            return base.send_error(req, err);
+        };
+        defer params.deinit();
+
+        for (params.items) |param| {
+            if (std.mem.eql(u8, param.key, "page")) {
+                page = std.fmt.parseInt(i32, param.value, 10) catch 1;
+            } else if (std.mem.eql(u8, param.key, "page_size")) {
+                page_size = std.fmt.parseInt(i32, param.value, 10) catch 10;
+            } else if (std.mem.eql(u8, param.key, "keyword")) {
+                if (param.value.len > 0) keyword = param.value;
+            } else if (std.mem.eql(u8, param.key, "category")) {
+                if (param.value.len > 0) category = param.value;
+            }
+        }
+
+        // 查询总数
+        var cq = OrmDict.Query();
+        defer cq.deinit();
+        if (category) |cat| {
+            _ = cq.whereEq("category_code", cat);
+        }
+        const total = cq.count() catch 0;
+
+        // 查询列表
         var q = OrmDict.Query();
         defer q.deinit();
-        
-        // 搜索条件
-        if (keyword) |kw| {
-            if (kw.len > 0) {
-                var params = @import("root").ParamBuilder.init(self.allocator);
-                defer params.deinit();
-                
-                const search_pattern = try std.fmt.allocPrint(self.allocator, "%{s}%", .{kw});
-                defer self.allocator.free(search_pattern);
-                
-                try params.add(search_pattern);
-                try params.add(search_pattern);
-                
-                _ = q.whereRaw("(dict_name LIKE ? OR dict_code LIKE ?)", params);
-            }
-        }
-        
-        // 分类筛选
         if (category) |cat| {
-            if (cat.len > 0) {
-                _ = q.where("category_code", "=", cat);
-            }
+            _ = q.whereEq("category_code", cat);
         }
-        
-        // 排序
-        _ = q.orderBy("id", "DESC");
-        
-        // 分页
-        const offset = (page - 1) * page_size;
-        _ = q.limit(page_size).offset(offset);
-        
-        // 执行查询
-        var result = try q.getWithArena(self.allocator);
-        defer result.deinit();
-        
-        // 统计总数
-        var count_q = OrmDict.Query();
-        defer count_q.deinit();
-        
-        if (keyword) |kw| {
-            if (kw.len > 0) {
-                var params = @import("root").ParamBuilder.init(self.allocator);
-                defer params.deinit();
-                
-                const search_pattern = try std.fmt.allocPrint(self.allocator, "%{s}%", .{kw});
-                defer self.allocator.free(search_pattern);
-                
-                try params.add(search_pattern);
-                try params.add(search_pattern);
-                
-                _ = count_q.whereRaw("(dict_name LIKE ? OR dict_code LIKE ?)", params);
+        _ = q.orderBy("id", sql.OrderDir.desc);
+        _ = q.page(@intCast(page), @intCast(page_size));
+
+        const rows = q.get() catch |err| return base.send_error(req, err);
+        defer OrmDict.freeModels(rows);
+
+        // 构建响应列表
+        var list_arr = std.ArrayListUnmanaged(models.SysDict){};
+        defer list_arr.deinit(self.allocator);
+        for (rows) |row| {
+            // 简单关键词过滤（ORM 不支持 LIKE，在应用层做）
+            if (keyword) |kw| {
+                const name_match = std.mem.indexOf(u8, row.dict_name, kw) != null;
+                const code_match = std.mem.indexOf(u8, row.dict_code, kw) != null;
+                if (!name_match and !code_match) continue;
             }
+            list_arr.append(self.allocator, row) catch {};
         }
-        
-        if (category) |cat| {
-            if (cat.len > 0) {
-                _ = count_q.where("category_code", "=", cat);
-            }
-        }
-        
-        const total = try count_q.count();
-        
-        // 返回结果
-        try base.send_success(req, .{
-            .list = result.items(),
+
+        base.send_ok(req, .{
+            .list = list_arr.items,
             .total = total,
             .page = page,
             .page_size = page_size,
         });
-        
-        _ = db;
     }
-    
+
     /// 保存字典（新增/编辑）
-    pub fn save(self: *Dict, req: zap.Request) !void {
-        const body = try req.parseJsonBody();
-        const obj = body.object;
-        
-        const id = if (obj.get("id")) |v| if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null;
-        const category_code = if (obj.get("category_code")) |v| if (v == .string) v.string else "" else "";
-        const dict_name = if (obj.get("dict_name")) |v| if (v == .string) v.string else "" else "";
-        const dict_code = if (obj.get("dict_code")) |v| if (v == .string) v.string else "" else "";
-        const remark = if (obj.get("remark")) |v| if (v == .string) v.string else "" else "";
-        const status = if (obj.get("status")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else 1 else 1;
-        
-        // 验证必填字段
+    fn saveImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+        const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+            return base.send_failed(req, "JSON 格式错误");
+        };
+        defer parsed.deinit();
+
+        if (parsed.value != .object) return base.send_failed(req, "参数格式错误");
+        const obj = parsed.value.object;
+
+        // 提取字段
+        const id_val = if (obj.get("id")) |v| switch (v) {
+            .integer => |i| @as(?i32, @intCast(i)),
+            else => null,
+        } else null;
+        const category_code = if (obj.get("category_code")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const dict_name = if (obj.get("dict_name")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const dict_code = if (obj.get("dict_code")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const remark = if (obj.get("remark")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const status: i32 = if (obj.get("status")) |v| switch (v) {
+            .integer => |i| @intCast(i),
+            .bool => |b| if (b) @as(i32, 1) else @as(i32, 0),
+            else => 1,
+        } else 1;
+
         if (category_code.len == 0 or dict_name.len == 0 or dict_code.len == 0) {
-            return base.send_error(req, "分类、名称和编码不能为空", 400);
+            return base.send_failed(req, "分类、名称和编码不能为空");
         }
-        
-        // 获取分类名称
-        const category_name = try self.getCategoryName(category_code);
-        defer self.allocator.free(category_name);
-        
-        const OrmDict = @import("root").Orm(models.SysDict, "sys_dict");
-        
-        if (id) |dict_id| {
-            // 更新
-            _ = try OrmDict.UpdateWith(dict_id, .{
-                .category_code = category_code,
-                .category_name = category_name,
-                .dict_name = dict_name,
-                .dict_code = dict_code,
-                .remark = remark,
-                .status = status,
-                .updated_at = std.time.milliTimestamp(),
-            });
-            
-            try base.send_success(req, .{ .message = "更新成功" });
-        } else {
-            // 新增
-            const dict = models.SysDict{
-                .category_code = category_code,
-                .category_name = category_name,
-                .dict_name = dict_name,
-                .dict_code = dict_code,
-                .remark = remark,
-                .status = status,
-                .created_at = std.time.milliTimestamp(),
-            };
-            
-            const created = try OrmDict.Create(dict);
-            try base.send_success(req, .{ .id = created.id });
-        }
-    }
-    
-    /// 删除字典
-    pub fn delete(self: *Dict, req: zap.Request) !void {
-        const id = req.getParamInt("id") orelse return base.send_error(req, "缺少ID参数", 400);
-        
-        const OrmDict = @import("root").Orm(models.SysDict, "sys_dict");
-        try OrmDict.Delete(id);
-        
-        // 同时删除字典项
-        const OrmDictItem = @import("root").Orm(models.SysDictItem, "sys_dict_item");
-        var q = OrmDictItem.Query();
-        defer q.deinit();
-        
-        _ = q.where("dict_id", "=", id);
-        const dict_items = try q.get();
-        defer OrmDictItem.freeModels(dict_items);
-        
-        for (dict_items) |item| {
-            if (item.id) |item_id| {
-                try OrmDictItem.Delete(item_id);
+
+        // 查找分类名称
+        const category_name = getCategoryName(category_code);
+
+        if (id_val) |id| {
+            if (id > 0) {
+                // 更新
+                var model = (OrmDict.Find(id) catch |err| return base.send_error(req, err)) orelse {
+                    return base.send_failed(req, "字典不存在");
+                };
+                defer OrmDict.freeModel(&model);
+
+                model.category_code = category_code;
+                model.category_name = category_name;
+                model.dict_name = dict_name;
+                model.dict_code = dict_code;
+                model.remark = remark;
+                model.status = status;
+
+                _ = OrmDict.Update(id, model) catch |err| return base.send_error(req, err);
+                return base.send_ok(req, .{ .message = "更新成功" });
             }
         }
-        
-        try base.send_success(req, .{ .message = "删除成功" });
-        
-        _ = self;
+
+        // 新增
+        const dict = models.SysDict{
+            .category_code = category_code,
+            .category_name = category_name,
+            .dict_name = dict_name,
+            .dict_code = dict_code,
+            .remark = remark,
+            .status = status,
+        };
+        var created = OrmDict.Create(dict) catch |err| return base.send_error(req, err);
+        defer OrmDict.freeModel(&created);
+
+        base.send_ok(req, .{ .id = created.id, .message = "添加成功" });
     }
-    
-    /// 设置字段值
-    pub fn set(self: *Dict, req: zap.Request) !void {
-        const body = try req.parseJsonBody();
-        const obj = body.object;
-        
-        const id = if (obj.get("id")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else return base.send_error(req, "缺少ID", 400) else return base.send_error(req, "缺少ID", 400);
-        const field = if (obj.get("field")) |v| if (v == .string) v.string else return base.send_error(req, "缺少字段名", 400) else return base.send_error(req, "缺少字段名", 400);
-        const value = if (obj.get("value")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else 0 else 0;
-        
-        const OrmDict = @import("root").Orm(models.SysDict, "sys_dict");
-        
+
+    /// 删除字典
+    fn deleteImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch {
+            req.parseQuery();
+        };
+
+        var id: ?i32 = null;
+
+        // 支持 POST body 或 GET query 传 id
+        if (req.body) |body| {
+            var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+            if (parsed) |*p| {
+                defer p.deinit();
+                if (p.value == .object) {
+                    if (p.value.object.get("id")) |v| {
+                        if (v == .integer) id = @intCast(v.integer);
+                    }
+                }
+            }
+        }
+
+        if (id == null) {
+            req.parseQuery();
+            if (req.getParamSlice("id")) |id_str| {
+                id = std.fmt.parseInt(i32, id_str, 10) catch null;
+            }
+        }
+
+        const dict_id = id orelse return base.send_failed(req, "缺少 id 参数");
+
+        // 删除字典
+        _ = OrmDict.Destroy(dict_id) catch |err| return base.send_error(req, err);
+
+        // 同时删除该字典下所有字典项
+        var dq = OrmDictItem.WhereEq("dict_id", dict_id);
+        defer dq.deinit();
+        _ = dq.delete() catch {};
+
+        base.send_ok(req, .{ .message = "删除成功" });
+    }
+
+    /// 设置字典单字段（如 status 切换）
+    fn setImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+        const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+            return base.send_failed(req, "JSON 格式错误");
+        };
+        defer parsed.deinit();
+
+        if (parsed.value != .object) return base.send_failed(req, "参数格式错误");
+
+        const id_val = parsed.value.object.get("id") orelse return base.send_failed(req, "缺少 id");
+        const field_val = parsed.value.object.get("field") orelse return base.send_failed(req, "缺少 field");
+        const value_val = parsed.value.object.get("value") orelse return base.send_failed(req, "缺少 value");
+
+        if (id_val != .integer or field_val != .string) {
+            return base.send_failed(req, "参数类型错误");
+        }
+
+        const dict_id: i32 = @intCast(id_val.integer);
+        const field = field_val.string;
+
+        var model = (OrmDict.Find(dict_id) catch |err| return base.send_error(req, err)) orelse {
+            return base.send_failed(req, "记录不存在");
+        };
+        defer OrmDict.freeModel(&model);
+
         if (std.mem.eql(u8, field, "status")) {
-            _ = try OrmDict.UpdateWith(id, .{
-                .status = value,
-                .updated_at = std.time.milliTimestamp(),
-            });
-        }
-        
-        try base.send_success(req, .{ .message = "更新成功" });
-        
-        _ = self;
-    }
-    
-    /// 获取字典项列表
-    pub fn items(self: *Dict, req: zap.Request) !void {
-        const dict_id = req.getParamInt("dict_id") orelse return base.send_error(req, "缺少字典ID", 400);
-        
-        const OrmDictItem = @import("root").Orm(models.SysDictItem, "sys_dict_item");
-        var q = OrmDictItem.Query();
-        defer q.deinit();
-        
-        _ = q.where("dict_id", "=", dict_id).orderBy("sort", "ASC").orderBy("id", "ASC");
-        
-        var result = try q.getWithArena(self.allocator);
-        defer result.deinit();
-        
-        try base.send_success(req, .{
-            .list = result.items(),
-        });
-    }
-    
-    /// 保存字典项
-    pub fn itemSave(self: *Dict, req: zap.Request) !void {
-        const body = try req.parseJsonBody();
-        const obj = body.object;
-        
-        const id = if (obj.get("id")) |v| if (v == .integer) @as(?i32, @intCast(v.integer)) else null else null;
-        const dict_id = if (obj.get("dict_id")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else return base.send_error(req, "缺少字典ID", 400) else return base.send_error(req, "缺少字典ID", 400);
-        const item_name = if (obj.get("item_name")) |v| if (v == .string) v.string else "" else "";
-        const item_value = if (obj.get("item_value")) |v| if (v == .string) v.string else "" else "";
-        const sort = if (obj.get("sort")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else 0 else 0;
-        const status = if (obj.get("status")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else 1 else 1;
-        
-        if (item_name.len == 0 or item_value.len == 0) {
-            return base.send_error(req, "名称和值不能为空", 400);
-        }
-        
-        const OrmDictItem = @import("root").Orm(models.SysDictItem, "sys_dict_item");
-        
-        if (id) |item_id| {
-            // 更新
-            _ = try OrmDictItem.UpdateWith(item_id, .{
-                .item_name = item_name,
-                .item_value = item_value,
-                .sort = sort,
-                .status = status,
-                .updated_at = std.time.milliTimestamp(),
-            });
-            
-            try base.send_success(req, .{ .message = "更新成功" });
+            if (value_val != .integer) return base.send_failed(req, "status 类型错误");
+            model.status = @intCast(value_val.integer);
         } else {
-            // 新增
-            const item = models.SysDictItem{
-                .dict_id = dict_id,
-                .item_name = item_name,
-                .item_value = item_value,
-                .sort = sort,
-                .status = status,
-                .created_at = std.time.milliTimestamp(),
-            };
-            
-            const created = try OrmDictItem.Create(item);
-            try base.send_success(req, .{ .id = created.id });
+            return base.send_failed(req, "不支持的字段");
         }
-        
-        _ = self;
+
+        _ = OrmDict.Update(dict_id, model) catch |err| return base.send_error(req, err);
+        base.send_ok(req, .{ .message = "更新成功" });
     }
-    
+
+    // ==================== 字典项 CRUD ====================
+
+    /// 获取字典项列表
+    fn itemsImpl(self: *Self, req: zap.Request) !void {
+        req.parseQuery();
+
+        var dict_id: ?i32 = null;
+        if (req.getParamSlice("dict_id")) |id_str| {
+            dict_id = std.fmt.parseInt(i32, id_str, 10) catch null;
+        }
+
+        // 也支持通过 dict_code 查找
+        if (dict_id == null) {
+            if (req.getParamSlice("dict_code")) |code| {
+                var dq = OrmDict.WhereEq("dict_code", code);
+                defer dq.deinit();
+                const dict = dq.first() catch null;
+                if (dict) |d| {
+                    dict_id = d.id orelse 0;
+                }
+            }
+        }
+
+        const target_id = dict_id orelse return base.send_ok(req, .{ .list = &.{} });
+
+        var q = OrmDictItem.WhereEq("dict_id", target_id);
+        defer q.deinit();
+        _ = q.orderBy("sort", .asc);
+
+        const rows = q.get() catch |err| return base.send_error(req, err);
+        defer OrmDictItem.freeModels(rows);
+
+        var list_arr = std.ArrayListUnmanaged(models.SysDictItem){};
+        defer list_arr.deinit(self.allocator);
+        for (rows) |row| {
+            list_arr.append(self.allocator, row) catch {};
+        }
+
+        base.send_ok(req, .{ .list = list_arr.items });
+    }
+
+    /// 保存字典项
+    fn itemSaveImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+        const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+            return base.send_failed(req, "JSON 格式错误");
+        };
+        defer parsed.deinit();
+
+        if (parsed.value != .object) return base.send_failed(req, "参数格式错误");
+        const obj = parsed.value.object;
+
+        const id_val = if (obj.get("id")) |v| switch (v) {
+            .integer => |i| @as(?i32, @intCast(i)),
+            else => null,
+        } else null;
+        const dict_id_raw = if (obj.get("dict_id")) |v| switch (v) {
+            .integer => |i| @as(i32, @intCast(i)),
+            else => @as(i32, 0),
+        } else @as(i32, 0);
+        const item_name = if (obj.get("item_name")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const item_value = if (obj.get("item_value")) |v| switch (v) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        const sort: i32 = if (obj.get("sort")) |v| switch (v) {
+            .integer => |i| @intCast(i),
+            else => 0,
+        } else 0;
+        const status: i32 = if (obj.get("status")) |v| switch (v) {
+            .integer => |i| @intCast(i),
+            .bool => |b| if (b) @as(i32, 1) else @as(i32, 0),
+            else => 1,
+        } else 1;
+
+        if (dict_id_raw <= 0) return base.send_failed(req, "dict_id 无效");
+        if (item_name.len == 0 or item_value.len == 0) {
+            return base.send_failed(req, "名称和值不能为空");
+        }
+
+        if (id_val) |item_id| {
+            if (item_id > 0) {
+                // 更新
+                var model = (OrmDictItem.Find(item_id) catch |err| return base.send_error(req, err)) orelse {
+                    return base.send_failed(req, "字典项不存在");
+                };
+                defer OrmDictItem.freeModel(&model);
+
+                model.item_name = item_name;
+                model.item_value = item_value;
+                model.sort = sort;
+                model.status = status;
+
+                _ = OrmDictItem.Update(item_id, model) catch |err| return base.send_error(req, err);
+                return base.send_ok(req, .{ .message = "更新成功" });
+            }
+        }
+
+        // 新增
+        const item = models.SysDictItem{
+            .dict_id = dict_id_raw,
+            .item_name = item_name,
+            .item_value = item_value,
+            .sort = sort,
+            .status = status,
+        };
+        var created = OrmDictItem.Create(item) catch |err| return base.send_error(req, err);
+        defer OrmDictItem.freeModel(&created);
+
+        base.send_ok(req, .{ .id = created.id, .message = "添加成功" });
+    }
+
     /// 删除字典项
-    pub fn itemDelete(self: *Dict, req: zap.Request) !void {
-        const id = req.getParamInt("id") orelse return base.send_error(req, "缺少ID参数", 400);
-        
-        const OrmDictItem = @import("root").Orm(models.SysDictItem, "sys_dict_item");
-        try OrmDictItem.Delete(id);
-        
-        try base.send_success(req, .{ .message = "删除成功" });
-        
-        _ = self;
-    }
-    
-    /// 设置字典项字段值
-    pub fn itemSet(self: *Dict, req: zap.Request) !void {
-        const body = try req.parseJsonBody();
-        const obj = body.object;
-        
-        const id = if (obj.get("id")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else return base.send_error(req, "缺少ID", 400) else return base.send_error(req, "缺少ID", 400);
-        const field = if (obj.get("field")) |v| if (v == .string) v.string else return base.send_error(req, "缺少字段名", 400) else return base.send_error(req, "缺少字段名", 400);
-        const value = if (obj.get("value")) |v| if (v == .integer) @as(i32, @intCast(v.integer)) else 0 else 0;
-        
-        const OrmDictItem = @import("root").Orm(models.SysDictItem, "sys_dict_item");
-        
-        if (std.mem.eql(u8, field, "status")) {
-            _ = try OrmDictItem.UpdateWith(id, .{
-                .status = value,
-                .updated_at = std.time.milliTimestamp(),
-            });
+    fn itemDeleteImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch {
+            req.parseQuery();
+        };
+
+        var id: ?i32 = null;
+
+        if (req.body) |body_data| {
+            var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body_data, .{}) catch null;
+            if (parsed) |*p| {
+                defer p.deinit();
+                if (p.value == .object) {
+                    if (p.value.object.get("id")) |v| {
+                        if (v == .integer) id = @intCast(v.integer);
+                    }
+                }
+            }
         }
-        
-        try base.send_success(req, .{ .message = "更新成功" });
-        
-        _ = self;
+
+        if (id == null) {
+            req.parseQuery();
+            if (req.getParamSlice("id")) |id_str| {
+                id = std.fmt.parseInt(i32, id_str, 10) catch null;
+            }
+        }
+
+        const item_id = id orelse return base.send_failed(req, "缺少 id 参数");
+        _ = OrmDictItem.Destroy(item_id) catch |err| return base.send_error(req, err);
+        base.send_ok(req, .{ .message = "删除成功" });
     }
-    
-    /// 获取分类名称
-    fn getCategoryName(self: *Dict, code: []const u8) ![]const u8 {
-        // 分类映射
+
+    /// 设置字典项单字段
+    fn itemSetImpl(self: *Self, req: zap.Request) !void {
+        req.parseBody() catch return base.send_failed(req, "解析请求体失败");
+        const body = req.body orelse return base.send_failed(req, "请求体为空");
+
+        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+            return base.send_failed(req, "JSON 格式错误");
+        };
+        defer parsed.deinit();
+
+        if (parsed.value != .object) return base.send_failed(req, "参数格式错误");
+
+        const id_val = parsed.value.object.get("id") orelse return base.send_failed(req, "缺少 id");
+        const field_val = parsed.value.object.get("field") orelse return base.send_failed(req, "缺少 field");
+        const value_val = parsed.value.object.get("value") orelse return base.send_failed(req, "缺少 value");
+
+        if (id_val != .integer or field_val != .string) {
+            return base.send_failed(req, "参数类型错误");
+        }
+
+        const item_id: i32 = @intCast(id_val.integer);
+        const field = field_val.string;
+
+        var model = (OrmDictItem.Find(item_id) catch |err| return base.send_error(req, err)) orelse {
+            return base.send_failed(req, "记录不存在");
+        };
+        defer OrmDictItem.freeModel(&model);
+
+        if (std.mem.eql(u8, field, "status")) {
+            if (value_val != .integer) return base.send_failed(req, "status 类型错误");
+            model.status = @intCast(value_val.integer);
+        } else if (std.mem.eql(u8, field, "sort")) {
+            if (value_val != .integer) return base.send_failed(req, "sort 类型错误");
+            model.sort = @intCast(value_val.integer);
+        } else {
+            return base.send_failed(req, "不支持的字段");
+        }
+
+        _ = OrmDictItem.Update(item_id, model) catch |err| return base.send_error(req, err);
+        base.send_ok(req, .{ .message = "更新成功" });
+    }
+
+    // ==================== 辅助函数 ====================
+
+    /// 根据分类编码获取分类名称
+    fn getCategoryName(code: []const u8) []const u8 {
         const categories = [_]struct { code: []const u8, name: []const u8 }{
             .{ .code = "system", .name = "系统配置" },
             .{ .code = "business", .name = "业务配置" },
             .{ .code = "user", .name = "用户相关" },
             .{ .code = "order", .name = "订单相关" },
         };
-        
         for (categories) |cat| {
-            if (std.mem.eql(u8, cat.code, code)) {
-                return try self.allocator.dupe(u8, cat.name);
-            }
+            if (std.mem.eql(u8, cat.code, code)) return cat.name;
         }
-        
-        return try self.allocator.dupe(u8, "其他");
+        return "其他";
     }
 };

@@ -30,6 +30,7 @@ const std = @import("std");
 // 认证相关控制器
 pub const auth = struct {
     pub const Login = @import("login.controller.zig");
+    pub const OAuth = @import("oauth.controller.zig");
 };
 
 // 管理相关控制器
@@ -64,6 +65,11 @@ pub const system_ext = struct {
 // 自动化测试控制器
 pub const auto_test = struct {
     pub const AutoTest = @import("auto_test.controller.zig");
+};
+
+// 质量中心控制器
+pub const quality_center = struct {
+    pub const QualityCenter = @import("quality_center.controller.zig");
 };
 
 // 实时通信控制器
