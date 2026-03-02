@@ -38,6 +38,7 @@ pub const OpTaskLog = integration.OpTaskLog;
 pub const OpTaskScheduleLog = integration.OpTaskScheduleLog;
 pub const SysAdminRoleAudit = integration.SysAdminRoleAudit;
 pub const SysOAuthBind = @import("sys_oauth_bind.model.zig").SysOAuthBind;
+pub const SysOAuthLog = @import("sys_oauth_log.model.zig").SysOAuthLog;
 pub const sys_dept = integration.sys_dept;
 pub const sys_position = integration.sys_position;
 pub const sys_role = integration.sys_role;

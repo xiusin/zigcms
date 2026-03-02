@@ -185,7 +185,7 @@ pub fn get_sort_field(str: ?[]const u8) ?[]const u8 {
     return str;
 }
 
-fn warnUtf8Replacement(context: []const u8, payload: []const u8) void {
+pub fn warnUtf8Replacement(context: []const u8, payload: []const u8) void {
     if (payload.len == 0) return;
     if (std.mem.indexOf(u8, payload, replacement_marker) == null) return;
 

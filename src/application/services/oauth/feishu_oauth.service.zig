@@ -64,12 +64,12 @@ pub const FeishuTokenResponse = struct {
 pub const FeishuOAuthService = struct {
     allocator: Allocator,
     config: FeishuConfig,
-    
+
     const Self = @This();
-    
+
     /// 飞书 API 基础URL
     const FEISHU_API_BASE = "https://open.feishu.cn/open-apis";
-    
+
     /// 初始化服务
     pub fn init(allocator: Allocator, config: FeishuConfig) Self {
         return .{
@@ -77,110 +77,109 @@ pub const FeishuOAuthService = struct {
             .config = config,
         };
     }
-    
+
     /// 获取应用访问令牌（app_access_token）
     /// 用于调用飞书 API
     pub fn getAppAccessToken(self: *Self) ![]const u8 {
         const url = FEISHU_API_BASE ++ "/auth/v3/app_access_token/internal";
-        
+
         // 构建请求体
         const body = try std.fmt.allocPrint(self.allocator,
             \\{{"app_id":"{s}","app_secret":"{s}"}}
         , .{ self.config.app_id, self.config.app_secret });
         defer self.allocator.free(body);
-        
+
         // 发送 HTTP 请求
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
-        
-        var req = try client.open(.POST, try std.Uri.parse(url), .{
-            .server_header_buffer = try self.allocator.alloc(u8, 8192),
+
+        const uri = try std.Uri.parse(url);
+        var response_writer = try std.io.Writer.Allocating.initCapacity(self.allocator, 4096);
+        defer response_writer.deinit();
+
+        _ = try client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .POST,
+            .payload = body,
+            .extra_headers = &.{
+                .{ .name = "Content-Type", .value = "application/json" },
+            },
+            .response_writer = &response_writer.writer,
         });
-        defer req.deinit();
-        
-        req.headers.content_type = .{ .override = "application/json" };
-        req.transfer_encoding = .{ .content_length = body.len };
-        
-        try req.send();
-        try req.writeAll(body);
-        try req.finish();
-        try req.wait();
-        
+
         // 读取响应
-        const response_body = try req.reader().readAllAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(response_body);
-        
+        const response_body = response_writer.writer.buffer[0..response_writer.writer.end];
+
         // 解析 JSON
         const parsed = try json.parseFromSlice(json.Value, self.allocator, response_body, .{});
         defer parsed.deinit();
-        
+
         const root = parsed.value.object;
         const code = root.get("code").?.integer;
-        
+
         if (code != 0) {
             const msg = root.get("msg").?.string;
             std.log.err("飞书 API 错误: {s}", .{msg});
             return error.FeishuApiError;
         }
-        
+
         const app_access_token = root.get("app_access_token").?.string;
         return try self.allocator.dupe(u8, app_access_token);
     }
-    
+
     /// 使用授权码换取用户访问令牌
     pub fn getUserAccessToken(self: *Self, code: []const u8) !FeishuTokenResponse {
         const app_access_token = try self.getAppAccessToken();
         defer self.allocator.free(app_access_token);
-        
+
         const url = FEISHU_API_BASE ++ "/authen/v1/oidc/access_token";
-        
+
         // 构建请求体
         const body = try std.fmt.allocPrint(self.allocator,
             \\{{"grant_type":"authorization_code","code":"{s}"}}
         , .{code});
         defer self.allocator.free(body);
-        
+
         // 发送 HTTP 请求
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
-        
-        var req = try client.open(.POST, try std.Uri.parse(url), .{
-            .server_header_buffer = try self.allocator.alloc(u8, 8192),
-        });
-        defer req.deinit();
-        
-        req.headers.content_type = .{ .override = "application/json" };
-        req.transfer_encoding = .{ .content_length = body.len };
-        
-        // 添加 Authorization 头
+
+        const uri = try std.Uri.parse(url);
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{app_access_token});
         defer self.allocator.free(auth_header);
-        try req.headers.append("Authorization", auth_header);
-        
-        try req.send();
-        try req.writeAll(body);
-        try req.finish();
-        try req.wait();
-        
+
+        var response_writer = try std.io.Writer.Allocating.initCapacity(self.allocator, 4096);
+        defer response_writer.deinit();
+
+        _ = try client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .POST,
+            .payload = body,
+            .extra_headers = &.{
+                .{ .name = "Content-Type", .value = "application/json" },
+                .{ .name = "Authorization", .value = auth_header },
+            },
+            .response_writer = &response_writer.writer,
+        });
+
         // 读取响应
-        const response_body = try req.reader().readAllAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(response_body);
-        
+        const response_body = response_writer.writer.buffer[0..response_writer.writer.end];
+
         // 解析 JSON
         const parsed = try json.parseFromSlice(json.Value, self.allocator, response_body, .{});
         defer parsed.deinit();
-        
+
         const root = parsed.value.object;
         const code_val = root.get("code").?.integer;
-        
+
         if (code_val != 0) {
             const msg = root.get("msg").?.string;
             std.log.err("飞书 API 错误: {s}", .{msg});
             return error.FeishuApiError;
         }
-        
+
         const data = root.get("data").?.object;
-        
+
         return FeishuTokenResponse{
             .access_token = try self.allocator.dupe(u8, data.get("access_token").?.string),
             .refresh_token = try self.allocator.dupe(u8, data.get("refresh_token").?.string),
@@ -188,48 +187,49 @@ pub const FeishuOAuthService = struct {
             .token_type = try self.allocator.dupe(u8, data.get("token_type").?.string),
         };
     }
-    
+
     /// 获取用户信息
     pub fn getUserInfo(self: *Self, user_access_token: []const u8) !FeishuUserInfo {
         const url = FEISHU_API_BASE ++ "/authen/v1/user_info";
-        
+
         // 发送 HTTP 请求
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
-        
-        var req = try client.open(.GET, try std.Uri.parse(url), .{
-            .server_header_buffer = try self.allocator.alloc(u8, 8192),
-        });
-        defer req.deinit();
-        
-        // 添加 Authorization 头
+
+        const uri = try std.Uri.parse(url);
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{user_access_token});
         defer self.allocator.free(auth_header);
-        try req.headers.append("Authorization", auth_header);
-        
-        try req.send();
-        try req.finish();
-        try req.wait();
-        
+
+        var response_writer = try std.io.Writer.Allocating.initCapacity(self.allocator, 4096);
+        defer response_writer.deinit();
+
+        _ = try client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .GET,
+            .extra_headers = &.{
+                .{ .name = "Authorization", .value = auth_header },
+            },
+            .response_writer = &response_writer.writer,
+        });
+
         // 读取响应
-        const response_body = try req.reader().readAllAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(response_body);
-        
+        const response_body = response_writer.writer.buffer[0..response_writer.writer.end];
+
         // 解析 JSON
         const parsed = try json.parseFromSlice(json.Value, self.allocator, response_body, .{});
         defer parsed.deinit();
-        
+
         const root = parsed.value.object;
         const code = root.get("code").?.integer;
-        
+
         if (code != 0) {
             const msg = root.get("msg").?.string;
             std.log.err("飞书 API 错误: {s}", .{msg});
             return error.FeishuApiError;
         }
-        
+
         const data = root.get("data").?.object;
-        
+
         return FeishuUserInfo{
             .open_id = try self.allocator.dupe(u8, data.get("open_id").?.string),
             .union_id = try self.allocator.dupe(u8, data.get("union_id").?.string),
@@ -240,61 +240,60 @@ pub const FeishuOAuthService = struct {
             .avatar_url = if (data.get("avatar_url")) |v| try self.allocator.dupe(u8, v.string) else "",
         };
     }
-    
+
     /// 刷新访问令牌
     pub fn refreshAccessToken(self: *Self, refresh_token: []const u8) !FeishuTokenResponse {
         const app_access_token = try self.getAppAccessToken();
         defer self.allocator.free(app_access_token);
-        
+
         const url = FEISHU_API_BASE ++ "/authen/v1/oidc/refresh_access_token";
-        
+
         // 构建请求体
         const body = try std.fmt.allocPrint(self.allocator,
             \\{{"grant_type":"refresh_token","refresh_token":"{s}"}}
         , .{refresh_token});
         defer self.allocator.free(body);
-        
+
         // 发送 HTTP 请求
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
-        
-        var req = try client.open(.POST, try std.Uri.parse(url), .{
-            .server_header_buffer = try self.allocator.alloc(u8, 8192),
-        });
-        defer req.deinit();
-        
-        req.headers.content_type = .{ .override = "application/json" };
-        req.transfer_encoding = .{ .content_length = body.len };
-        
-        // 添加 Authorization 头
+
+        const uri = try std.Uri.parse(url);
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{app_access_token});
         defer self.allocator.free(auth_header);
-        try req.headers.append("Authorization", auth_header);
-        
-        try req.send();
-        try req.writeAll(body);
-        try req.finish();
-        try req.wait();
-        
+
+        var response_writer = try std.io.Writer.Allocating.initCapacity(self.allocator, 4096);
+        defer response_writer.deinit();
+
+        _ = try client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .POST,
+            .payload = body,
+            .extra_headers = &.{
+                .{ .name = "Content-Type", .value = "application/json" },
+                .{ .name = "Authorization", .value = auth_header },
+            },
+            .response_writer = &response_writer.writer,
+        });
+
         // 读取响应
-        const response_body = try req.reader().readAllAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(response_body);
-        
+        const response_body = response_writer.writer.buffer[0..response_writer.writer.end];
+
         // 解析 JSON
         const parsed = try json.parseFromSlice(json.Value, self.allocator, response_body, .{});
         defer parsed.deinit();
-        
+
         const root = parsed.value.object;
         const code = root.get("code").?.integer;
-        
+
         if (code != 0) {
             const msg = root.get("msg").?.string;
             std.log.err("飞书 API 错误: {s}", .{msg});
             return error.FeishuApiError;
         }
-        
+
         const data = root.get("data").?.object;
-        
+
         return FeishuTokenResponse{
             .access_token = try self.allocator.dupe(u8, data.get("access_token").?.string),
             .refresh_token = try self.allocator.dupe(u8, data.get("refresh_token").?.string),
@@ -302,14 +301,14 @@ pub const FeishuOAuthService = struct {
             .token_type = try self.allocator.dupe(u8, data.get("token_type").?.string),
         };
     }
-    
+
     /// 释放资源
     pub fn deinit(self: *Self, token_response: *FeishuTokenResponse) void {
         self.allocator.free(token_response.access_token);
         self.allocator.free(token_response.refresh_token);
         self.allocator.free(token_response.token_type);
     }
-    
+
     /// 释放用户信息资源
     pub fn deinitUserInfo(self: *Self, user_info: *FeishuUserInfo) void {
         self.allocator.free(user_info.open_id);

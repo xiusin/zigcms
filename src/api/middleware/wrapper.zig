@@ -24,6 +24,7 @@ const std = @import("std");
 const chain = @import("chain.zig");
 const jwt = @import("../../core/utils/jwt.zig");
 const context = @import("../../core/utils/context.zig");
+const base = @import("../controllers/base.fn.zig");
 
 /// JWT 密钥配置
 const JWT_SECRET = "zigcms-jwt-secret-key-2024";

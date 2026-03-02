@@ -190,7 +190,7 @@ pub const Bootstrap = struct {
         try self.app.route("/api/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
         try self.app.route("/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
         try self.app.route("/api/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
-        
+
         // 注册 OAuth 控制器
         if (!self.container.isRegistered(controllers.auth.OAuth)) {
             try self.container.registerSingleton(controllers.auth.OAuth, controllers.auth.OAuth, struct {
@@ -202,13 +202,16 @@ pub const Bootstrap = struct {
                 }
             }.factory, null);
         }
-        
+
         const oauth = try self.container.resolve(controllers.auth.OAuth);
+        try self.app.route("/api/oauth/authorize", oauth, &controllers.auth.OAuth.authorize);
         try self.app.route("/api/oauth/callback", oauth, &controllers.auth.OAuth.callback);
+        try self.app.route("/api/oauth/refresh", oauth, &controllers.auth.OAuth.refresh);
+        try self.app.route("/api/oauth/bind", oauth, &controllers.auth.OAuth.bind);
         try self.app.route("/api/oauth/bind/list", oauth, &controllers.auth.OAuth.bindList);
         try self.app.route("/api/oauth/unbind", oauth, &controllers.auth.OAuth.unbind);
-        
-        self.route_count += 11;
+
+        self.route_count += 14;
     }
 
     /// 注册公共接口路由
