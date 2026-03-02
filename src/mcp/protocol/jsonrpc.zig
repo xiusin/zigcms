@@ -26,7 +26,11 @@ pub const JsonRpcHandler = struct {
     
     /// 序列化响应
     pub fn serializeResponse(self: *JsonRpcHandler, response: types.JsonRpcResponse) ![]const u8 {
-        return try std.json.stringifyAlloc(self.allocator, response, .{});
+        var list = std.array_list.AlignedManaged(u8, null).init(self.allocator);
+        errdefer list.deinit();
+        
+        try list.writer().print("{f}", .{std.json.fmt(response, .{})});
+        return try list.toOwnedSlice();
     }
     
     /// 验证请求

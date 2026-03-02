@@ -45,7 +45,7 @@ pub const ProjectStructureTool = struct {
         const arena_alloc = arena.allocator();
         
         // 扫描项目结构
-        var structure = std.ArrayList(FileNode).init(arena_alloc);
+        var structure = std.array_list.AlignedManaged(FileNode, null).init(arena_alloc);
         try self.scanDirectory("src/", &structure, 0, arena_alloc);
         
         // 分析架构

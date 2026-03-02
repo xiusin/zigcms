@@ -119,7 +119,7 @@ pub const SseTransport = struct {
     /// 心跳检测
     pub fn heartbeat(self: *SseTransport) !void {
         const now = std.time.timestamp();
-        var to_remove = std.ArrayList(u64).init(self.allocator);
+        var to_remove = std.array_list.AlignedManaged(u64, null).init(self.allocator);
         defer to_remove.deinit();
         
         var it = self.connections.iterator();

@@ -45,7 +45,7 @@ pub const FileSearchTool = struct {
         defer arena.deinit();
         const arena_alloc = arena.allocator();
         
-        var results = std.ArrayList(SearchResult).init(arena_alloc);
+        var results = std.array_list.AlignedManaged(SearchResult, null).init(arena_alloc);
         
         if (std.mem.eql(u8, search_type.string, "filename")) {
             try self.searchByFilename(query.string, &results, arena_alloc);
