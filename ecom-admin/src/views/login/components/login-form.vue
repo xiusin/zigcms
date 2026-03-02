@@ -357,7 +357,6 @@
       gap: 16px;
 
       .oauth-btn {
-        width: 48px;
         height: 48px;
         border-radius: 50%;
         border: 2px solid #e5e7eb;

@@ -67,6 +67,9 @@ pub const Application = struct {
     }
 
     pub fn destroy(self: *Self) void {
+        // 清理 Bootstrap 资源
+        self.bootstrap.deinit();
+        
         self.app.deinit();
 
         // 注意：AppContext 中的资源是从 global 借用的，不要重复释放

@@ -17,6 +17,21 @@ const zap = @import("zap");
 const DIContainer = @import("../core/di/container.zig").DIContainer;
 const AppContext = @import("../core/context/app_context.zig").AppContext;
 
+/// MCP 控制器包装器（全局定义以便类型安全释放）
+const McpControllerWrapper = struct {
+    server: *@import("../mcp/mod.zig").McpServer,
+    
+    pub fn handleSse(ctrl: *@This(), req: zap.Request) !void {
+        var mutable_req = req;
+        try ctrl.server.sse_transport.handleSse(&mutable_req);
+    }
+    
+    pub fn handleMessage(ctrl: *@This(), req: zap.Request) !void {
+        var mutable_req = req;
+        try ctrl.server.sse_transport.handleMessage(&mutable_req);
+    }
+};
+
 /// Bootstrap 模块 - 系统启动编排器
 pub const Bootstrap = struct {
     const Self = @This();
@@ -28,6 +43,7 @@ pub const Bootstrap = struct {
     app_context: *AppContext,
     route_count: usize,
     crud_count: usize,
+    mcp_controller: ?*McpControllerWrapper = null,  // 跟踪 MCP 控制器
 
     /// 初始化 Bootstrap 模块
     pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext) !Self {
@@ -44,7 +60,25 @@ pub const Bootstrap = struct {
             .app_context = app_context,
             .route_count = 0,
             .crud_count = 0,
+            .mcp_controller = null,
         };
+    }
+
+    /// 清理资源
+    pub fn deinit(self: *Self) void {
+        // 清理 MCP Server（如果已注册）
+        const mcp = @import("../mcp/mod.zig");
+        if (self.container.isRegistered(mcp.McpServer)) {
+            if (self.container.resolve(mcp.McpServer)) |mcp_server| {
+                mcp_server.deinit();
+            } else |_| {}
+        }
+        
+        // 清理 MCP 控制器
+        if (self.mcp_controller) |ctrl| {
+            self.allocator.destroy(ctrl);
+            self.mcp_controller = null;
+        }
     }
 
     /// 获取应用上下文
@@ -429,28 +463,17 @@ pub const Bootstrap = struct {
         }
         
         // 创建 MCP 控制器包装器
-        const McpController = struct {
-            server: *mcp.McpServer,
-            
-            pub fn handleSse(ctrl: *@This(), req: zap.Request) !void {
-                var mutable_req = req;
-                try ctrl.server.sse_transport.handleSse(&mutable_req);
-            }
-            
-            pub fn handleMessage(ctrl: *@This(), req: zap.Request) !void {
-                var mutable_req = req;
-                try ctrl.server.sse_transport.handleMessage(&mutable_req);
-            }
-        };
-        
-        const mcp_ctrl = try self.allocator.create(McpController);
+        const mcp_ctrl = try self.allocator.create(McpControllerWrapper);
         mcp_ctrl.* = .{ .server = mcp_server };
         
+        // 保存控制器指针以便后续清理
+        self.mcp_controller = mcp_ctrl;
+        
         // 注册 SSE 端点（用于建立连接）
-        try self.app.route(config.mcp.transport.sse_path, mcp_ctrl, &McpController.handleSse);
+        try self.app.route(config.mcp.transport.sse_path, mcp_ctrl, &McpControllerWrapper.handleSse);
         
         // 注册消息端点（用于接收 JSON-RPC 消息）
-        try self.app.route(config.mcp.transport.message_path, mcp_ctrl, &McpController.handleMessage);
+        try self.app.route(config.mcp.transport.message_path, mcp_ctrl, &McpControllerWrapper.handleMessage);
         
         self.route_count += 2;
         
