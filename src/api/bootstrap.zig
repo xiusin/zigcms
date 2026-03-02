@@ -522,6 +522,28 @@ pub const Bootstrap = struct {
         logger.info("║    插件系统: {s}", .{if (config.app.enable_plugins) "已启用" else "已禁用"});
         logger.info("║    最大并发任务: {d}", .{config.app.max_concurrent_tasks});
 
+        // MCP 服务配置
+        logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
+        logger.info("║ 🤖 MCP 服务:                                                 ║", .{});
+        if (config.mcp.enabled) {
+            logger.info("║    状态: ✅ 已启用", .{});
+            logger.info("║    SSE 端点: http://{s}:{d}{s}", .{
+                config.mcp.transport.host,
+                config.mcp.transport.port,
+                config.mcp.transport.sse_path,
+            });
+            logger.info("║    消息端点: http://{s}:{d}{s}", .{
+                config.mcp.transport.host,
+                config.mcp.transport.port,
+                config.mcp.transport.message_path,
+            });
+            logger.info("║    工具数量: 7 个 (项目结构/搜索/读取/CRUD/模型/迁移/测试)", .{});
+            logger.info("║    📖 文档: src/mcp/docs/INDEX.md", .{});
+        } else {
+            logger.info("║    状态: ⚠️  未启用", .{});
+            logger.info("║    提示: 在 config/mcp.yaml 中设置 enabled: true", .{});
+        }
+
         // 路由统计
         logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
         logger.info("║ 🛣️  路由统计:                                                 ║", .{});
