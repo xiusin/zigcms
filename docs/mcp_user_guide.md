@@ -288,7 +288,8 @@ src/api/controllers/role.controller.zig
 请生成 Article CRUD 模块，包含以下字段：
 - title: 标题（字符串，必填，5-200 字符）
 - content: 内容（文本，必填）
-- author_id: 作者 ID（整数，必填）
+- user_id: 作者 ID（整数，必填）
+- category_id: 分类 ID（整数）
 - status: 状态（整数，默认 1）
 - view_count: 浏览次数（整数，默认 0）
 - created_at: 创建时间（时间戳）
@@ -296,9 +297,31 @@ src/api/controllers/role.controller.zig
 
 要求：
 - title 和 content 可搜索
-- status 和 author_id 可过滤
+- status 和 user_id 可过滤
 - created_at 可排序
 ```
+
+**自动推导关系**：
+- ✅ `user_id` → 自动推导为 `belongs_to User` 关系
+- ✅ `category_id` → 自动推导为 `belongs_to Category` 关系
+
+**显式指定关系**：
+
+```
+请生成 Article CRUD 模块，包含以下字段：
+- title: 标题（字符串，必填）
+- content: 内容（文本，必填）
+- user_id: 作者 ID（整数，必填）
+
+并添加以下关系：
+- tags: 标签列表（many_to_many 关系，关联 Tag 模型，中间表为 article_tags）
+- comments: 评论列表（has_many 关系，关联 Comment 模型）
+```
+
+**自动推导结果**：
+- ✅ `user_id` → `belongs_to User`（自动推导）
+- ✅ `tags` → `many_to_many Tag`（显式指定）
+- ✅ `comments` → `has_many Comment`（显式指定）
 
 **生成内容**：
 

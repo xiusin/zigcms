@@ -62,11 +62,28 @@ cd /path/to/zigcms
 请生成 Article CRUD 模块，包含以下字段：
 - title: 标题（字符串，必填，5-200 字符）
 - content: 内容（文本，必填）
-- author_id: 作者 ID（整数，必填）
+- user_id: 作者 ID（整数，必填）
 - status: 状态（整数，默认 1）
 ```
 
+**自动推导结果**：
+- ✅ `user_id` 自动推导为 `belongs_to User` 关系
+- ✅ 自动生成关系定义和预加载代码
+
 等待 10 秒，完整的 CRUD 模块就生成好了！
+
+**生成的 API 支持**：
+
+```bash
+# 基础查询
+GET /api/articles
+
+# 预加载作者信息（避免 N+1 查询）
+GET /api/articles?with=user
+
+# 组合查询：分页 + 搜索 + 过滤 + 预加载
+GET /api/articles?page=1&page_size=10&keyword=zig&status=1&with=user
+```
 
 ---
 
