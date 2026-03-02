@@ -11,7 +11,6 @@ pub const Upload = @import("upload.model.zig").Upload;
 pub const Task = @import("task.model.zig").Task;
 pub const Role = @import("role.model.zig").Role;
 pub const Dict = @import("dict.model.zig").Dict;
-pub const Position = @import("position.model.zig").Position;
 pub const Menu = @import("menu.model.zig").Menu;
 pub const User = @import("user.model.zig").User;
 
@@ -68,7 +67,6 @@ pub const EntityType = enum {
     task,
     role,
     dict,
-    position,
     menu,
     user,
 };
@@ -84,7 +82,6 @@ pub const EntityInterface = struct {
             .task => "tasks",
             .role => "roles",
             .dict => "dicts",
-            .position => "positions",
             .menu => "menus",
             .user => "users",
         };

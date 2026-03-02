@@ -78,13 +78,6 @@ pub const employee = struct {
     pub const Response = @import("employee_response.dto.zig").EmployeeResponseDto;
 };
 
-// 职位相关 DTO
-pub const position = struct {
-    pub const Create = @import("position_create.dto.zig").PositionCreateDto;
-    pub const Update = @import("position_update.dto.zig").PositionUpdateDto;
-    pub const Response = @import("position_response.dto.zig").PositionResponseDto;
-};
-
 // 角色相关 DTO
 pub const role = struct {
     pub const Create = @import("role_create.dto.zig").RoleCreateDto;

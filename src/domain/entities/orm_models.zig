@@ -191,23 +191,20 @@ pub const Employee = sql.define(struct {
     is_delete: i32 = 0,
 });
 
-/// 职位模型
+/// 职位模型（使用 sys_position 表）
 pub const Position = sql.define(struct {
-    pub const table_name = "zigcms.position";
+    pub const table_name = "sys_position";
     pub const primary_key = "id";
 
     id: ?i32 = null,
-    name: []const u8 = "",
-    code: []const u8 = "",
-    department_id: ?i32 = null,
-    level: i32 = 1,
+    dept_id: i32 = 0,
+    position_name: []const u8 = "",
+    position_code: []const u8 = "",
+    description: []const u8 = "",
     sort: i32 = 0,
     status: i32 = 1,
-    description: []const u8 = "",
-    remark: []const u8 = "",
-    create_time: ?i64 = null,
-    update_time: ?i64 = null,
-    is_delete: i32 = 0,
+    created_at: ?i64 = null,
+    updated_at: ?i64 = null,
 });
 
 /// 设置模型

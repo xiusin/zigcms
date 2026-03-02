@@ -138,7 +138,7 @@
         let params: any = JSON.parse(JSON.stringify(unParams));
 
         loading.value = true;
-        request('/api/dict/save', params)
+        request('/api/system/dict/save', params)
           .then(() => {
             onClose();
             emits('createOver');
