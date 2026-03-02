@@ -1,0 +1,71 @@
+# ZigCMS MCP 配置
+# Model Context Protocol Configuration
+
+mcp:
+  # 服务名称
+  name: ZigCMS_MCP
+  
+  # 版本号
+  version: v1.0.0
+  
+  # 是否启用
+  enabled: true
+  
+  # 传输配置
+  transport:
+    # 传输类型 (sse/stdio)
+    type: sse
+    
+    # 监听地址
+    host: 127.0.0.1
+    
+    # 监听端口
+    port: 8889
+    
+    # SSE 端点路径
+    sse_path: /mcp/sse
+    
+    # 消息端点路径
+    message_path: /mcp/message
+    
+    # 心跳间隔（秒）
+    heartbeat_interval: 30
+  
+  # 安全配置
+  security:
+    # 允许访问的路径
+    allowed_paths:
+      - src/
+      - docs/
+      - knowlages/
+    
+    # 禁止访问的路径
+    forbidden_paths:
+      - .git/
+      - .env
+      - config/secrets/
+      - node_modules/
+      - zig-cache/
+      - zig-out/
+    
+    # 允许的文件扩展名
+    allowed_extensions:
+      - .zig
+      - .md
+      - .yaml
+      - .json
+      - .toml
+    
+    # 最大文件大小（字节）
+    max_file_size: 10485760  # 10MB
+  
+  # 工具配置
+  tools:
+    # 启用的工具列表
+    enabled:
+      - project_structure
+      - file_search
+      - file_read
+      - generate_crud
+      - generate_model
+      - generate_controller
