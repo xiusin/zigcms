@@ -18,6 +18,7 @@ pub const McpServer = struct {
     crud_generator_tool: tools.CrudGeneratorTool,
     model_generator_tool: tools.ModelGeneratorTool,
     migration_generator_tool: tools.MigrationGeneratorTool,
+    test_generator_tool: tools.TestGeneratorTool,
     running: bool,
     
     pub fn init(allocator: std.mem.Allocator, config: McpConfig) !*McpServer {
@@ -38,6 +39,7 @@ pub const McpServer = struct {
         const crud_generator_tool = tools.CrudGeneratorTool.init(allocator, config.security);
         const model_generator_tool = tools.ModelGeneratorTool.init(allocator, config.security);
         const migration_generator_tool = tools.MigrationGeneratorTool.init(allocator, config.security);
+        const test_generator_tool = tools.TestGeneratorTool.init(allocator, config.security);
         
         self.* = .{
             .allocator = allocator,
@@ -49,6 +51,7 @@ pub const McpServer = struct {
             .crud_generator_tool = crud_generator_tool,
             .model_generator_tool = model_generator_tool,
             .migration_generator_tool = migration_generator_tool,
+            .test_generator_tool = test_generator_tool,
             .running = false,
         };
         

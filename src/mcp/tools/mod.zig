@@ -5,6 +5,7 @@ pub const file_read = @import("file_read.zig");
 pub const code_generator = @import("code_generator.zig");
 pub const model_generator = @import("model_generator.zig");
 pub const migration_generator = @import("migration_generator.zig");
+pub const test_generator = @import("test_generator.zig");
 
 pub const ProjectStructureTool = project_structure.ProjectStructureTool;
 pub const FileSearchTool = file_search.FileSearchTool;
@@ -12,3 +13,4 @@ pub const FileReadTool = file_read.FileReadTool;
 pub const CrudGeneratorTool = code_generator.CrudGeneratorTool;
 pub const ModelGeneratorTool = model_generator.ModelGeneratorTool;
 pub const MigrationGeneratorTool = migration_generator.MigrationGeneratorTool;
+pub const TestGeneratorTool = test_generator.TestGeneratorTool;
