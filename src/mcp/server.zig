@@ -19,6 +19,8 @@ pub const McpServer = struct {
     model_generator_tool: tools.ModelGeneratorTool,
     migration_generator_tool: tools.MigrationGeneratorTool,
     test_generator_tool: tools.TestGeneratorTool,
+    knowledge_base_tool: tools.KnowledgeBaseTool,
+    database_tool: tools.DatabaseTool,
     running: bool,
     
     pub fn init(allocator: std.mem.Allocator, config: McpConfig) !*McpServer {
@@ -40,6 +42,8 @@ pub const McpServer = struct {
         const model_generator_tool = tools.ModelGeneratorTool.init(allocator, config.security);
         const migration_generator_tool = tools.MigrationGeneratorTool.init(allocator, config.security);
         const test_generator_tool = tools.TestGeneratorTool.init(allocator, config.security);
+        const knowledge_base_tool = tools.KnowledgeBaseTool.init(allocator, config.security);
+        const database_tool = tools.DatabaseTool.init(allocator, config.security);
         
         self.* = .{
             .allocator = allocator,
@@ -52,6 +56,8 @@ pub const McpServer = struct {
             .model_generator_tool = model_generator_tool,
             .migration_generator_tool = migration_generator_tool,
             .test_generator_tool = test_generator_tool,
+            .knowledge_base_tool = knowledge_base_tool,
+            .database_tool = database_tool,
             .running = false,
         };
         
