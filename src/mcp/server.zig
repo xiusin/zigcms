@@ -16,6 +16,8 @@ pub const McpServer = struct {
     file_search_tool: tools.FileSearchTool,
     file_read_tool: tools.FileReadTool,
     crud_generator_tool: tools.CrudGeneratorTool,
+    model_generator_tool: tools.ModelGeneratorTool,
+    migration_generator_tool: tools.MigrationGeneratorTool,
     running: bool,
     
     pub fn init(allocator: std.mem.Allocator, config: McpConfig) !*McpServer {
@@ -34,6 +36,8 @@ pub const McpServer = struct {
         const file_search_tool = tools.FileSearchTool.init(allocator, config.security);
         const file_read_tool = tools.FileReadTool.init(allocator, config.security);
         const crud_generator_tool = tools.CrudGeneratorTool.init(allocator, config.security);
+        const model_generator_tool = tools.ModelGeneratorTool.init(allocator, config.security);
+        const migration_generator_tool = tools.MigrationGeneratorTool.init(allocator, config.security);
         
         self.* = .{
             .allocator = allocator,
@@ -43,6 +47,8 @@ pub const McpServer = struct {
             .file_search_tool = file_search_tool,
             .file_read_tool = file_read_tool,
             .crud_generator_tool = crud_generator_tool,
+            .model_generator_tool = model_generator_tool,
+            .migration_generator_tool = migration_generator_tool,
             .running = false,
         };
         
