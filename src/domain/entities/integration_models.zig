@@ -181,7 +181,6 @@ pub const SysConfig = struct {
 pub const SysDict = struct {
     id: ?i32 = null,
     category_code: []const u8 = "",
-    category_name: []const u8 = "",
     dict_name: []const u8 = "",
     dict_code: []const u8 = "",
     remark: []const u8 = "",

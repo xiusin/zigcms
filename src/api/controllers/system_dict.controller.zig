@@ -24,11 +24,17 @@ pub const Dict = struct {
         .primary_key = "id",
     });
 
+    const OrmDictCategory = sql.defineWithConfig(models.SysDictCategory, .{
+        .table_name = "zigcms.sys_dict_category",
+        .primary_key = "id",
+    });
+
     /// 初始化字典控制器
     pub fn init(allocator: Allocator) Self {
         const db = global.get_db();
         if (!OrmDict.hasDb()) OrmDict.use(db);
         if (!OrmDictItem.hasDb()) OrmDictItem.use(db);
+        if (!OrmDictCategory.hasDb()) OrmDictCategory.use(db);
         return .{ .allocator = allocator };
     }
 
@@ -90,9 +96,31 @@ pub const Dict = struct {
         const rows = q.get() catch |err| return base.send_error(req, err);
         defer OrmDict.freeModels(rows);
 
-        // 构建响应列表
-        var list_arr = std.ArrayListUnmanaged(models.SysDict){};
+        // 加载所有分类到内存（用于快速查找分类名称）
+        var category_q = OrmDictCategory.Query();
+        defer category_q.deinit();
+        const categories = category_q.get() catch &[_]models.SysDictCategory{};
+        defer {
+            // 手动释放分类数据
+            for (categories) |cat| {
+                self.allocator.free(cat.category_code);
+                self.allocator.free(cat.category_name);
+            }
+            self.allocator.free(categories);
+        }
+
+        // 构建分类代码到名称的映射
+        var category_map = std.StringHashMap([]const u8).init(self.allocator);
+        defer category_map.deinit();
+        for (categories) |cat| {
+            category_map.put(cat.category_code, cat.category_name) catch {};
+        }
+
+        // 构建带分类名称的响应列表
+        const DictWithCategory = @import("../dto/dict_with_category.dto.zig").DictWithCategory;
+        var list_arr = std.ArrayListUnmanaged(DictWithCategory){};
         defer list_arr.deinit(self.allocator);
+
         for (rows) |row| {
             // 简单关键词过滤（ORM 不支持 LIKE，在应用层做）
             if (keyword) |kw| {
@@ -100,7 +128,21 @@ pub const Dict = struct {
                 const code_match = std.mem.indexOf(u8, row.dict_code, kw) != null;
                 if (!name_match and !code_match) continue;
             }
-            list_arr.append(self.allocator, row) catch {};
+
+            // 从缓存中获取分类名称
+            const category_name = category_map.get(row.category_code) orelse "";
+
+            list_arr.append(self.allocator, .{
+                .id = row.id,
+                .category_code = row.category_code,
+                .category_name = category_name,
+                .dict_name = row.dict_name,
+                .dict_code = row.dict_code,
+                .remark = row.remark,
+                .status = row.status,
+                .created_at = row.created_at,
+                .updated_at = row.updated_at,
+            }) catch {};
         }
 
         base.send_ok(req, .{
@@ -155,9 +197,6 @@ pub const Dict = struct {
             return base.send_failed(req, "分类、名称和编码不能为空");
         }
 
-        // 查找分类名称
-        const category_name = getCategoryName(category_code);
-
         if (id_val) |id| {
             if (id > 0) {
                 // 更新
@@ -167,7 +206,6 @@ pub const Dict = struct {
                 defer OrmDict.freeModel(&model);
 
                 model.category_code = category_code;
-                model.category_name = category_name;
                 model.dict_name = dict_name;
                 model.dict_code = dict_code;
                 model.remark = remark;
@@ -181,7 +219,6 @@ pub const Dict = struct {
         // 新增
         const dict = models.SysDict{
             .category_code = category_code,
-            .category_name = category_name,
             .dict_name = dict_name,
             .dict_code = dict_code,
             .remark = remark,
