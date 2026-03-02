@@ -62,7 +62,6 @@ pub const CrudGeneratorTool = struct {
     
     /// 解析字段定义
     fn parseFields(self: *CrudGeneratorTool, allocator: std.mem.Allocator, fields_value: std.json.Value) ![]Field {
-        _ = self;
         var fields = std.array_list.AlignedManaged(Field, null).init(allocator);
         
         if (fields_value != .array) return error.InvalidFieldsFormat;
@@ -102,6 +101,39 @@ pub const CrudGeneratorTool = struct {
                 if (v == .bool) v.bool else false 
                 else false;
             
+            // 解析关系定义（显式）
+            var relation_type: ?RelationType = null;
+            var related_model: ?[]const u8 = null;
+            var foreign_key: ?[]const u8 = null;
+            var through_table: ?[]const u8 = null;
+            
+            if (field_value.object.get("relation")) |rel| {
+                if (rel == .object) {
+                    if (rel.object.get("type")) |t| {
+                        if (t == .string) {
+                            relation_type = std.meta.stringToEnum(RelationType, t.string);
+                        }
+                    }
+                    if (rel.object.get("model")) |m| {
+                        if (m == .string) related_model = m.string;
+                    }
+                    if (rel.object.get("foreign_key")) |fk| {
+                        if (fk == .string) foreign_key = fk.string;
+                    }
+                    if (rel.object.get("through")) |th| {
+                        if (th == .string) through_table = th.string;
+                    }
+                }
+            }
+            
+            // 自动推导关系（基于字段名）
+            if (relation_type == null) {
+                const inferred = try self.inferRelation(allocator, field_name.string, field_type.string);
+                relation_type = inferred.relation_type;
+                related_model = inferred.related_model;
+                foreign_key = inferred.foreign_key;
+            }
+            
             try fields.append(.{
                 .name = field_name.string,
                 .type = field_type.string,
@@ -114,10 +146,77 @@ pub const CrudGeneratorTool = struct {
                 .searchable = searchable,
                 .filterable = filterable,
                 .sortable = sortable,
+                .relation_type = relation_type,
+                .related_model = related_model,
+                .foreign_key = foreign_key,
+                .through_table = through_table,
             });
         }
         
         return fields.items;
+    }
+    
+    /// 推导关系信息
+    fn inferRelation(self: *CrudGeneratorTool, allocator: std.mem.Allocator, field_name: []const u8, field_type: []const u8) !struct {
+        relation_type: ?RelationType,
+        related_model: ?[]const u8,
+        foreign_key: ?[]const u8,
+    } {
+        // 规则 1: 字段名以 _id 结尾 -> belongs_to 关系
+        if (std.mem.endsWith(u8, field_name, "_id") and std.mem.eql(u8, field_type, "int")) {
+            // 提取模型名：user_id -> User
+            const model_name_lower = field_name[0 .. field_name.len - 3]; // 去掉 _id
+            const model_name = try self.capitalize(allocator, model_name_lower);
+            
+            return .{
+                .relation_type = .belongs_to,
+                .related_model = model_name,
+                .foreign_key = field_name,
+            };
+        }
+        
+        // 规则 2: 字段名为复数形式 -> has_many 关系
+        // 例如：articles, comments, tags
+        if (std.mem.endsWith(u8, field_name, "s") and std.mem.eql(u8, field_type, "relation")) {
+            // 提取模型名：articles -> Article
+            const model_name_lower = field_name[0 .. field_name.len - 1]; // 去掉 s
+            const model_name = try self.capitalize(allocator, model_name_lower);
+            
+            return .{
+                .relation_type = .has_many,
+                .related_model = model_name,
+                .foreign_key = null, // 由关联模型决定
+            };
+        }
+        
+        // 规则 3: 字段名为单数形式且类型为 relation -> has_one 关系
+        // 例如：profile, setting
+        if (std.mem.eql(u8, field_type, "relation")) {
+            const model_name = try self.capitalize(allocator, field_name);
+            
+            return .{
+                .relation_type = .has_one,
+                .related_model = model_name,
+                .foreign_key = null,
+            };
+        }
+        
+        // 无法推导
+        return .{
+            .relation_type = null,
+            .related_model = null,
+            .foreign_key = null,
+        };
+    }
+    
+    /// 首字母大写
+    fn capitalize(_: *CrudGeneratorTool, allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
+        if (str.len == 0) return str;
+        
+        var result = try allocator.alloc(u8, str.len);
+        @memcpy(result, str);
+        result[0] = std.ascii.toUpper(result[0]);
+        return result;
     }
     
     /// 生成模型代码
@@ -134,13 +233,102 @@ pub const CrudGeneratorTool = struct {
         try writer.print("pub const {s} = struct {{\n", .{name});
         
         // 字段定义
+        var has_relations = false;
         for (fields) |field| {
+            // 跳过关系字段（不作为数据库字段）
+            if (field.relation_type != null and std.mem.eql(u8, field.type, "relation")) {
+                has_relations = true;
+                continue;
+            }
+            
             const zig_type = try self.mapTypeToZig(allocator, field.type);
             if (field.required) {
                 try writer.print("    {s}: {s},\n", .{ field.name, zig_type });
             } else {
                 try writer.print("    {s}: ?{s} = null,\n", .{ field.name, zig_type });
             }
+        }
+        
+        // 添加关系字段（可选，用于预加载）
+        if (has_relations) {
+            try writer.writeAll("\n    // 关联数据字段（可选，用于预加载）\n");
+            for (fields) |field| {
+                if (field.relation_type) |rel_type| {
+                    if (field.related_model) |model| {
+                        switch (rel_type) {
+                            .belongs_to, .has_one => {
+                                try writer.print("    {s}: ?{s} = null,\n", .{ field.name, model });
+                            },
+                            .has_many, .many_to_many => {
+                                try writer.print("    {s}: ?[]{s} = null,\n", .{ field.name, model });
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 添加关系定义
+        if (has_relations) {
+            try writer.writeAll("\n    // 关系定义\n");
+            try writer.writeAll("    pub const relations = .{\n");
+            
+            for (fields) |field| {
+                if (field.relation_type) |rel_type| {
+                    if (field.related_model) |model| {
+                        try writer.print("        .{s} = .{{\n", .{field.name});
+                        
+                        switch (rel_type) {
+                            .belongs_to => {
+                                try writer.writeAll("            .type = .belongs_to,\n");
+                                try writer.print("            .model = {s},\n", .{model});
+                                if (field.foreign_key) |fk| {
+                                    try writer.print("            .foreign_key = \"{s}\",\n", .{fk});
+                                }
+                            },
+                            .has_one => {
+                                try writer.writeAll("            .type = .has_one,\n");
+                                try writer.print("            .model = {s},\n", .{model});
+                                // 外键在关联模型中
+                                const lower_name = try std.ascii.allocLowerString(allocator, name);
+                                defer allocator.free(lower_name);
+                                try writer.print("            .foreign_key = \"{s}_id\",\n", .{lower_name});
+                            },
+                            .has_many => {
+                                try writer.writeAll("            .type = .has_many,\n");
+                                try writer.print("            .model = {s},\n", .{model});
+                                const lower_name = try std.ascii.allocLowerString(allocator, name);
+                                defer allocator.free(lower_name);
+                                try writer.print("            .foreign_key = \"{s}_id\",\n", .{lower_name});
+                            },
+                            .many_to_many => {
+                                try writer.writeAll("            .type = .many_to_many,\n");
+                                try writer.print("            .model = {s},\n", .{model});
+                                if (field.through_table) |through| {
+                                    try writer.print("            .through = \"{s}\",\n", .{through});
+                                } else {
+                                    // 自动生成中间表名
+                                    const lower_name = try std.ascii.allocLowerString(allocator, name);
+                                    defer allocator.free(lower_name);
+                                    const lower_model = try std.ascii.allocLowerString(allocator, model);
+                                    defer allocator.free(lower_model);
+                                    try writer.print("            .through = \"{s}_{s}\",\n", .{ lower_name, lower_model });
+                                }
+                                const lower_name = try std.ascii.allocLowerString(allocator, name);
+                                defer allocator.free(lower_name);
+                                try writer.print("            .foreign_key = \"{s}_id\",\n", .{lower_name});
+                                const lower_model = try std.ascii.allocLowerString(allocator, model);
+                                defer allocator.free(lower_model);
+                                try writer.print("            .related_key = \"{s}_id\",\n", .{lower_model});
+                            },
+                        }
+                        
+                        try writer.writeAll("        },\n");
+                    }
+                }
+            }
+            
+            try writer.writeAll("    };\n");
         }
         
         try writer.writeAll("};\n");
@@ -263,6 +451,30 @@ pub const CrudGeneratorTool = struct {
         try writer.print("        var q = Orm{s}.Query();\n", .{name});
         try writer.writeAll("        defer q.deinit();\n\n");
         
+        // 添加关系预加载
+        var has_relations = false;
+        for (fields) |field| {
+            if (field.relation_type != null) {
+                has_relations = true;
+                break;
+            }
+        }
+        
+        if (has_relations) {
+            try writer.writeAll("        // 获取预加载参数\n");
+            try writer.writeAll("        const with_param = mutable_req.getParam(\"with\");\n");
+            try writer.writeAll("        if (with_param) |with_str| {\n");
+            try writer.writeAll("            // 解析预加载关系（逗号分隔）\n");
+            try writer.writeAll("            var relations = std.ArrayList([]const u8).init(self.allocator);\n");
+            try writer.writeAll("            defer relations.deinit();\n");
+            try writer.writeAll("            var iter = std.mem.split(u8, with_str, \",\");\n");
+            try writer.writeAll("            while (iter.next()) |rel| {\n");
+            try writer.writeAll("                try relations.append(std.mem.trim(u8, rel, \" \"));\n");
+            try writer.writeAll("            }\n");
+            try writer.writeAll("            _ = q.with(relations.items);\n");
+            try writer.writeAll("        }\n\n");
+        }
+        
         // 添加搜索条件
         if (has_searchable) {
             try writer.writeAll("        // 搜索条件\n");
@@ -345,11 +557,39 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid ID\", 400);\n");
         try writer.writeAll("            return;\n");
         try writer.writeAll("        };\n\n");
-        try writer.print("        const item = try Orm{s}.FindById(id) orelse {{\n", .{name});
-        try writer.writeAll("            try base.send_error(&mutable_req, \"Not found\", 404);\n");
-        try writer.writeAll("            return;\n");
-        try writer.writeAll("        };\n");
-        try writer.print("        defer Orm{s}.freeModel(item);\n\n", .{name});
+        
+        // 添加关系预加载
+        if (has_relations) {
+            try writer.writeAll("        // 获取预加载参数\n");
+            try writer.writeAll("        const with_param = mutable_req.getParam(\"with\");\n");
+            try writer.writeAll("        var q = Orm");
+            try writer.print("{s}.Query();\n", .{name});
+            try writer.writeAll("        defer q.deinit();\n");
+            try writer.writeAll("        _ = q.where(\"id\", \"=\", id);\n");
+            try writer.writeAll("        if (with_param) |with_str| {\n");
+            try writer.writeAll("            var relations = std.ArrayList([]const u8).init(self.allocator);\n");
+            try writer.writeAll("            defer relations.deinit();\n");
+            try writer.writeAll("            var iter = std.mem.split(u8, with_str, \",\");\n");
+            try writer.writeAll("            while (iter.next()) |rel| {\n");
+            try writer.writeAll("                try relations.append(std.mem.trim(u8, rel, \" \"));\n");
+            try writer.writeAll("            }\n");
+            try writer.writeAll("            _ = q.with(relations.items);\n");
+            try writer.writeAll("        }\n");
+            try writer.writeAll("        const items = try q.get();\n");
+            try writer.writeAll("        if (items.len == 0) {\n");
+            try writer.writeAll("            try base.send_error(&mutable_req, \"Not found\", 404);\n");
+            try writer.writeAll("            return;\n");
+            try writer.writeAll("        }\n");
+            try writer.writeAll("        const item = items[0];\n");
+            try writer.print("        defer Orm{s}.freeModels(items);\n\n", .{name});
+        } else {
+            try writer.print("        const item = try Orm{s}.FindById(id) orelse {{\n", .{name});
+            try writer.writeAll("            try base.send_error(&mutable_req, \"Not found\", 404);\n");
+            try writer.writeAll("            return;\n");
+            try writer.writeAll("        };\n");
+            try writer.print("        defer Orm{s}.freeModel(item);\n\n", .{name});
+        }
+        
         try writer.writeAll("        try base.send_success(&mutable_req, item);\n");
         try writer.writeAll("    }\n\n");
         
@@ -628,4 +868,18 @@ const Field = struct {
     searchable: bool = false,  // 是否可搜索
     filterable: bool = false,  // 是否可过滤
     sortable: bool = false,    // 是否可排序
+    
+    // 关系字段
+    relation_type: ?RelationType = null,  // 关系类型
+    related_model: ?[]const u8 = null,    // 关联模型名
+    foreign_key: ?[]const u8 = null,      // 外键字段
+    through_table: ?[]const u8 = null,    // 中间表（多对多）
+};
+
+/// 关系类型
+const RelationType = enum {
+    belongs_to,    // 属于（多对一）
+    has_one,       // 拥有一个（一对一）
+    has_many,      // 拥有多个（一对多）
+    many_to_many,  // 多对多
 };
