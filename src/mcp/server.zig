@@ -15,6 +15,7 @@ pub const McpServer = struct {
     project_structure_tool: tools.ProjectStructureTool,
     file_search_tool: tools.FileSearchTool,
     file_read_tool: tools.FileReadTool,
+    crud_generator_tool: tools.CrudGeneratorTool,
     running: bool,
     
     pub fn init(allocator: std.mem.Allocator, config: McpConfig) !*McpServer {
@@ -32,6 +33,7 @@ pub const McpServer = struct {
         const project_structure_tool = tools.ProjectStructureTool.init(allocator, config.security);
         const file_search_tool = tools.FileSearchTool.init(allocator, config.security);
         const file_read_tool = tools.FileReadTool.init(allocator, config.security);
+        const crud_generator_tool = tools.CrudGeneratorTool.init(allocator, config.security);
         
         self.* = .{
             .allocator = allocator,
@@ -40,6 +42,7 @@ pub const McpServer = struct {
             .project_structure_tool = project_structure_tool,
             .file_search_tool = file_search_tool,
             .file_read_tool = file_read_tool,
+            .crud_generator_tool = crud_generator_tool,
             .running = false,
         };
         
