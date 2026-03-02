@@ -50,6 +50,7 @@ pub const system_ext = struct {
     pub const Dept = @import("system_dept.controller.zig");
     pub const Admin = @import("system_admin.controller.zig");
     pub const Menu = @import("system_menu.controller.zig");
+    pub const Dict = @import("system_dict.controller.zig").Dict;
     pub const DictItem = @import("system_dict_item.controller.zig");
     pub const Config = @import("system_config.controller.zig");
     pub const Role = @import("system_role.controller.zig");
@@ -58,6 +59,11 @@ pub const system_ext = struct {
     pub const Payment = @import("system_payment.controller.zig");
     pub const Version = @import("system_version.controller.zig");
     pub const Log = @import("log.controller.zig");
+};
+
+// 自动化测试控制器
+pub const auto_test = struct {
+    pub const AutoTest = @import("auto_test.controller.zig");
 };
 
 // 实时通信控制器

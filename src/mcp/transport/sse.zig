@@ -9,13 +9,16 @@ const McpConfig = @import("../../core/config/mcp.zig").McpConfig;
 pub const Connection = struct {
     /// 连接 ID
     id: u64,
-    
+
     /// 最后心跳时间
     last_ping: i64,
-    
+
     /// 是否活跃
     active: bool,
 };
+
+/// 工具路由回调函数类型
+pub const ToolHandler = *const fn (method: []const u8, params: std.json.Value) anyerror!std.json.Value;
 
 /// SSE 传输层
 pub const SseTransport = struct {
@@ -23,7 +26,8 @@ pub const SseTransport = struct {
     config: McpConfig.TransportConfig,
     connections: std.AutoHashMap(u64, Connection),
     next_conn_id: u64,
-    
+    tool_handler: ?ToolHandler = null,
+
     pub fn init(allocator: std.mem.Allocator, config: McpConfig.TransportConfig) !*SseTransport {
         const self = try allocator.create(SseTransport);
         self.* = .{
@@ -34,12 +38,12 @@ pub const SseTransport = struct {
         };
         return self;
     }
-    
+
     pub fn deinit(self: *SseTransport) void {
         self.connections.deinit();
         self.allocator.destroy(self);
     }
-    
+
     /// 处理 SSE 连接
     pub fn handleSse(self: *SseTransport, req: *zap.Request) !void {
         // 设置 SSE 响应头
@@ -47,19 +51,19 @@ pub const SseTransport = struct {
         try req.setHeader("Cache-Control", "no-cache");
         try req.setHeader("Connection", "keep-alive");
         try req.setHeader("Access-Control-Allow-Origin", "*");
-        
+
         // 创建连接
         const conn_id = self.next_conn_id;
         self.next_conn_id += 1;
-        
+
         const conn = Connection{
             .id = conn_id,
             .last_ping = std.time.timestamp(),
             .active = true,
         };
-        
+
         try self.connections.put(conn_id, conn);
-        
+
         // 发送连接成功事件
         const init_data = try std.fmt.allocPrint(
             self.allocator,
@@ -67,43 +71,61 @@ pub const SseTransport = struct {
             .{conn_id},
         );
         defer self.allocator.free(init_data);
-        
+
         try self.sendEvent(req, "connected", init_data);
     }
-    
-    /// 处理消息
+
+    /// 注册工具路由回调
+    pub fn setToolHandler(self: *SseTransport, handler: ToolHandler) void {
+        self.tool_handler = handler;
+    }
+
+    /// 处理消息（路由到具体工具）
     pub fn handleMessage(self: *SseTransport, req: *zap.Request) !void {
         const body = req.body orelse return error.EmptyBody;
-        
+
         // 解析 JSON-RPC 请求
         var handler = protocol.JsonRpcHandler.init(self.allocator);
         const request = try handler.parseRequest(body);
-        
+
         // 验证请求
         try handler.validateRequest(&request);
-        
-        // 处理请求（TODO: 路由到具体工具）
-        const response = protocol.types.createSuccessResponse(
-            self.allocator,
-            request.id,
-            std.json.Value{ .null = {} },
-        ) catch |err| {
-            return protocol.types.createErrorResponse(
-                self.allocator,
-                request.id,
-                .internal_error,
-                @errorName(err),
-            );
+
+        // 路由到具体工具处理
+        const response = blk: {
+            if (self.tool_handler) |tool_fn| {
+                const params = request.params orelse std.json.Value{ .object = std.json.ObjectMap.init(self.allocator) };
+                const result = tool_fn(request.method, params) catch |err| {
+                    break :blk try protocol.types.createErrorResponse(
+                        self.allocator,
+                        request.id,
+                        .internal_error,
+                        @errorName(err),
+                    );
+                };
+                break :blk try protocol.types.createSuccessResponse(
+                    self.allocator,
+                    request.id,
+                    result,
+                );
+            } else {
+                break :blk try protocol.types.createErrorResponse(
+                    self.allocator,
+                    request.id,
+                    .method_not_found,
+                    "工具路由未注册",
+                );
+            }
         };
-        
+
         // 序列化响应
         const response_json = try handler.serializeResponse(response);
         defer self.allocator.free(response_json);
-        
+
         // 发送响应
         try req.sendJson(response_json);
     }
-    
+
     /// 发送 SSE 事件
     fn sendEvent(self: *SseTransport, req: *zap.Request, event: []const u8, data: []const u8) !void {
         const message = try std.fmt.allocPrint(
@@ -112,16 +134,16 @@ pub const SseTransport = struct {
             .{ event, data },
         );
         defer self.allocator.free(message);
-        
+
         try req.sendBody(message);
     }
-    
+
     /// 心跳检测
     pub fn heartbeat(self: *SseTransport) !void {
         const now = std.time.timestamp();
         var to_remove = std.array_list.AlignedManaged(u64, null).init(self.allocator);
         defer to_remove.deinit();
-        
+
         var it = self.connections.iterator();
         while (it.next()) |entry| {
             const conn = entry.value_ptr.*;
@@ -129,13 +151,13 @@ pub const SseTransport = struct {
                 try to_remove.append(conn.id);
             }
         }
-        
+
         // 移除超时连接
         for (to_remove.items) |conn_id| {
             _ = self.connections.remove(conn_id);
         }
     }
-    
+
     /// 获取活跃连接数
     pub fn getActiveConnections(self: *const SseTransport) usize {
         return self.connections.count();

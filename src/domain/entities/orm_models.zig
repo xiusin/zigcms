@@ -314,6 +314,56 @@ pub const CmsField = sql.define(struct {
     is_delete: i32 = 0,
 });
 
+/// 测试报告模型
+pub const TestReport = sql.define(struct {
+    pub const table_name = "test_reports";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    name: []const u8 = "",
+    test_type: []const u8 = "unit",
+    status: []const u8 = "pending",
+    total_cases: i32 = 0,
+    passed_cases: i32 = 0,
+    failed_cases: i32 = 0,
+    skipped_cases: i32 = 0,
+    pass_rate: i32 = 0,
+    duration_ms: i32 = 0,
+    error_message: []const u8 = "",
+    stack_trace: []const u8 = "",
+    test_target: []const u8 = "",
+    triggered_by: []const u8 = "manual",
+    environment: []const u8 = "{}",
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
+});
+
+/// Bug 分析模型
+pub const BugAnalysis = sql.define(struct {
+    pub const table_name = "bug_analyses";
+    pub const primary_key = "id";
+
+    id: ?i32 = null,
+    title: []const u8 = "",
+    description: []const u8 = "",
+    bug_type: []const u8 = "unknown",
+    severity: []const u8 = "medium",
+    priority: []const u8 = "medium",
+    status: []const u8 = "pending",
+    issue_location: []const u8 = "unknown",
+    file_path: []const u8 = "",
+    line_number: i32 = 0,
+    root_cause: []const u8 = "",
+    suggested_fix: []const u8 = "",
+    confidence_score: i32 = 0,
+    auto_fix_attempted: i32 = 0,
+    auto_fix_result: []const u8 = "{}",
+    test_report_id: ?i32 = null,
+    feedback_id: ?i32 = null,
+    created_at: ?[]const u8 = null,
+    updated_at: ?[]const u8 = null,
+});
+
 /// 文档管理
 pub const Document = sql.define(struct {
     pub const table_name = "zigcms.document";
@@ -364,6 +414,8 @@ pub fn init(db: *sql.Database) void {
     Setting.use(db);
     Department.use(db);
     Position.use(db);
+    TestReport.use(db);
+    BugAnalysis.use(db);
 }
 
 /// 获取 Database 类型（便于外部使用）
@@ -390,6 +442,8 @@ pub const AllModels = .{
     Department,
     Employee,
     Position,
+    TestReport,
+    BugAnalysis,
 };
 
 /// 迁移所有表（创建表）
@@ -400,6 +454,8 @@ pub fn migrate(db: *sql.Database) !void {
 /// 回滚所有表（删除表，按依赖倒序）
 pub fn rollback(db: *sql.Database) !void {
     try Migrator.dropAll(db, .{
+        BugAnalysis,
+        TestReport,
         Employee,
         Position,
         Department,

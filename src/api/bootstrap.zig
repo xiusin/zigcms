@@ -20,12 +20,12 @@ const AppContext = @import("../core/context/app_context.zig").AppContext;
 /// MCP 控制器包装器（全局定义以便类型安全释放）
 const McpControllerWrapper = struct {
     server: *@import("../mcp/mod.zig").McpServer,
-    
+
     pub fn handleSse(ctrl: *@This(), req: zap.Request) !void {
         var mutable_req = req;
         try ctrl.server.sse_transport.handleSse(&mutable_req);
     }
-    
+
     pub fn handleMessage(ctrl: *@This(), req: zap.Request) !void {
         var mutable_req = req;
         try ctrl.server.sse_transport.handleMessage(&mutable_req);
@@ -43,7 +43,7 @@ pub const Bootstrap = struct {
     app_context: *AppContext,
     route_count: usize,
     crud_count: usize,
-    mcp_controller: ?*McpControllerWrapper = null,  // 跟踪 MCP 控制器
+    mcp_controller: ?*McpControllerWrapper = null, // 跟踪 MCP 控制器
 
     /// 初始化 Bootstrap 模块
     pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext) !Self {
@@ -73,7 +73,7 @@ pub const Bootstrap = struct {
                 mcp_server.deinit();
             } else |_| {}
         }
-        
+
         // 清理 MCP 控制器
         if (self.mcp_controller) |ctrl| {
             self.allocator.destroy(ctrl);
@@ -118,7 +118,7 @@ pub const Bootstrap = struct {
         try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
         // 注意：sys_role 使用自定义控制器处理菜单权限关联，不使用通用 CRUD
         // try registerCrudWithAlias(self.app, "system/role", models.SysRole);
-        self.crud_count += 2;  // 原来是 3，现在是 2
+        self.crud_count += 2; // 原来是 3，现在是 2
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
@@ -153,6 +153,9 @@ pub const Bootstrap = struct {
 
         // 系统扩展路由（独立控制器）
         try self.registerSystemExtRoutes();
+
+        // 自动化测试路由
+        try self.registerAutoTestRoutes();
 
         // MCP 路由（AI 辅助开发）
         try self.registerMcpRoutes();
@@ -291,6 +294,17 @@ pub const Bootstrap = struct {
             }.factory, null);
         }
 
+        if (!self.container.isRegistered(controllers.system_ext.Dict)) {
+            try self.container.registerSingleton(controllers.system_ext.Dict, controllers.system_ext.Dict, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Dict {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Dict);
+                    ctrl.* = controllers.system_ext.Dict.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
         if (!self.container.isRegistered(controllers.system_ext.Role)) {
             try self.container.registerSingleton(controllers.system_ext.Role, controllers.system_ext.Role, struct {
                 fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Role {
@@ -371,6 +385,7 @@ pub const Bootstrap = struct {
         const dept = try self.container.resolve(controllers.system_ext.Dept);
         const admin = try self.container.resolve(controllers.system_ext.Admin);
         const menu = try self.container.resolve(controllers.system_ext.Menu);
+        const dict = try self.container.resolve(controllers.system_ext.Dict);
         const dict_item = try self.container.resolve(controllers.system_ext.DictItem);
         const role = try self.container.resolve(controllers.system_ext.Role);
         const config_ctrl = try self.container.resolve(controllers.system_ext.Config);
@@ -395,6 +410,15 @@ pub const Bootstrap = struct {
 
         try registerWithAlias(self.app, "/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
         try registerWithAlias(self.app, "/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
+
+        try registerWithAlias(self.app, "/system/dict/list", dict, &controllers.system_ext.Dict.list);
+        try registerWithAlias(self.app, "/system/dict/save", dict, &controllers.system_ext.Dict.save);
+        try registerWithAlias(self.app, "/system/dict/delete", dict, &controllers.system_ext.Dict.delete);
+        try registerWithAlias(self.app, "/system/dict/set", dict, &controllers.system_ext.Dict.set);
+        try registerWithAlias(self.app, "/system/dict/items", dict, &controllers.system_ext.Dict.items);
+        try registerWithAlias(self.app, "/system/dict/item/save", dict, &controllers.system_ext.Dict.itemSave);
+        try registerWithAlias(self.app, "/system/dict/item/delete", dict, &controllers.system_ext.Dict.itemDelete);
+        try registerWithAlias(self.app, "/system/dict/item/set", dict, &controllers.system_ext.Dict.itemSet);
 
         try registerWithAlias(self.app, "/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
         try registerWithAlias(self.app, "/system/dict/item/save", dict_item, &controllers.system_ext.DictItem.save);
@@ -439,44 +463,85 @@ pub const Bootstrap = struct {
         self.route_count += 100;
     }
 
+    /// 注册自动化测试路由（需要 JWT 认证）
+    fn registerAutoTestRoutes(self: *Self) !void {
+        const AutoTest = controllers.auto_test.AutoTest;
+        const wrapper = @import("middleware/wrapper.zig");
+        const Auth = wrapper.Controller(AutoTest);
+
+        if (!self.container.isRegistered(AutoTest)) {
+            try self.container.registerSingleton(AutoTest, AutoTest, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*AutoTest {
+                    _ = di;
+                    const ctrl = try allocator.create(AutoTest);
+                    ctrl.* = AutoTest.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const ctrl = try self.container.resolve(AutoTest);
+
+        const registerWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, c: anytype, handler: anytype) !void {
+                app.route("/api" ++ path, c, handler) catch |err| switch (err) {
+                    else => {
+                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
+                    },
+                };
+            }
+        }.exec;
+
+        // 所有 auto-test 路由均挂载 JWT 认证中间件
+        try registerWithAlias(self.app, "/auto-test/report/create", ctrl, Auth.requireAuth(&AutoTest.report_create));
+        try registerWithAlias(self.app, "/auto-test/report/list", ctrl, Auth.requireAuth(&AutoTest.report_list));
+        try registerWithAlias(self.app, "/auto-test/report/detail", ctrl, Auth.requireAuth(&AutoTest.report_detail));
+        try registerWithAlias(self.app, "/auto-test/bug/create", ctrl, Auth.requireAuth(&AutoTest.bug_create));
+        try registerWithAlias(self.app, "/auto-test/bug/list", ctrl, Auth.requireAuth(&AutoTest.bug_list));
+        try registerWithAlias(self.app, "/auto-test/bug/update-status", ctrl, Auth.requireAuth(&AutoTest.bug_update_status));
+        try registerWithAlias(self.app, "/auto-test/statistics", ctrl, Auth.requireAuth(&AutoTest.statistics));
+
+        self.route_count += 7;
+    }
+
     /// 注册 MCP 路由（AI 辅助开发）
     fn registerMcpRoutes(self: *Self) !void {
         const mcp = @import("../mcp/mod.zig");
-        
+
         // 从配置中获取 MCP 配置
         const service_mgr = zigcms.getServiceManager() orelse return error.ServiceManagerNotInitialized;
         const config = service_mgr.getConfig();
-        
+
         // 检查 MCP 是否启用
         if (!config.mcp.enabled) {
             logger.info("ℹ️  MCP 服务未启用", .{});
             return;
         }
-        
+
         // 初始化 MCP Server
         const mcp_server = try mcp.McpServer.init(self.allocator, config.mcp);
         errdefer mcp_server.deinit();
-        
+
         // 注册到 DI 容器
         if (!self.container.isRegistered(mcp.McpServer)) {
             try self.container.registerInstance(mcp.McpServer, mcp_server, null);
         }
-        
+
         // 创建 MCP 控制器包装器
         const mcp_ctrl = try self.allocator.create(McpControllerWrapper);
         mcp_ctrl.* = .{ .server = mcp_server };
-        
+
         // 保存控制器指针以便后续清理
         self.mcp_controller = mcp_ctrl;
-        
+
         // 注册 SSE 端点（用于建立连接）
         try self.app.route(config.mcp.transport.sse_path, mcp_ctrl, &McpControllerWrapper.handleSse);
-        
+
         // 注册消息端点（用于接收 JSON-RPC 消息）
         try self.app.route(config.mcp.transport.message_path, mcp_ctrl, &McpControllerWrapper.handleMessage);
-        
+
         self.route_count += 2;
-        
+
         // 注意：MCP 路由注册到主 HTTP 服务器，使用 API 端口而不是 MCP 配置的端口
         logger.info("✅ MCP 服务已启用: {s}:{d}{s}", .{
             config.api.host,
