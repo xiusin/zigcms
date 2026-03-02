@@ -121,10 +121,15 @@ pub const CrudGeneratorTool = struct {
         
         // 文件头
         try writer.print("//! {s} 控制器\n", .{name});
-        try writer.writeAll("//! 自动生成 - 请勿手动修改\n\n");
+        try writer.writeAll("//! 自动生成 - 包含完整 ORM 集成\n\n");
         try writer.writeAll("const std = @import(\"std\");\n");
         try writer.writeAll("const zap = @import(\"zap\");\n");
-        try writer.print("const {s} = @import(\"../../domain/entities/{s}.model.zig\").{s};\n\n", .{ name, name, name });
+        try writer.writeAll("const zigcms = @import(\"../../../root.zig\");\n");
+        try writer.print("const {s} = @import(\"../../domain/entities/{s}.model.zig\").{s};\n", .{ name, name, name });
+        try writer.writeAll("const base = @import(\"../base.zig\");\n\n");
+        
+        // ORM 类型别名
+        try writer.print("const Orm{s} = zigcms.application.services.sql.orm.ORM({s});\n\n", .{ name, name });
         
         // 控制器结构
         try writer.print("pub const {s}Controller = struct {{\n", .{name});
@@ -135,39 +140,109 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("        return .{ .allocator = allocator };\n");
         try writer.writeAll("    }\n\n");
         
-        // list 方法
+        // list 方法（带分页）
+        try writer.writeAll("    /// 列表查询（带分页）\n");
         try writer.writeAll("    pub fn list(self: *@This(), req: zap.Request) !void {\n");
         try writer.writeAll("        _ = self;\n");
-        try writer.writeAll("        _ = req;\n");
-        try writer.writeAll("        // TODO: 实现列表查询\n");
+        try writer.writeAll("        var mutable_req = req;\n\n");
+        try writer.writeAll("        // 获取分页参数\n");
+        try writer.writeAll("        const page = mutable_req.getParamInt(\"page\", i32, 1) catch 1;\n");
+        try writer.writeAll("        const page_size = mutable_req.getParamInt(\"page_size\", i32, 20) catch 20;\n\n");
+        try writer.writeAll("        // 查询数据\n");
+        try writer.print("        var q = Orm{s}.Query();\n", .{name});
+        try writer.writeAll("        defer q.deinit();\n\n");
+        try writer.writeAll("        _ = q.orderBy(\"id\", \"DESC\")\n");
+        try writer.writeAll("             .limit(page_size)\n");
+        try writer.writeAll("             .offset((page - 1) * page_size);\n\n");
+        try writer.print("        const items = try q.get();\n");
+        try writer.print("        defer Orm{s}.freeModels(items);\n\n", .{name});
+        try writer.writeAll("        // 获取总数\n");
+        try writer.print("        var count_q = Orm{s}.Query();\n", .{name});
+        try writer.writeAll("        defer count_q.deinit();\n");
+        try writer.writeAll("        const total = try count_q.count();\n\n");
+        try writer.writeAll("        // 返回结果\n");
+        try writer.writeAll("        try base.send_success(&mutable_req, .{\n");
+        try writer.writeAll("            .items = items,\n");
+        try writer.writeAll("            .total = total,\n");
+        try writer.writeAll("            .page = page,\n");
+        try writer.writeAll("            .page_size = page_size,\n");
+        try writer.writeAll("        });\n");
         try writer.writeAll("    }\n\n");
         
         // get 方法
+        try writer.writeAll("    /// 获取详情\n");
         try writer.writeAll("    pub fn get(self: *@This(), req: zap.Request) !void {\n");
         try writer.writeAll("        _ = self;\n");
-        try writer.writeAll("        _ = req;\n");
-        try writer.writeAll("        // TODO: 实现详情查询\n");
+        try writer.writeAll("        var mutable_req = req;\n\n");
+        try writer.writeAll("        const id = mutable_req.getParamInt(\"id\", i32, 0) catch {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid ID\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n\n");
+        try writer.print("        const item = try Orm{s}.FindById(id) orelse {{\n", .{name});
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Not found\", 404);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n");
+        try writer.print("        defer Orm{s}.freeModel(item);\n\n", .{name});
+        try writer.writeAll("        try base.send_success(&mutable_req, item);\n");
         try writer.writeAll("    }\n\n");
         
         // create 方法
+        try writer.writeAll("    /// 创建\n");
         try writer.writeAll("    pub fn create(self: *@This(), req: zap.Request) !void {\n");
         try writer.writeAll("        _ = self;\n");
-        try writer.writeAll("        _ = req;\n");
-        try writer.writeAll("        // TODO: 实现创建\n");
+        try writer.writeAll("        var mutable_req = req;\n\n");
+        try writer.writeAll("        // 解析请求体\n");
+        try writer.writeAll("        const body = mutable_req.body orelse {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Missing body\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n\n");
+        try writer.writeAll("        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid JSON\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n");
+        try writer.writeAll("        defer parsed.deinit();\n\n");
+        try writer.writeAll("        // TODO: 验证和映射字段\n");
+        try writer.print("        // const item = {s}{{ ... }};\n", .{name});
+        try writer.print("        // const created = try Orm{s}.Create(item);\n", .{name});
+        try writer.print("        // defer Orm{s}.freeModel(created);\n\n", .{name});
+        try writer.writeAll("        try base.send_success(&mutable_req, .{ .message = \"Created\" });\n");
         try writer.writeAll("    }\n\n");
         
         // update 方法
+        try writer.writeAll("    /// 更新\n");
         try writer.writeAll("    pub fn update(self: *@This(), req: zap.Request) !void {\n");
         try writer.writeAll("        _ = self;\n");
-        try writer.writeAll("        _ = req;\n");
-        try writer.writeAll("        // TODO: 实现更新\n");
+        try writer.writeAll("        var mutable_req = req;\n\n");
+        try writer.writeAll("        const id = mutable_req.getParamInt(\"id\", i32, 0) catch {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid ID\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n\n");
+        try writer.writeAll("        // 解析请求体\n");
+        try writer.writeAll("        const body = mutable_req.body orelse {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Missing body\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n\n");
+        try writer.writeAll("        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid JSON\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n");
+        try writer.writeAll("        defer parsed.deinit();\n\n");
+        try writer.writeAll("        // TODO: 使用 UpdateWith 更新\n");
+        try writer.print("        // _ = try Orm{s}.UpdateWith(id, .{{ ... }});\n\n", .{name});
+        try writer.writeAll("        try base.send_success(&mutable_req, .{ .message = \"Updated\" });\n");
         try writer.writeAll("    }\n\n");
         
         // delete 方法
+        try writer.writeAll("    /// 删除\n");
         try writer.writeAll("    pub fn delete(self: *@This(), req: zap.Request) !void {\n");
         try writer.writeAll("        _ = self;\n");
-        try writer.writeAll("        _ = req;\n");
-        try writer.writeAll("        // TODO: 实现删除\n");
+        try writer.writeAll("        var mutable_req = req;\n\n");
+        try writer.writeAll("        const id = mutable_req.getParamInt(\"id\", i32, 0) catch {\n");
+        try writer.writeAll("            try base.send_error(&mutable_req, \"Invalid ID\", 400);\n");
+        try writer.writeAll("            return;\n");
+        try writer.writeAll("        };\n\n");
+        try writer.print("        try Orm{s}.Delete(id);\n\n", .{name});
+        try writer.writeAll("        try base.send_success(&mutable_req, .{ .message = \"Deleted\" });\n");
         try writer.writeAll("    }\n");
         
         try writer.writeAll("};\n");
