@@ -114,8 +114,6 @@ pub const CrudGeneratorTool = struct {
     
     /// 生成控制器代码
     fn generateController(self: *CrudGeneratorTool, allocator: std.mem.Allocator, name: []const u8, fields: []const Field) ![]const u8 {
-        _ = fields;
-        _ = self;
         var code = std.array_list.AlignedManaged(u8, null).init(allocator);
         const writer = code.writer();
         
@@ -201,11 +199,44 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("            return;\n");
         try writer.writeAll("        };\n");
         try writer.writeAll("        defer parsed.deinit();\n\n");
-        try writer.writeAll("        // TODO: 验证和映射字段\n");
-        try writer.print("        // const item = {s}{{ ... }};\n", .{name});
-        try writer.print("        // const created = try Orm{s}.Create(item);\n", .{name});
-        try writer.print("        // defer Orm{s}.freeModel(created);\n\n", .{name});
-        try writer.writeAll("        try base.send_success(&mutable_req, .{ .message = \"Created\" });\n");
+        try writer.writeAll("        const obj = parsed.value.object;\n\n");
+        
+        // 生成字段映射
+        try writer.print("        const item = {s}{{\n", .{name});
+        for (fields) |field| {
+            if (std.mem.eql(u8, field.name, "id")) continue; // 跳过 ID
+            
+            const zig_type = try self.mapTypeToZig(allocator, field.type);
+            
+            if (field.required) {
+                // 必填字段
+                if (std.mem.eql(u8, field.type, "string")) {
+                    try writer.print("            .{s} = obj.get(\"{s}\").?.string,\n", .{ field.name, field.name });
+                } else if (std.mem.eql(u8, field.type, "int") or std.mem.eql(u8, field.type, "timestamp")) {
+                    try writer.print("            .{s} = @intCast(obj.get(\"{s}\").?.integer),\n", .{ field.name, field.name });
+                } else if (std.mem.eql(u8, field.type, "bool")) {
+                    try writer.print("            .{s} = obj.get(\"{s}\").?.bool,\n", .{ field.name, field.name });
+                } else if (std.mem.eql(u8, field.type, "float")) {
+                    try writer.print("            .{s} = obj.get(\"{s}\").?.float,\n", .{ field.name, field.name });
+                }
+            } else {
+                // 可选字段
+                if (std.mem.eql(u8, field.type, "string")) {
+                    try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .string) v.string else null else null,\n", .{ field.name, field.name });
+                } else if (std.mem.eql(u8, field.type, "int") or std.mem.eql(u8, field.type, "timestamp")) {
+                    try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .integer) @as(?{s}, @intCast(v.integer)) else null else null,\n", .{ field.name, field.name, zig_type });
+                } else if (std.mem.eql(u8, field.type, "bool")) {
+                    try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .bool) v.bool else null else null,\n", .{ field.name, field.name });
+                } else if (std.mem.eql(u8, field.type, "float")) {
+                    try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .float) v.float else null else null,\n", .{ field.name, field.name });
+                }
+            }
+        }
+        try writer.writeAll("        };\n\n");
+        
+        try writer.print("        const created = try Orm{s}.Create(item);\n", .{name});
+        try writer.print("        defer Orm{s}.freeModel(created);\n\n", .{name});
+        try writer.writeAll("        try base.send_success(&mutable_req, created);\n");
         try writer.writeAll("    }\n\n");
         
         // update 方法
@@ -227,8 +258,27 @@ pub const CrudGeneratorTool = struct {
         try writer.writeAll("            return;\n");
         try writer.writeAll("        };\n");
         try writer.writeAll("        defer parsed.deinit();\n\n");
-        try writer.writeAll("        // TODO: 使用 UpdateWith 更新\n");
-        try writer.print("        // _ = try Orm{s}.UpdateWith(id, .{{ ... }});\n\n", .{name});
+        try writer.writeAll("        const obj = parsed.value.object;\n\n");
+        
+        // 生成 UpdateWith 调用
+        try writer.print("        _ = try Orm{s}.UpdateWith(id, .{{\n", .{name});
+        for (fields) |field| {
+            if (std.mem.eql(u8, field.name, "id")) continue; // 跳过 ID
+            
+            const zig_type = try self.mapTypeToZig(allocator, field.type);
+            
+            // 所有字段都作为可选更新
+            if (std.mem.eql(u8, field.type, "string")) {
+                try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .string) v.string else null else null,\n", .{ field.name, field.name });
+            } else if (std.mem.eql(u8, field.type, "int") or std.mem.eql(u8, field.type, "timestamp")) {
+                try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .integer) @as(?{s}, @intCast(v.integer)) else null else null,\n", .{ field.name, field.name, zig_type });
+            } else if (std.mem.eql(u8, field.type, "bool")) {
+                try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .bool) v.bool else null else null,\n", .{ field.name, field.name });
+            } else if (std.mem.eql(u8, field.type, "float")) {
+                try writer.print("            .{s} = if (obj.get(\"{s}\")) |v| if (v == .float) v.float else null else null,\n", .{ field.name, field.name });
+            }
+        }
+        try writer.writeAll("        });\n\n");
         try writer.writeAll("        try base.send_success(&mutable_req, .{ .message = \"Updated\" });\n");
         try writer.writeAll("    }\n\n");
         
