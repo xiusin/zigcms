@@ -537,10 +537,10 @@ pub const Bootstrap = struct {
                 config.mcp.transport.port,
                 config.mcp.transport.message_path,
             });
-            logger.info("║    工具数量: 9 个", .{});
+            logger.info("║    工具数量: 10 个", .{});
             logger.info("║      - 项目结构/搜索/读取", .{});
             logger.info("║      - CRUD/模型/迁移/测试生成", .{});
-            logger.info("║      - 知识库问答/数据库操作", .{});
+            logger.info("║      - 知识库问答/数据库/缓存操作", .{});
             logger.info("║    📖 文档: src/mcp/docs/INDEX.md", .{});
         } else {
             logger.info("║    状态: ⚠️  未启用", .{});

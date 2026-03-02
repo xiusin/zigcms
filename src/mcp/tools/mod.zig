@@ -8,6 +8,7 @@ pub const migration_generator = @import("migration_generator.zig");
 pub const test_generator = @import("test_generator.zig");
 pub const knowledge_base = @import("knowledge_base.zig");
 pub const database = @import("database.zig");
+pub const cache = @import("cache.zig");
 
 pub const ProjectStructureTool = project_structure.ProjectStructureTool;
 pub const FileSearchTool = file_search.FileSearchTool;
@@ -18,3 +19,4 @@ pub const MigrationGeneratorTool = migration_generator.MigrationGeneratorTool;
 pub const TestGeneratorTool = test_generator.TestGeneratorTool;
 pub const KnowledgeBaseTool = knowledge_base.KnowledgeBaseTool;
 pub const DatabaseTool = database.DatabaseTool;
+pub const CacheTool = cache.CacheTool;
