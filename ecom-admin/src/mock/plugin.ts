@@ -18,6 +18,8 @@ export function viteMockPlugin(config: MockConfig = {}): Plugin {
     '/api/system/auth/',      // 登录认证
     '/api/system/user/info',  // 用户信息刷新
     '/api/system/captcha',    // 验证码
+    '/api/system/dict',       // 字典管理走真实后端
+    '/api/dict',              // 历史字典接口走真实后端
   ];
 
   return {

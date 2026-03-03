@@ -216,10 +216,10 @@
     >
       <a-form :model="categoryForm">
         <a-form-item label="分类名称">
-          <a-input v-model="categoryForm.name" placeholder="请输入分类名称" />
+          <a-input v-model="categoryForm.category_name" placeholder="请输入分类名称" />
         </a-form-item>
         <a-form-item label="分类编码">
-          <a-input v-model="categoryForm.code" placeholder="请输入分类编码" />
+          <a-input v-model="categoryForm.category_code" placeholder="请输入分类编码" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -309,8 +309,8 @@
   // 分类编辑相关
   const categoryModalVisible = ref(false);
   const categoryForm = reactive({
-    name: '',
-    code: '',
+    category_name: '',
+    category_code: '',
   });
 
   const itemColumns = [
@@ -381,17 +381,32 @@
 
   // 添加分类
   const handleAddCategory = () => {
-    categoryForm.name = '';
-    categoryForm.code = '';
+    categoryForm.category_name = '';
+    categoryForm.category_code = '';
     categoryModalVisible.value = true;
   };
 
   const handleCategorySave = async () => {
-    if (!categoryForm.name || !categoryForm.code) {
+    const category_name = categoryForm.category_name.trim();
+    const category_code = categoryForm.category_code.trim();
+    if (!category_name || !category_code) {
       Message.warning('请填写完整信息');
       return false;
     }
-    categoryList.value.push({ ...categoryForm });
+    const exists = categoryList.value.some(
+      (item) => item.category_code === category_code
+    );
+    if (exists) {
+      Message.warning('分类编码已存在');
+      return false;
+    }
+    categoryList.value.push({
+      id: 0,
+      category_name,
+      category_code,
+    });
+    selectedCategory.value = category_code;
+    dictForm.category_code = category_code;
     Message.success('添加成功');
     return true;
   };

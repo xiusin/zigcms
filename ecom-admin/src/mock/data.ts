@@ -486,27 +486,6 @@ export const mockData: Record<
     }))
   ),
 
-  // 字典管理
-  '/api/dict/list': pageSuccess(
-    Array.from({ length: 20 }, (_, i) => ({
-      id: i + 1,
-      dict_name: `字典${i + 1}`,
-      dict_code: `dict_${i + 1}`,
-      description: '字典描述',
-      status: 1,
-      created_at: randomDate(),
-    }))
-  ),
-
-  '/api/dict/save': success({ id: randomId() }, '保存成功'),
-  '/api/dict/styles': success(
-    Array.from({ length: 10 }, (_, i) => ({
-      id: i + 1,
-      name: `样式${i + 1}`,
-      value: `style_${i + 1}`,
-    }))
-  ),
-
   // 品牌管理
   '/api/brand/list': pageSuccess(
     Array.from({ length: 20 }, (_, i) => ({
