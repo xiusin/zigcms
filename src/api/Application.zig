@@ -97,6 +97,9 @@ pub const Application = struct {
         // 初始化 Listener（在注册路由之后）
         try self.app.initListener();
         
+        // 注册 MCP Endpoint（必须在 Listener 初始化之后）
+        try self.bootstrap.registerMcpRoutes();
+        
         self.bootstrap.printStartupSummary();
         logger.info("🚀 启动 ZigCMS 服务器", .{});
         self.app.listen() catch |err| switch (err) {

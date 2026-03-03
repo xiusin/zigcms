@@ -164,8 +164,7 @@ pub const Bootstrap = struct {
         // 质量中心路由
         try self.registerQualityCenterRoutes();
 
-        // MCP 路由（AI 辅助开发）
-        try self.registerMcpRoutes();
+        // 注意：MCP 路由需要在 initListener 之后注册
     }
 
     /// 注册认证相关路由
@@ -612,7 +611,7 @@ pub const Bootstrap = struct {
     }
 
     /// 注册 MCP 路由（AI 辅助开发）
-    fn registerMcpRoutes(self: *Self) !void {
+    pub fn registerMcpRoutes(self: *Self) !void {
         const mcp = @import("../mcp/mod.zig");
 
         // 从配置中获取 MCP 配置
