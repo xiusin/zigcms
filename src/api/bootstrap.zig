@@ -18,17 +18,19 @@ const DIContainer = @import("../core/di/container.zig").DIContainer;
 const AppContext = @import("../core/context/app_context.zig").AppContext;
 
 /// MCP 控制器包装器（全局定义以便类型安全释放）
-const McpControllerWrapper = struct {
+const McpEndpoint = struct {
+    path: []const u8,
+    error_strategy: zap.Endpoint.ErrorStrategy = .log_to_console,
     server: *@import("../mcp/mod.zig").McpServer,
 
-    pub fn handleSse(ctrl: *@This(), req: zap.Request) !void {
+    pub fn get(self: *@This(), req: zap.Request) !void {
         var mutable_req = req;
-        try ctrl.server.sse_transport.handleSse(&mutable_req);
+        try self.server.sse_transport.handleSse(&mutable_req);
     }
 
-    pub fn handleMessage(ctrl: *@This(), req: zap.Request) !void {
+    pub fn post(self: *@This(), req: zap.Request) !void {
         var mutable_req = req;
-        try ctrl.server.sse_transport.handleMessage(&mutable_req);
+        try self.server.sse_transport.handleMessage(&mutable_req);
     }
 };
 
@@ -43,7 +45,7 @@ pub const Bootstrap = struct {
     app_context: *AppContext,
     route_count: usize,
     crud_count: usize,
-    mcp_controller: ?*McpControllerWrapper = null, // 跟踪 MCP 控制器
+    mcp_controller: ?*McpEndpoint = null, // 跟踪 MCP 控制器
 
     /// 初始化 Bootstrap 模块
     pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext) !Self {
@@ -630,22 +632,32 @@ pub const Bootstrap = struct {
             try self.container.registerInstance(mcp.McpServer, mcp_server, null);
         }
 
-        // 创建 MCP 控制器包装器
-        const mcp_ctrl = try self.allocator.create(McpControllerWrapper);
-        mcp_ctrl.* = .{ .server = mcp_server };
+        // 创建 MCP Endpoint
+        const mcp_endpoint = try self.allocator.create(McpEndpoint);
+        mcp_endpoint.* = .{
+            .path = config.mcp.transport.sse_path,
+            .server = mcp_server,
+        };
 
-        // 保存控制器指针以便后续清理
-        self.mcp_controller = mcp_ctrl;
+        // 保存 endpoint 指针以便后续清理
+        self.mcp_controller = mcp_endpoint;
 
-        // 注册 SSE 端点（GET - 建立连接）
-        try self.app.router.handle_func(config.mcp.transport.sse_path, mcp_ctrl, &McpControllerWrapper.handleSse);
-        logger.info("✅ SSE 端点已注册: {s}", .{config.mcp.transport.sse_path});
+        // 使用 Endpoint.Listener 注册（支持 GET/POST 等所有方法）
+        var listener = zap.Endpoint.Listener.init(
+            self.allocator,
+            .{
+                .port = config.api.port,
+                .on_request = self.app.router.on_request_handler(),
+                .log = true,
+                .max_clients = config.api.max_clients,
+                .max_body_size = 1024 * 1024,
+            },
+        );
+        try listener.register(mcp_endpoint);
+        
+        logger.info("✅ MCP 端点已注册: {s} (支持 GET/POST)", .{config.mcp.transport.sse_path});
 
-        // 注册消息端点（POST - 发送消息）
-        try self.app.router.handle_func(config.mcp.transport.message_path, mcp_ctrl, &McpControllerWrapper.handleMessage);
-        logger.info("✅ 消息端点已注册: {s}", .{config.mcp.transport.message_path});
-
-        self.route_count += 2;
+        self.route_count += 1;
 
         // 注意：MCP 路由注册到主 HTTP 服务器，使用 API 端口而不是 MCP 配置的端口
         logger.info("✅ MCP 服务已启用: {s}:{d}{s}", .{
