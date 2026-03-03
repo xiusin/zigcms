@@ -13,7 +13,6 @@
 //! ```
 
 pub const base = @import("base.zig");
-pub const codegen = @import("codegen/main.zig");
 pub const migrate = @import("migrate/main.zig");
 pub const plugin_gen = @import("plugingen/main.zig");
 
