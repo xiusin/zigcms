@@ -72,6 +72,12 @@ pub const App = struct {
         }
         self.routes.deinit(self.allocator);
         self.router.deinit();
+        
+        // 清理 Endpoint.Listener
+        if (self.endpoint_listener) |listener| {
+            listener.deinit(); // 释放内部分配的 endpoints
+            self.allocator.destroy(listener);
+        }
     }
 
     /// 注册 CRUD 路由 - 适配新的目录结构
