@@ -109,10 +109,10 @@
           <a-select v-model="dictForm.category_code" placeholder="请选择分类">
             <a-option
               v-for="item in categoryList"
-              :key="item.code"
-              :value="item.code"
+              :key="item.category_code"
+              :value="item.category_code"
             >
-              {{ item.name }}
+              {{ item.category_name }}
             </a-option>
           </a-select>
         </a-form-item>
@@ -305,6 +305,13 @@
   const itemModalTitle = computed(() =>
     itemForm.id ? '编辑字典项' : '添加字典项'
   );
+
+  // 分类编辑相关
+  const categoryModalVisible = ref(false);
+  const categoryForm = reactive({
+    name: '',
+    code: '',
+  });
 
   const itemColumns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
