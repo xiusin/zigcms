@@ -637,12 +637,13 @@ pub const Bootstrap = struct {
         // 保存控制器指针以便后续清理
         self.mcp_controller = mcp_ctrl;
 
-        // 注册 SSE 端点（用于建立连接）- 使用 handle_func
+        // 注册 SSE 端点（用于建立连接）
         try self.app.route(config.mcp.transport.sse_path, mcp_ctrl, &McpControllerWrapper.handleSse);
         logger.info("✅ SSE 端点已注册: {s}", .{config.mcp.transport.sse_path});
 
         // 注册消息端点（用于接收 JSON-RPC 消息）
         try self.app.route(config.mcp.transport.message_path, mcp_ctrl, &McpControllerWrapper.handleMessage);
+        logger.info("✅ 消息端点已注册: {s}", .{config.mcp.transport.message_path});
 
         self.route_count += 2;
 

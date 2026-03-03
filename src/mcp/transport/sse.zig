@@ -46,29 +46,6 @@ pub const SseTransport = struct {
 
     /// 处理 SSE 连接
     pub fn handleSse(self: *SseTransport, req: *zap.Request) !void {
-        // SSE 端点只接受 GET 请求
-        const method = req.method orelse "UNKNOWN";
-        const path = req.path orelse "UNKNOWN";
-        const user_agent = req.getHeader("User-Agent") orelse "none";
-        const accept = req.getHeader("Accept") orelse "none";
-        const connection = req.getHeader("Connection") orelse "none";
-
-        // 打印所有请求信息
-        std.log.info("=== SSE Request Details ===", .{});
-        std.log.info("Method: {s}", .{method});
-        std.log.info("Path: {s}", .{path});
-        std.log.info("User-Agent: {s}", .{user_agent});
-        std.log.info("Accept: {s}", .{accept});
-        std.log.info("Connection: {s}", .{connection});
-        std.log.info("========================", .{});
-
-        if (!std.mem.eql(u8, method, "GET")) {
-            std.log.warn("SSE endpoint rejecting {s} request, only GET allowed", .{method});
-            req.setStatus(.bad_request);
-            try req.sendBody("SSE endpoint only accepts GET requests");
-            return;
-        }
-
         // 设置 SSE 响应头
         try req.setHeader("Content-Type", "text/event-stream");
         try req.setHeader("Cache-Control", "no-cache");
@@ -96,6 +73,8 @@ pub const SseTransport = struct {
         defer self.allocator.free(init_data);
 
         try self.sendEvent(req, "connected", init_data);
+        
+        std.log.info("SSE 连接已建立: conn_id={d}", .{conn_id});
     }
 
     /// 注册工具路由回调
@@ -105,30 +84,13 @@ pub const SseTransport = struct {
 
     /// 处理消息（路由到具体工具）
     pub fn handleMessage(self: *SseTransport, req: *zap.Request) !void {
-        // 消息端点只接受 POST 请求
-        const method = req.method orelse "UNKNOWN";
-        const path = req.path orelse "UNKNOWN";
-        const user_agent = req.getHeader("User-Agent") orelse "none";
-        const content_type = req.getHeader("Content-Type") orelse "none";
-        const content_length = req.getHeader("Content-Length") orelse "none";
-
-        // 打印所有请求信息
-        std.log.info("=== Message Request Details ===", .{});
-        std.log.info("Method: {s}", .{method});
-        std.log.info("Path: {s}", .{path});
-        std.log.info("User-Agent: {s}", .{user_agent});
-        std.log.info("Content-Type: {s}", .{content_type});
-        std.log.info("Content-Length: {s}", .{content_length});
-        std.log.info("============================", .{});
-
-        if (!std.mem.eql(u8, method, "POST")) {
-            std.log.warn("Message endpoint rejecting {s} request, only POST allowed", .{method});
+        const body = req.body orelse {
             req.setStatus(.bad_request);
-            try req.sendBody("Message endpoint only accepts POST requests");
+            try req.sendBody("Empty request body");
             return;
-        }
+        };
 
-        const body = req.body orelse return error.EmptyBody;
+        std.log.info("收到 MCP 消息: {s}", .{body});
 
         // 解析 JSON-RPC 请求
         var handler = protocol.JsonRpcHandler.init(self.allocator);
