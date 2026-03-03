@@ -4,7 +4,7 @@
 
 本实现计划将 ZigCMS 前后端知识文档生成系统分解为可执行的开发任务。系统采用 Zig 语言实现，包含代码分析、文档生成、模板渲染和多格式输出功能。实现过程遵循增量开发原则，每个任务都构建在前一个任务的基础上，确保系统逐步完善且可测试。
 
-## Tasks
+## Tasks （本任务非开发性质）
 
 - [ ] 1. 搭建项目基础架构
   - 创建项目目录结构（src/analyzer, src/generator, src/template, src/output）
@@ -49,7 +49,7 @@
     - 检测循环依赖和架构违规
     - _Requirements: 1.2, 1.3_
   
-  - [ ]* 3.3 编写属性测试：依赖可视化
+  - [ ] 3.3 编写属性测试：依赖可视化
     - **Property 3: Dependency Visualization**
     - **Validates: Requirements 1.3**
     - 验证生成的 Mermaid 图表包含所有依赖关系
@@ -61,7 +61,7 @@
     - 识别关系预加载（with 方法）
     - _Requirements: 2.1, 2.3_
   
-  - [ ]* 4.2 编写属性测试：API 模式识别
+  - [ ] 4.2 编写属性测试：API 模式识别
     - **Property 5: API Pattern Recognition**
     - **Validates: Requirements 2.1**
     - 验证识别所有 QueryBuilder 公共方法
@@ -71,7 +71,7 @@
     - 提取连接配置和连接池设置
     - _Requirements: 3.1, 3.4_
   
-  - [ ]* 4.4 编写属性测试：数据库驱动检测
+  - [ ] 4.4 编写属性测试：数据库驱动检测
     - **Property 6: Database Driver Detection**
     - **Validates: Requirements 3.1**
     - 验证正确识别所有数据库驱动类型
@@ -107,7 +107,7 @@
     - 包含代码示例和 Mermaid 图表
     - _Requirements: 1.2, 1.3, 1.4_
   
-  - [ ]* 7.2 编写属性测试：文档完整性
+  - [ ] 7.2 编写属性测试：文档完整性
     - **Property 2: Documentation Completeness**
     - **Validates: Requirements 1.2, 2.2, 3.2, 4.2**
     - 验证生成的文档包含所有必需部分
@@ -129,7 +129,7 @@
     - 说明路由和权限控制
     - _Requirements: 4.2, 4.3, 4.4, 4.5_
   
-  - [ ]* 7.6 编写属性测试：代码示例语法有效性
+  - [ ] 7.6 编写属性测试：代码示例语法有效性
     - **Property 4: Code Example Syntax Validity**
     - **Validates: Requirements 1.5**
     - 验证生成的 Zig/TypeScript 代码可编译
@@ -140,7 +140,7 @@
     - 分析 Mock 切换机制
     - _Requirements: 5.1_
   
-  - [ ]* 8.2 编写属性测试：Mock 系统检测
+  - [ ] 8.2 编写属性测试：Mock 系统检测
     - **Property 8: Mock System Detection**
     - **Validates: Requirements 5.1**
     - 验证识别 Mock 文件和切换机制
@@ -151,7 +151,7 @@
     - 包含请求/响应示例
     - _Requirements: 6.1, 6.2, 6.5_
   
-  - [ ]* 8.4 编写属性测试：RESTful API 识别
+  - [ ] 8.4 编写属性测试：RESTful API 识别
     - **Property 9: RESTful API Pattern Recognition**
     - **Validates: Requirements 6.1**
     - 验证识别所有 API 端点信息
@@ -162,7 +162,7 @@
     - 提取 Token 生成和验证逻辑
     - _Requirements: 7.1_
   
-  - [ ]* 9.2 编写属性测试：认证机制检测
+  - [ ] 9.2 编写属性测试：认证机制检测
     - **Property 10: Authentication Mechanism Detection**
     - **Validates: Requirements 7.1**
     - 验证识别 JWT 认证组件
@@ -185,7 +185,7 @@
     - 识别数据库依赖
     - _Requirements: 8.1_
   
-  - [ ]* 11.2 编写属性测试：依赖提取
+  - [ ] 11.2 编写属性测试：依赖提取
     - **Property 11: Dependency Extraction**
     - **Validates: Requirements 8.1**
     - 验证提取所有依赖及版本信息
@@ -204,7 +204,7 @@
     - 生成多级目录和锚点链接
     - _Requirements: 9.1, 9.3, 9.5_
   
-  - [ ]* 12.2 编写属性测试：输出格式有效性
+  - [ ] 12.2 编写属性测试：输出格式有效性
     - **Property 12: Output Format Validity**
     - **Validates: Requirements 9.1, 9.3, 9.4**
     - 验证 Markdown 语法正确，可转换为 HTML/PDF
@@ -225,7 +225,7 @@
     - 生成主索引文档
     - _Requirements: 9.2_
   
-  - [ ]* 13.2 编写属性测试：文档结构一致性
+  - [ ] 13.2 编写属性测试：文档结构一致性
     - **Property 13: Documentation Structure Consistency**
     - **Validates: Requirements 9.2, 9.5**
     - 验证文档分类和目录结构
@@ -235,7 +235,7 @@
     - 实现文档版本控制
     - _Requirements: 10.2_
   
-  - [ ]* 13.4 编写属性测试：元数据包含
+  - [ ] 13.4 编写属性测试：元数据包含
     - **Property 15: Metadata Inclusion**
     - **Validates: Requirements 10.2**
     - 验证所有文档包含完整元数据
@@ -246,7 +246,7 @@
     - 只重新生成变化的文档
     - _Requirements: 10.1_
   
-  - [ ]* 14.2 编写属性测试：文档再生成幂等性
+  - [ ] 14.2 编写属性测试：文档再生成幂等性
     - **Property 14: Documentation Regeneration Idempotency**
     - **Validates: Requirements 10.1**
     - 验证未变化代码生成相同文档
@@ -276,18 +276,18 @@
     - 显示错误和警告
 
 - [ ] 16. 编写边界情况测试
-  - [ ]* 16.1 编写属性测试：空代码库处理
+  - [ ] 16.1 编写属性测试：空代码库处理
     - **Property 16: Empty Codebase Handling**
     - **Validates: Requirements 1.1, 3.1, 4.1 (edge case)**
     - 验证空项目生成有效文档和警告
   
-  - [ ]* 16.2 编写属性测试：混合语言处理
+  - [ ] 16.2 编写属性测试：混合语言处理
     - **Property 17: Mixed Language Handling**
     - **Validates: Requirements 1.1, 4.1 (edge case)**
     - 验证多语言项目正确分析和文档生成
 
 - [ ] 17. 集成测试和文档验证
-  - [ ]* 17.1 运行完整测试套件
+  - [ ] 17.1 运行完整测试套件
     - 运行所有单元测试
     - 运行所有属性测试（17个属性，每个100次迭代）
     - 确保测试覆盖率 > 85%
@@ -309,7 +309,7 @@
 
 ## Notes
 
-- 任务标记 `*` 的为可选测试任务，可根据开发进度决定是否实现
+- 所有测试任务都是必需的，确保系统质量和正确性
 - 每个任务都引用了具体的需求编号，确保可追溯性
 - Checkpoint 任务确保增量验证，及时发现问题
 - 属性测试每个运行 100 次迭代，确保全面覆盖

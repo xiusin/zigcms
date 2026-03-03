@@ -90,7 +90,7 @@
     </a-drawer>
 
     <!-- 顶部统计卡片区域 -->
-    <a-row :gutter="16" class="stat-cards">
+    <a-row :gutter="[16, 16]" class="stat-cards">
       <a-col :xs="12" :sm="6" :md="6" :lg="3">
         <a-card class="stat-card" :loading="store.loading.overview">
           <a-statistic
@@ -204,10 +204,10 @@
     </a-row>
 
     <!-- 第二行：AI洞察 + 质量趋势 -->
-    <a-row :gutter="16" style="margin-top: 16px">
+    <a-row :gutter="[16, 16]" style="margin-top: 16px">
       <!-- AI质量洞察 -->
       <a-col :xs="24" :lg="8">
-        <a-card title="AI质量洞察" :loading="store.loading.aiInsights" class="insight-card">
+        <a-card title="AI质量洞察" :loading="store.loading.aiInsights" class="insight-card chart-card">
           <template #extra>
             <a-tag color="arcoblue" size="small">
               <icon-robot /> AI分析
@@ -252,7 +252,7 @@
 
       <!-- 质量趋势图 - ECharts折线图 -->
       <a-col :xs="24" :lg="16">
-        <a-card title="质量趋势" :loading="store.loading.trend" class="trend-card">
+        <a-card title="质量趋势" :loading="store.loading.trend" class="trend-card chart-card">
           <template #extra>
             <a-radio-group
               v-model="trendPeriod"
@@ -281,10 +281,10 @@
     </a-row>
 
     <!-- 第三行：模块质量 + Bug分布 + 反馈分布 -->
-    <a-row :gutter="16" style="margin-top: 16px">
+    <a-row :gutter="[16, 16]" style="margin-top: 16px">
       <!-- 模块质量分布 -->
       <a-col :xs="24" :lg="10">
-        <a-card title="模块质量分布" :loading="store.loading.moduleQuality">
+        <a-card title="模块质量分布" :loading="store.loading.moduleQuality" class="chart-card">
           <template #extra>
             <a-link @click="$router.push('/auto-test/report')">查看报告</a-link>
           </template>
@@ -315,7 +315,7 @@
 
       <!-- Bug类型分布 - ECharts饼图 -->
       <a-col :xs="24" :sm="12" :lg="7">
-        <a-card title="Bug类型分布" :loading="store.loading.bugDistribution">
+        <a-card title="Bug类型分布" :loading="store.loading.bugDistribution" class="chart-card">
           <template #extra>
             <a-link @click="$router.push('/auto-test/bug')">查看全部</a-link>
           </template>
@@ -333,7 +333,7 @@
 
       <!-- 反馈状态分布 - ECharts环形图 -->
       <a-col :xs="24" :sm="12" :lg="7">
-        <a-card title="反馈状态分布" :loading="store.loading.feedbackDistribution">
+        <a-card title="反馈状态分布" :loading="store.loading.feedbackDistribution" class="chart-card">
           <template #extra>
             <a-link @click="$router.push('/feedback/list')">查看全部</a-link>
           </template>
@@ -351,10 +351,10 @@
     </a-row>
 
     <!-- 第四行：活动流 + 关联记录 -->
-    <a-row :gutter="16" style="margin-top: 16px">
+    <a-row :gutter="[16, 16]" style="margin-top: 16px">
       <!-- 最近活动 -->
       <a-col :xs="24" :lg="14">
-        <a-card title="最近活动" :loading="store.loading.activities">
+        <a-card title="最近活动" :loading="store.loading.activities" class="chart-card">
           <template #extra>
             <a-space>
               <a-select
@@ -406,7 +406,7 @@
 
       <!-- 关联记录 -->
       <a-col :xs="24" :lg="10">
-        <a-card title="关联记录" :loading="store.loading.linkRecords">
+        <a-card title="关联记录" :loading="store.loading.linkRecords" class="chart-card">
           <template #extra>
             <a-button type="primary" size="small" @click="showFeedbackToTaskModal = true">
               <icon-swap /> 反馈转任务
@@ -667,9 +667,7 @@ function wsStatusText(status: string): string {
 onMounted(async () => {
   try {
     await store.fetchDashboardAll();
-    // 初始化WebSocket实时推送
     store.initWebSocket();
-    console.log('[质量中心][Dashboard][WebSocket已启动]');
   } catch (error) {
     console.error('[质量中心][Dashboard加载失败]', error);
     Message.error('Dashboard数据加载失败，请刷新重试');
@@ -682,7 +680,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   store.disconnectWebSocket();
-  console.log('[质量中心][Dashboard][WebSocket已断开]');
 });
 </script>
 
@@ -713,6 +710,7 @@ onBeforeUnmount(() => {
 }
 
 .stat-cards {
+  margin-bottom: 0;
   .stat-card {
     border-radius: 8px;
     transition: box-shadow 0.3s;
@@ -729,6 +727,26 @@ onBeforeUnmount(() => {
     :deep(.arco-statistic-value) {
       font-size: 24px;
     }
+  }
+}
+
+// 统一图表卡片样式
+.chart-card {
+  border-radius: 8px;
+  :deep(.arco-card-header) {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--color-border-2);
+  }
+  :deep(.arco-card-header-title) {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 56px;
+  }
+  :deep(.arco-card-header-extra) {
+    display: flex;
+    align-items: center;
   }
 }
 

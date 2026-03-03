@@ -49,6 +49,9 @@
 
     <!-- 全局搜索 -->
     <GlobalSearch ref="globalSearchRef" />
+
+    <!-- AI 聊天助手 -->
+    <AIChat />
   </a-layout>
 </template>
 
@@ -61,6 +64,7 @@
   import Footer from '@/components/footer/index.vue';
   import TabBar from '@/components/tab-bar/index.vue';
   import GlobalSearch from '@/components/global-search/index.vue';
+  import AIChat from '@/components/ai-chat/index.vue';
   import usePermission from '@/hooks/permission';
   import useResponsive from '@/hooks/responsive';
   import PageLayout from './page-layout.vue';

@@ -13,6 +13,7 @@
 - TypeScript：强制使用（严格模式）
 - 样式：Less + Arco Design 主题定制 + Tailwind（可选但推荐）
 - 禁止使用：Element Plus、Ant Design Vue、Naive UI、React、任何非指定技术栈
+- 禁止使用AI色： linear-gradient(135deg, #667eea 0%, #764ba2 100%)等类似风格！
 
 ### 1.1 AMIS Schema 高级用法专精（强制，必须优先使用高级特性）
 - 必须精通并优先使用以下高级用法（基础组件堆砌视为不合格）：
