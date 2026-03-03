@@ -59,16 +59,6 @@ pub const BizMemberPointLog = struct {
     created_at: ?i64 = null,
 };
 
-/// 系统字典分类模型
-pub const SysDictCategory = struct {
-    id: ?i32 = null,
-    category_name: []const u8 = "",
-    category_code: []const u8 = "",
-    sort: i32 = 0,
-    status: i32 = 1,
-    created_at: ?i64 = null,
-};
-
 /// 角色菜单关联模型
 pub const SysRoleMenu = struct {
     id: ?i32 = null,
@@ -289,7 +279,6 @@ pub const sys_admin = SysAdmin;
 pub const sys_config = SysConfig;
 pub const sys_dict = SysDict;
 pub const sys_dict_item = SysDictItem;
-pub const sys_dict_category = SysDictCategory;
 pub const sys_role_menu = SysRoleMenu;
 pub const sys_role_permission = SysRolePermission;
 pub const biz_member = BizMember;

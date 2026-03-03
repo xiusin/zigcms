@@ -20,9 +20,9 @@
                 <template #icon><icon-apps /></template>
                 全部字典
               </a-menu-item>
-              <a-menu-item v-for="item in categoryList" :key="item.code">
+              <a-menu-item v-for="item in categoryList" :key="item.category_code">
                 <template #icon><icon-folder /></template>
-                {{ item.name }}
+                <span>{{ item.category_name }}</span>
               </a-menu-item>
             </a-menu>
           </div>
@@ -139,10 +139,19 @@
       :footer="false"
     >
       <div style="margin-bottom: 16px">
-        <a-button type="primary" size="small" @click="handleAddItem">
-          <template #icon><icon-plus /></template>
-          添加字典项
-        </a-button>
+        <a-space>
+          <a-input-search
+            v-model="itemSearchKey"
+            placeholder="筛选字典项名称或值"
+            size="small"
+            style="width: 260px"
+            @search="fetchItemList(currentDict.id)"
+          />
+          <a-button type="primary" size="small" @click="handleAddItem">
+            <template #icon><icon-plus /></template>
+            添加字典项
+          </a-button>
+        </a-space>
       </div>
       <a-table
         :data="itemList"
@@ -220,21 +229,19 @@
 <script setup lang="ts">
   import { ref, reactive, computed, onMounted } from 'vue';
   import { Message } from '@arco-design/web-vue';
-  import request from '@/api/request';
+  import request, { METHOD } from '@/api/request';
+
+  type CategoryItem = {
+    id: number;
+    category_name: string;
+    category_code: string;
+    sort?: number;
+    status?: number;
+  };
 
   // 分类相关
   const selectedCategory = ref('all');
-  const categoryList = ref([
-    { code: 'system', name: '系统配置' },
-    { code: 'business', name: '业务配置' },
-    { code: 'user', name: '用户相关' },
-    { code: 'order', name: '订单相关' },
-  ]);
-  const categoryModalVisible = ref(false);
-  const categoryForm = reactive({
-    name: '',
-    code: '',
-  });
+  const categoryList = ref<CategoryItem[]>([]);
 
   // 字典列表相关
   const loading = ref(false);
@@ -281,6 +288,7 @@
   const itemEditModalVisible = ref(false);
   const currentDict = ref<any>({});
   const itemList = ref<any[]>([]);
+  const itemSearchKey = ref('');
   const itemFormRef = ref();
   const itemForm = reactive({
     id: 0,
@@ -307,6 +315,34 @@
     { title: '操作', dataIndex: 'action', slotName: 'action', width: 150 },
   ];
 
+  // 获取分类列表
+  const fetchCategoryList = () => {
+    request('/api/system/dict/list', { page: 1, page_size: 1000 }, undefined, METHOD.GET).then(
+      (res: any) => {
+        const list = res.data?.list || [];
+        const categoryMap = new Map<string, CategoryItem>();
+        list.forEach((item: any) => {
+          const code = item.category_code;
+          if (!code || categoryMap.has(code)) return;
+          categoryMap.set(code, {
+            id: 0,
+            category_code: code,
+            category_name: item.category_name || code,
+          });
+        });
+        categoryList.value = Array.from(categoryMap.values());
+        if (
+          selectedCategory.value !== 'all' &&
+          !categoryList.value.some(
+            (item) => item.category_code === selectedCategory.value
+          )
+        ) {
+          selectedCategory.value = 'all';
+        }
+      }
+    );
+  };
+
   // 获取字典列表
   const fetchDictList = () => {
     loading.value = true;
@@ -319,7 +355,7 @@
       params.category = selectedCategory.value;
     }
 
-    request('/api/system/dict/list', params)
+    request('/api/system/dict/list', params, undefined, METHOD.GET)
       .then((res: any) => {
         dictList.value = res.data?.list || [];
         pagination.total = res.data?.total || 0;
@@ -386,26 +422,33 @@
       status: dictForm.status ? 1 : 0,
     };
 
-    await request('/api/system/dict/save', params);
+    await request('/api/system/dict/save', params, undefined, METHOD.POST);
     Message.success(dictForm.id ? '编辑成功' : '添加成功');
+    fetchCategoryList();
     fetchDictList();
     return true;
   };
 
   // 删除字典
   const handleDeleteDict = async (record: any) => {
-    await request('/api/system/dict/delete', { id: record.id });
+    await request('/api/system/dict/delete', { id: record.id }, undefined, METHOD.POST);
     Message.success('删除成功');
+    fetchCategoryList();
     fetchDictList();
   };
 
   // 状态切换
   const handleStatusChange = (record: any) => {
-    request('/api/system/dict/set', {
+    request(
+      '/api/system/dict/set',
+      {
       id: record.id,
       field: 'status',
       value: record.status === 1 ? 0 : 1,
-    }).then(() => {
+      },
+      undefined,
+      METHOD.POST
+    ).then(() => {
       Message.success('状态更新成功');
       fetchDictList();
     });
@@ -420,13 +463,17 @@
   // 管理字典项
   const handleManageItems = (record: any) => {
     currentDict.value = record;
+    itemSearchKey.value = '';
     itemModalVisible.value = true;
     fetchItemList(record.id);
   };
 
   // 获取字典项列表
   const fetchItemList = (dictId: number) => {
-    request('/api/system/dict/items', { dict_id: dictId }).then((res: any) => {
+    request('/api/system/dict/items', {
+      dict_id: dictId,
+      keyword: itemSearchKey.value,
+    }, undefined, METHOD.GET).then((res: any) => {
       itemList.value = res.data?.list || [];
     });
   };
@@ -463,7 +510,7 @@
       status: itemForm.status ? 1 : 0,
     };
 
-    await request('/api/system/dict/item/save', params);
+    await request('/api/system/dict/item/save', params, undefined, METHOD.POST);
     Message.success(itemForm.id ? '编辑成功' : '添加成功');
     fetchItemList(currentDict.value.id);
     return true;
@@ -471,24 +518,30 @@
 
   // 删除字典项
   const handleDeleteItem = async (record: any) => {
-    await request('/api/system/dict/item/delete', { id: record.id });
+    await request('/api/system/dict/item/delete', { id: record.id }, undefined, METHOD.POST);
     Message.success('删除成功');
     fetchItemList(currentDict.value.id);
   };
 
   // 字典项状态切换
   const handleItemStatusChange = (record: any) => {
-    request('/api/system/dict/item/set', {
+    request(
+      '/api/system/dict/item/set',
+      {
       id: record.id,
       field: 'status',
       value: record.status === 1 ? 0 : 1,
-    }).then(() => {
+      },
+      undefined,
+      METHOD.POST
+    ).then(() => {
       Message.success('状态更新成功');
       fetchItemList(currentDict.value.id);
     });
   };
 
   onMounted(() => {
+    fetchCategoryList();
     fetchDictList();
   });
 </script>
@@ -525,6 +578,7 @@
         font-size: 13px;
       }
     }
+
   }
 
   .dict-section {

@@ -7,7 +7,6 @@ const base = @import("base.fn.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const models = @import("../../domain/entities/mod.zig");
 const global = @import("../../core/primitives/global.zig");
-const json_mod = @import("../../application/services/json/json.zig");
 
 pub const Dict = struct {
     const Self = @This();
@@ -24,17 +23,11 @@ pub const Dict = struct {
         .primary_key = "id",
     });
 
-    const OrmDictCategory = sql.defineWithConfig(models.SysDictCategory, .{
-        .table_name = "zigcms.sys_dict_category",
-        .primary_key = "id",
-    });
-
     /// 初始化字典控制器
     pub fn init(allocator: Allocator) Self {
         const db = global.get_db();
         if (!OrmDict.hasDb()) OrmDict.use(db);
         if (!OrmDictItem.hasDb()) OrmDictItem.use(db);
-        if (!OrmDictCategory.hasDb()) OrmDictCategory.use(db);
         return .{ .allocator = allocator };
     }
 
@@ -82,6 +75,15 @@ pub const Dict = struct {
         if (category) |cat| {
             _ = cq.whereEq("category_code", cat);
         }
+        if (keyword) |kw| {
+            const pattern = std.fmt.allocPrint(self.allocator, "%{s}%", .{kw}) catch return base.send_failed(req, "关键词处理失败");
+            defer self.allocator.free(pattern);
+            var nested = cq.newNested();
+            defer nested.deinit();
+            _ = nested.whereLike("dict_name", pattern);
+            _ = nested.orWhere("dict_code", "LIKE", pattern);
+            _ = cq.whereNested(&nested);
+        }
         const total = cq.count() catch 0;
 
         // 查询列表
@@ -90,31 +92,20 @@ pub const Dict = struct {
         if (category) |cat| {
             _ = q.whereEq("category_code", cat);
         }
+        if (keyword) |kw| {
+            const pattern = std.fmt.allocPrint(self.allocator, "%{s}%", .{kw}) catch return base.send_failed(req, "关键词处理失败");
+            defer self.allocator.free(pattern);
+            var nested = q.newNested();
+            defer nested.deinit();
+            _ = nested.whereLike("dict_name", pattern);
+            _ = nested.orWhere("dict_code", "LIKE", pattern);
+            _ = q.whereNested(&nested);
+        }
         _ = q.orderBy("id", sql.OrderDir.desc);
         _ = q.page(@intCast(page), @intCast(page_size));
 
         const rows = q.get() catch |err| return base.send_error(req, err);
         defer OrmDict.freeModels(rows);
-
-        // 加载所有分类到内存（用于快速查找分类名称）
-        var category_q = OrmDictCategory.Query();
-        defer category_q.deinit();
-        const categories = category_q.get() catch &[_]models.SysDictCategory{};
-        defer {
-            // 手动释放分类数据
-            for (categories) |cat| {
-                self.allocator.free(cat.category_code);
-                self.allocator.free(cat.category_name);
-            }
-            self.allocator.free(categories);
-        }
-
-        // 构建分类代码到名称的映射
-        var category_map = std.StringHashMap([]const u8).init(self.allocator);
-        defer category_map.deinit();
-        for (categories) |cat| {
-            category_map.put(cat.category_code, cat.category_name) catch {};
-        }
 
         // 构建带分类名称的响应列表
         const DictWithCategory = @import("../dto/dict_with_category.dto.zig").DictWithCategory;
@@ -122,15 +113,7 @@ pub const Dict = struct {
         defer list_arr.deinit(self.allocator);
 
         for (rows) |row| {
-            // 简单关键词过滤（ORM 不支持 LIKE，在应用层做）
-            if (keyword) |kw| {
-                const name_match = std.mem.indexOf(u8, row.dict_name, kw) != null;
-                const code_match = std.mem.indexOf(u8, row.dict_code, kw) != null;
-                if (!name_match and !code_match) continue;
-            }
-
-            // 从缓存中获取分类名称
-            const category_name = category_map.get(row.category_code) orelse "";
+            const category_name = row.category_code;
 
             list_arr.append(self.allocator, .{
                 .id = row.id,
@@ -197,6 +180,34 @@ pub const Dict = struct {
             return base.send_failed(req, "分类、名称和编码不能为空");
         }
 
+        {
+            var name_q = OrmDict.WhereEq("dict_name", dict_name);
+            defer name_q.deinit();
+            if (id_val) |id| {
+                if (id > 0) {
+                    _ = name_q.whereNe("id", id);
+                }
+            }
+            const name_count = name_q.count() catch |err| return base.send_error(req, err);
+            if (name_count > 0) {
+                return base.send_failed(req, "字典名称已存在");
+            }
+        }
+
+        {
+            var code_q = OrmDict.WhereEq("dict_code", dict_code);
+            defer code_q.deinit();
+            if (id_val) |id| {
+                if (id > 0) {
+                    _ = code_q.whereNe("id", id);
+                }
+            }
+            const code_count = code_q.count() catch |err| return base.send_error(req, err);
+            if (code_count > 0) {
+                return base.send_failed(req, "字典编码已存在");
+            }
+        }
+
         if (id_val) |id| {
             if (id > 0) {
                 // 更新
@@ -237,6 +248,7 @@ pub const Dict = struct {
         };
 
         var id: ?i32 = null;
+        var force_delete = false;
 
         // 支持 POST body 或 GET query 传 id
         if (req.body) |body| {
@@ -246,6 +258,16 @@ pub const Dict = struct {
                 if (p.value == .object) {
                     if (p.value.object.get("id")) |v| {
                         if (v == .integer) id = @intCast(v.integer);
+                    }
+                    if (p.value.object.get("force")) |v| {
+                        switch (v) {
+                            .bool => force_delete = v.bool,
+                            .integer => force_delete = v.integer == 1,
+                            .string => |s| {
+                                force_delete = std.mem.eql(u8, s, "1") or std.ascii.eqlIgnoreCase(s, "true");
+                            },
+                            else => {},
+                        }
                     }
                 }
             }
@@ -258,15 +280,35 @@ pub const Dict = struct {
             }
         }
 
+        if (!force_delete) {
+            if (req.getParamSlice("force")) |force_str| {
+                force_delete = std.mem.eql(u8, force_str, "1") or std.ascii.eqlIgnoreCase(force_str, "true");
+            }
+        }
+
         const dict_id = id orelse return base.send_failed(req, "缺少 id 参数");
+        if (dict_id <= 0) return base.send_failed(req, "id 格式错误");
+
+        var dict = (OrmDict.Find(dict_id) catch |err| return base.send_error(req, err)) orelse {
+            return base.send_failed(req, "字典不存在");
+        };
+        defer OrmDict.freeModel(&dict);
+
+        var item_q = OrmDictItem.WhereEq("dict_id", dict_id);
+        defer item_q.deinit();
+        const item_count = item_q.count() catch |err| return base.send_error(req, err);
+        if (item_count > 0 and !force_delete) {
+            return base.send_failed(req, "该字典下存在字典项，请先清理字典项或传 force=1 强制删除");
+        }
+
+        if (item_count > 0 and force_delete) {
+            var delete_items_q = OrmDictItem.WhereEq("dict_id", dict_id);
+            defer delete_items_q.deinit();
+            _ = delete_items_q.delete() catch |err| return base.send_error(req, err);
+        }
 
         // 删除字典
         _ = OrmDict.Destroy(dict_id) catch |err| return base.send_error(req, err);
-
-        // 同时删除该字典下所有字典项
-        var dq = OrmDictItem.WhereEq("dict_id", dict_id);
-        defer dq.deinit();
-        _ = dq.delete() catch {};
 
         base.send_ok(req, .{ .message = "删除成功" });
     }
@@ -317,8 +359,12 @@ pub const Dict = struct {
         req.parseQuery();
 
         var dict_id: ?i32 = null;
+        var keyword: ?[]const u8 = null;
         if (req.getParamSlice("dict_id")) |id_str| {
             dict_id = std.fmt.parseInt(i32, id_str, 10) catch null;
+        }
+        if (req.getParamSlice("keyword")) |kw| {
+            if (kw.len > 0) keyword = kw;
         }
 
         // 也支持通过 dict_code 查找
@@ -337,6 +383,15 @@ pub const Dict = struct {
 
         var q = OrmDictItem.WhereEq("dict_id", target_id);
         defer q.deinit();
+        if (keyword) |kw| {
+            const pattern = std.fmt.allocPrint(self.allocator, "%{s}%", .{kw}) catch return base.send_failed(req, "关键词处理失败");
+            defer self.allocator.free(pattern);
+            var nested = q.newNested();
+            defer nested.deinit();
+            _ = nested.whereLike("item_name", pattern);
+            _ = nested.orWhere("item_value", "LIKE", pattern);
+            _ = q.whereNested(&nested);
+        }
         _ = q.orderBy("sort", .asc);
 
         const rows = q.get() catch |err| return base.send_error(req, err);
@@ -499,21 +554,5 @@ pub const Dict = struct {
 
         _ = OrmDictItem.Update(item_id, model) catch |err| return base.send_error(req, err);
         base.send_ok(req, .{ .message = "更新成功" });
-    }
-
-    // ==================== 辅助函数 ====================
-
-    /// 根据分类编码获取分类名称
-    fn getCategoryName(code: []const u8) []const u8 {
-        const categories = [_]struct { code: []const u8, name: []const u8 }{
-            .{ .code = "system", .name = "系统配置" },
-            .{ .code = "business", .name = "业务配置" },
-            .{ .code = "user", .name = "用户相关" },
-            .{ .code = "order", .name = "订单相关" },
-        };
-        for (categories) |cat| {
-            if (std.mem.eql(u8, cat.code, code)) return cat.name;
-        }
-        return "其他";
     }
 };

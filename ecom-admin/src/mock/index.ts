@@ -1871,15 +1871,7 @@ if (import.meta.env.DEV) {
   // 低代码示例 Schema
   Mock.mock('/api/lowcode/demo-schema', 'get', mockComplexLowcodeSchema);
 
-  // 字典管理
-  Mock.mock(/\/api\/system\/dict\/list(\?.*)?$/, 'get', mockDictList);
-  Mock.mock(/\/api\/system\/dict\/items(\?.*)?$/, 'get', mockDictItems);
-  Mock.mock('/api/system/dict/save', 'post', () => responseSuccess({}));
-  Mock.mock('/api/system/dict/set', 'post', () => responseSuccess({}));
-  Mock.mock('/api/system/dict/delete', 'post', () => responseSuccess({}));
-  Mock.mock('/api/system/dict/item/save', 'post', () => responseSuccess({}));
-  Mock.mock('/api/system/dict/item/set', 'post', () => responseSuccess({}));
-  Mock.mock('/api/system/dict/item/delete', 'post', () => responseSuccess({}));
+  // 字典管理接口已切换真实后端联调，不再使用本地 Mock
 
   // 用户列表 CRUD
   Mock.mock(/\/api\/mock\/users(\?.*)?$/, 'get', () => {

@@ -29,7 +29,7 @@ export function viteMockPlugin(config: MockConfig = {}): Plugin {
         const url = req.url || '';
 
         // 只拦截 API 请求
-        if (!url.startsWith('/api') && !url.startsWith('/be/api')) {
+        if (!url.startsWith('/api')) {
           return next();
         }
 

@@ -249,16 +249,6 @@ CREATE TABLE IF NOT EXISTS sys_config (
   KEY idx_sys_config_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS sys_dict_category (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  category_name VARCHAR(128) NOT NULL,
-  category_code VARCHAR(64) NOT NULL,
-  sort INT NOT NULL DEFAULT 0,
-  status TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_sys_dict_category_code (category_code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS sys_dict (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   category_code VARCHAR(64) NOT NULL,
@@ -269,7 +259,6 @@ CREATE TABLE IF NOT EXISTS sys_dict (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_sys_dict_code (dict_code),
-  KEY idx_sys_dict_category_code (category_code),
   KEY idx_sys_dict_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

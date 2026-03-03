@@ -126,10 +126,9 @@ pub const Bootstrap = struct {
 
         // Phase 2: 菜单/字典
         try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
-        try registerCrudWithAlias(self.app, "system/dict", models.SysDict);
-        try registerCrudWithAlias(self.app, "system/dict_item", models.SysDictItem);
-        try registerCrudWithAlias(self.app, "system/dict/category", models.SysDictCategory);
-        self.crud_count += 3;
+        // 字典相关（dict/dict_item/dict/category）由 registerSystemExtensionsRoutes 的 Dict 控制器托管，
+        // 这里不再走自动 CRUD，避免 list/save/delete 等路由重复注册冲突。
+        self.crud_count += 1;
 
         // Phase 3: 配置/会员
         try registerCrudWithAlias(self.app, "system/config", models.SysConfig);
@@ -413,7 +412,6 @@ pub const Bootstrap = struct {
         const admin = try self.container.resolve(controllers.system_ext.Admin);
         const menu = try self.container.resolve(controllers.system_ext.Menu);
         const dict = try self.container.resolve(controllers.system_ext.Dict);
-        const dict_item = try self.container.resolve(controllers.system_ext.DictItem);
         const role = try self.container.resolve(controllers.system_ext.Role);
         const config_ctrl = try self.container.resolve(controllers.system_ext.Config);
         const member_ctrl = try self.container.resolve(controllers.system_ext.Member);
@@ -446,11 +444,6 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/system/dict/item/save", dict, &controllers.system_ext.Dict.itemSave);
         try registerWithAlias(self.app, "/system/dict/item/delete", dict, &controllers.system_ext.Dict.itemDelete);
         try registerWithAlias(self.app, "/system/dict/item/set", dict, &controllers.system_ext.Dict.itemSet);
-
-        try registerWithAlias(self.app, "/system/dict/items", dict_item, &controllers.system_ext.DictItem.items);
-        try registerWithAlias(self.app, "/system/dict/item/save", dict_item, &controllers.system_ext.DictItem.save);
-        try registerWithAlias(self.app, "/system/dict/item/delete", dict_item, &controllers.system_ext.DictItem.delete);
-        try registerWithAlias(self.app, "/system/dict/item/set", dict_item, &controllers.system_ext.DictItem.set);
 
         try registerWithAlias(self.app, "/system/role/save", role, &controllers.system_ext.Role.save);
         try registerWithAlias(self.app, "/system/role/list", role, &controllers.system_ext.Role.list);
@@ -643,7 +636,7 @@ pub const Bootstrap = struct {
 
         // 注册到 Endpoint.Listener
         try self.app.registerMcpEndpoint(mcp_endpoint);
-        
+
         logger.info("✅ MCP Endpoint 已注册: {s} (GET/POST)", .{config.mcp.transport.sse_path});
         self.route_count += 1;
 
