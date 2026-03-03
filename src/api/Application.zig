@@ -94,6 +94,9 @@ pub const Application = struct {
     }
 
     pub fn run(self: *Self) !void {
+        // 初始化 Listener（在注册路由之后）
+        try self.app.initListener();
+        
         self.bootstrap.printStartupSummary();
         logger.info("🚀 启动 ZigCMS 服务器", .{});
         self.app.listen() catch |err| switch (err) {

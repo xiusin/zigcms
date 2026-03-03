@@ -36,9 +36,8 @@ pub const App = struct {
     /// MCP 控制器（特殊处理）
     mcp_handler: ?*const fn (zap.Request) void = null,
     mcp_path: ?[]const u8 = null,
-    
-    /// 全局 App 实例（用于自定义请求处理器）
-    var global_app: ?*App = null;
+    /// Endpoint Listener（支持所有 HTTP 方法）
+    endpoint_listener: ?*zap.Endpoint.Listener = null,
 
     /// 初始化应用
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -52,6 +51,7 @@ pub const App = struct {
             .routes = .{},
             .mcp_handler = null,
             .mcp_path = null,
+            .endpoint_listener = null,
         };
     }
 
@@ -207,10 +207,34 @@ pub const App = struct {
         try self.router.handle_func("/dynamic/batch_update", ctrl_ptr, DynamicController.batchUpdate);
     }
 
-    /// 注册 MCP 特殊路由（支持所有 HTTP 方法）
-    pub fn registerMcpRoute(self: *Self, path: []const u8, handler: *const fn (zap.Request) void) !void {
-        self.mcp_handler = handler;
-        self.mcp_path = try self.allocator.dupe(u8, path);
+    /// 初始化 Endpoint Listener（在注册路由之后调用）
+    pub fn initListener(self: *Self) !void {
+        const service_mgr = root.getServiceManager() orelse @panic("ServiceManager not initialized");
+        const config = service_mgr.getConfig();
+        const api_config = config.api;
+        
+        logger.info("🔧 初始化 Endpoint.Listener（支持所有 HTTP 方法）", .{});
+        
+        const listener_ptr = try self.allocator.create(zap.Endpoint.Listener);
+        listener_ptr.* = zap.Endpoint.Listener.init(self.allocator, .{
+            .port = api_config.port,
+            .on_request = self.router.on_request_handler(),
+            .log = true,
+            .public_folder = api_config.public_folder,
+            .max_clients = api_config.max_clients,
+            .timeout = @intCast(api_config.timeout),
+        });
+        self.endpoint_listener = listener_ptr;
+    }
+
+    /// 注册 MCP Endpoint（支持所有 HTTP 方法）
+    pub fn registerMcpEndpoint(self: *Self, endpoint: anytype) !void {
+        if (self.endpoint_listener) |listener| {
+            try listener.register(endpoint);
+            logger.info("✅ MCP Endpoint 已注册", .{});
+        } else {
+            return error.ListenerNotInitialized;
+        }
     }
 
     /// 启动 HTTP 服务器
@@ -219,60 +243,8 @@ pub const App = struct {
         const config = service_mgr.getConfig();
         const api_config = config.api;
         
-        // 设置全局 App 指针
-        global_app = self;
+        const listener = self.endpoint_listener orelse return error.ListenerNotInitialized;
         
-        logger.info("🔧 注册自定义请求处理器", .{});
-        logger.info("   MCP路径: {s}", .{if (self.mcp_path) |p| p else "未设置"});
-        logger.info("   MCP处理器: {s}", .{if (self.mcp_handler != null) "已注册" else "未注册"});
-        
-        // 自定义请求处理器
-        const customOnRequest = struct {
-            fn handle(req: zap.Request) !void {
-                logger.info("🔴 customOnRequest 被调用！", .{});
-                
-                const app = global_app orelse {
-                    logger.err("❌ global_app 为 null", .{});
-                    return error.AppNotInitialized;
-                };
-                
-                // 详细日志
-                logger.info("=== 请求详情 ===", .{});
-                logger.info("路径: {s}", .{req.path orelse "null"});
-                logger.info("Body: {s}", .{if (req.body) |b| if (b.len > 0) "有内容" else "空" else "null"});
-                logger.info("MCP路径: {s}", .{if (app.mcp_path) |p| p else "未设置"});
-                logger.info("MCP处理器: {s}", .{if (app.mcp_handler != null) "已注册" else "未注册"});
-                
-                // 先检查是否是 MCP 请求
-                if (app.mcp_handler) |mcp_fn| {
-                    if (app.mcp_path) |mcp_path| {
-                        if (req.path) |path| {
-                            logger.info("比较路径: '{s}' vs '{s}'", .{ path, mcp_path });
-                            if (std.mem.eql(u8, path, mcp_path)) {
-                                logger.info("✅ 匹配 MCP 路径，调用处理器", .{});
-                                mcp_fn(req);
-                                return;
-                            } else {
-                                logger.info("❌ 路径不匹配", .{});
-                            }
-                        }
-                    }
-                }
-                
-                logger.info("→ 交给 Router 处理", .{});
-                // 否则交给 Router 处理
-                try app.router.on_request_handler()(req);
-            }
-        }.handle;
-        
-        var listener = zap.HttpListener.init(.{
-            .port = api_config.port,
-            .on_request = customOnRequest,
-            .log = true,
-            .public_folder = api_config.public_folder,
-            .max_clients = api_config.max_clients,
-            .timeout = @intCast(api_config.timeout),
-        });
         logger.info("🚀 服务器启动于 http://{s}:{d}", .{ api_config.host, api_config.port });
         try listener.listen();
         // 重要：workers 必须为 1，避免多进程 fork 后共享 MySQL 连接导致崩溃
