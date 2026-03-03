@@ -222,10 +222,19 @@ pub const App = struct {
         // 设置全局 App 指针
         global_app = self;
         
+        logger.info("🔧 注册自定义请求处理器", .{});
+        logger.info("   MCP路径: {s}", .{if (self.mcp_path) |p| p else "未设置"});
+        logger.info("   MCP处理器: {s}", .{if (self.mcp_handler != null) "已注册" else "未注册"});
+        
         // 自定义请求处理器
         const customOnRequest = struct {
             fn handle(req: zap.Request) !void {
-                const app = global_app orelse return error.AppNotInitialized;
+                logger.info("🔴 customOnRequest 被调用！", .{});
+                
+                const app = global_app orelse {
+                    logger.err("❌ global_app 为 null", .{});
+                    return error.AppNotInitialized;
+                };
                 
                 // 详细日志
                 logger.info("=== 请求详情 ===", .{});
