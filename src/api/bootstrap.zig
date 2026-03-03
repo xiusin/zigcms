@@ -642,14 +642,30 @@ pub const Bootstrap = struct {
         // 创建包装函数用于注册
         const wrapper = struct {
             fn handle(req: zap.Request) void {
-                const container = zigcms.core.di.getGlobalContainer() orelse return;
-                const server = container.resolve(mcp.McpServer) catch return;
+                std.log.info("🟢 MCP wrapper 被调用", .{});
+                
+                const container = zigcms.core.di.getGlobalContainer() orelse {
+                    std.log.err("❌ 无法获取 DI 容器", .{});
+                    return;
+                };
+                
+                const server = container.resolve(mcp.McpServer) catch {
+                    std.log.err("❌ 无法解析 MCP Server", .{});
+                    return;
+                };
+                
                 var mutable_req = req;
                 
                 if (mutable_req.body == null or mutable_req.body.?.len == 0) {
-                    server.sse_transport.handleSse(&mutable_req) catch {};
+                    std.log.info("→ 处理 GET 请求（SSE）", .{});
+                    server.sse_transport.handleSse(&mutable_req) catch |err| {
+                        std.log.err("❌ SSE 处理失败: {any}", .{err});
+                    };
                 } else {
-                    server.sse_transport.handleMessage(&mutable_req) catch {};
+                    std.log.info("→ 处理 POST 请求（消息）", .{});
+                    server.sse_transport.handleMessage(&mutable_req) catch |err| {
+                        std.log.err("❌ 消息处理失败: {any}", .{err});
+                    };
                 }
             }
         };

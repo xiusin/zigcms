@@ -46,7 +46,10 @@ pub const SseTransport = struct {
 
     /// 处理 SSE 连接
     pub fn handleSse(self: *SseTransport, req: *zap.Request) !void {
+        std.log.info("🔵 handleSse 被调用", .{});
+        
         // 设置 SSE 响应头
+        req.setStatus(.ok);
         try req.setHeader("Content-Type", "text/event-stream");
         try req.setHeader("Cache-Control", "no-cache");
         try req.setHeader("Connection", "keep-alive");
@@ -74,7 +77,7 @@ pub const SseTransport = struct {
 
         try self.sendEvent(req, "connected", init_data);
         
-        std.log.info("SSE 连接已建立: conn_id={d}", .{conn_id});
+        std.log.info("✅ SSE 连接已建立: conn_id={d}", .{conn_id});
     }
 
     /// 注册工具路由回调
