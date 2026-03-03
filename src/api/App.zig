@@ -227,18 +227,30 @@ pub const App = struct {
             fn handle(req: zap.Request) !void {
                 const app = global_app orelse return error.AppNotInitialized;
                 
+                // 详细日志
+                logger.info("=== 请求详情 ===", .{});
+                logger.info("路径: {s}", .{req.path orelse "null"});
+                logger.info("Body: {s}", .{if (req.body) |b| if (b.len > 0) "有内容" else "空" else "null"});
+                logger.info("MCP路径: {s}", .{if (app.mcp_path) |p| p else "未设置"});
+                logger.info("MCP处理器: {s}", .{if (app.mcp_handler != null) "已注册" else "未注册"});
+                
                 // 先检查是否是 MCP 请求
                 if (app.mcp_handler) |mcp_fn| {
                     if (app.mcp_path) |mcp_path| {
                         if (req.path) |path| {
+                            logger.info("比较路径: '{s}' vs '{s}'", .{ path, mcp_path });
                             if (std.mem.eql(u8, path, mcp_path)) {
+                                logger.info("✅ 匹配 MCP 路径，调用处理器", .{});
                                 mcp_fn(req);
                                 return;
+                            } else {
+                                logger.info("❌ 路径不匹配", .{});
                             }
                         }
                     }
                 }
                 
+                logger.info("→ 交给 Router 处理", .{});
                 // 否则交给 Router 处理
                 try app.router.on_request_handler()(req);
             }
