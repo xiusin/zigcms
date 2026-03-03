@@ -107,7 +107,7 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
                                 const key = entry.key_ptr.*;
                                 if (std.mem.eql(u8, key, "page")) {
                                     if (entry.value_ptr.* == .integer) page = @intCast(entry.value_ptr.integer);
-                                } else if (std.mem.eql(u8, key, "limit")) {
+                                } else if (std.mem.eql(u8, key, "limit") or std.mem.eql(u8, key, "page_size")) {
                                     if (entry.value_ptr.* == .integer) limit = @intCast(entry.value_ptr.integer);
                                 } else if (std.mem.eql(u8, key, "sort")) {
                                     // 处理复杂的 sort 对象或字符串
@@ -148,6 +148,11 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
 
         /// 应用自动筛选逻辑。
         fn applyFilter(allocator: Allocator, q: *sql.ModelQuery(T), comptime Model: type, key: []const u8, value: []const u8) void {
+            if (std.mem.eql(u8, key, "keyword")) {
+                applyKeywordFilter(allocator, q, Model, value);
+                return;
+            }
+
             inline for (std.meta.fields(Model)) |field| {
                 if (std.mem.eql(u8, field.name, key)) {
                     const info = @typeInfo(field.type);
@@ -163,6 +168,33 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
                             _ = q.whereEq(field.name, val);
                         } else |_| {}
                     }
+                }
+            }
+        }
+
+        /// 应用通用关键字筛选。
+        fn applyKeywordFilter(allocator: Allocator, q: *sql.ModelQuery(T), comptime Model: type, keyword: []const u8) void {
+            if (keyword.len == 0) return;
+
+            inline for (std.meta.fields(Model)) |field| {
+                const info = @typeInfo(field.type);
+                const is_string_field = field.type == []const u8 or (info == .optional and info.optional.child == []const u8);
+                const is_name_like = std.mem.endsWith(u8, field.name, "_name") or std.mem.eql(u8, field.name, "name") or std.mem.eql(u8, field.name, "title");
+                if (is_string_field and is_name_like) {
+                    const pattern = std.fmt.allocPrint(allocator, "%{s}%", .{keyword}) catch return;
+                    defer allocator.free(pattern);
+                    _ = q.whereLike(field.name, pattern);
+                    return;
+                }
+            }
+
+            inline for (std.meta.fields(Model)) |field| {
+                const info = @typeInfo(field.type);
+                if (field.type == []const u8 or (info == .optional and info.optional.child == []const u8)) {
+                    const pattern = std.fmt.allocPrint(allocator, "%{s}%", .{keyword}) catch return;
+                    defer allocator.free(pattern);
+                    _ = q.whereLike(field.name, pattern);
+                    return;
                 }
             }
         }
@@ -215,10 +247,39 @@ pub fn Crud(comptime T: type, comptime schema: []const u8) type {
         /// 删除数据。
         fn deleteImpl(self: *Self, req: zap.Request) !void {
             req.parseQuery();
-            const id_str = req.getParamSlice("id") orelse return base.send_failed(req, "缺少 id 参数");
-            const id: usize = strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误");
+            var id: ?usize = null;
 
-            _ = OrmModel.Destroy(id) catch |err| return base.send_error(req, err);
+            if (req.getParamSlice("id")) |id_str| {
+                id = strings.to_int(id_str) catch return base.send_failed(req, "id 格式错误");
+            }
+
+            if (id == null) {
+                req.parseBody() catch {};
+                if (req.body) |body| {
+                    if (body.len > 0 and body[0] == '{') {
+                        var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch null;
+                        defer if (parsed) |*p| p.deinit();
+                        if (parsed) |p| {
+                            if (p.value == .object) {
+                                if (p.value.object.get("id")) |id_val| {
+                                    switch (id_val) {
+                                        .integer => {
+                                            if (id_val.integer <= 0) return base.send_failed(req, "id 格式错误");
+                                            id = @intCast(id_val.integer);
+                                        },
+                                        .string => id = strings.to_int(id_val.string) catch return base.send_failed(req, "id 格式错误"),
+                                        else => {},
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const target_id = id orelse return base.send_failed(req, "缺少 id 参数");
+
+            _ = OrmModel.Destroy(target_id) catch |err| return base.send_error(req, err);
             if (std.mem.endsWith(u8, table_name, "sys_role")) {
                 role_ext.bumpRoleCacheVersion(self.allocator);
             }
