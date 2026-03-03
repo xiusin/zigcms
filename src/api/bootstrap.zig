@@ -639,8 +639,23 @@ pub const Bootstrap = struct {
         mcp_ctrl.* = .{ .server = mcp_server };
         self.mcp_controller = mcp_ctrl;
 
-        // 注册到 Router（同一路径处理 GET 和 POST）
-        try self.app.router.handle_func(config.mcp.transport.sse_path, mcp_ctrl, &McpController.handle);
+        // 创建包装函数用于注册
+        const wrapper = struct {
+            fn handle(req: zap.Request) void {
+                const container = zigcms.core.di.getGlobalContainer() orelse return;
+                const server = container.resolve(mcp.McpServer) catch return;
+                var mutable_req = req;
+                
+                if (mutable_req.body == null or mutable_req.body.?.len == 0) {
+                    server.sse_transport.handleSse(&mutable_req) catch {};
+                } else {
+                    server.sse_transport.handleMessage(&mutable_req) catch {};
+                }
+            }
+        };
+
+        // 注册到 App（绕过 Router）
+        try self.app.registerMcpRoute(config.mcp.transport.sse_path, wrapper.handle);
         
         logger.info("✅ MCP 端点已注册: {s} (GET/POST)", .{config.mcp.transport.sse_path});
         self.route_count += 1;

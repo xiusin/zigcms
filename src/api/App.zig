@@ -33,6 +33,12 @@ pub const App = struct {
     controllers: std.ArrayListUnmanaged(ControllerEntry),
     /// 存储已注册的路由信息，用于打印
     routes: std.ArrayListUnmanaged(RouteEntry),
+    /// MCP 控制器（特殊处理）
+    mcp_handler: ?*const fn (zap.Request) void = null,
+    mcp_path: ?[]const u8 = null,
+    
+    /// 全局 App 实例（用于自定义请求处理器）
+    var global_app: ?*App = null;
 
     /// 初始化应用
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -44,6 +50,8 @@ pub const App = struct {
             }),
             .controllers = .{},
             .routes = .{},
+            .mcp_handler = null,
+            .mcp_path = null,
         };
     }
 
@@ -199,14 +207,46 @@ pub const App = struct {
         try self.router.handle_func("/dynamic/batch_update", ctrl_ptr, DynamicController.batchUpdate);
     }
 
+    /// 注册 MCP 特殊路由（支持所有 HTTP 方法）
+    pub fn registerMcpRoute(self: *Self, path: []const u8, handler: *const fn (zap.Request) void) !void {
+        self.mcp_handler = handler;
+        self.mcp_path = try self.allocator.dupe(u8, path);
+    }
+
     /// 启动 HTTP 服务器
     pub fn listen(self: *Self) !void {
         const service_mgr = root.getServiceManager() orelse @panic("ServiceManager not initialized");
         const config = service_mgr.getConfig();
         const api_config = config.api;
+        
+        // 设置全局 App 指针
+        global_app = self;
+        
+        // 自定义请求处理器
+        const customOnRequest = struct {
+            fn handle(req: zap.Request) !void {
+                const app = global_app orelse return error.AppNotInitialized;
+                
+                // 先检查是否是 MCP 请求
+                if (app.mcp_handler) |mcp_fn| {
+                    if (app.mcp_path) |mcp_path| {
+                        if (req.path) |path| {
+                            if (std.mem.eql(u8, path, mcp_path)) {
+                                mcp_fn(req);
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                // 否则交给 Router 处理
+                try app.router.on_request_handler()(req);
+            }
+        }.handle;
+        
         var listener = zap.HttpListener.init(.{
             .port = api_config.port,
-            .on_request = self.router.on_request_handler(),
+            .on_request = customOnRequest,
             .log = true,
             .public_folder = api_config.public_folder,
             .max_clients = api_config.max_clients,
