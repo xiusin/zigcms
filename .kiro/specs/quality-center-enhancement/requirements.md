@@ -1,161 +1,261 @@
-# Requirements Document
+# 质量中心完善功能需求文档
 
-## Introduction
+## 简介
 
-质量中心完善功能是一个全面的测试管理和质量保障系统，旨在为企业提供从测试用例管理、项目管理、需求管理到数据可视化的完整质量管理解决方案。系统融合了AI能力，支持自动生成测试用例、智能分析反馈，并提供丰富的数据可视化和交互功能。
+质量中心完善功能是一个全面的测试管理和质量保障系统，旨在提供测试用例管理、AI 自动生成测试用例、项目管理、模块管理、需求管理、数据可视化、反馈管理和脑图 UI 优化等核心功能。系统基于 ZigCMS 后端框架和 Vue 3 + Arco Design 前端技术栈，遵循整洁架构和 DDD 设计原则。
 
-本系统基于 Vue 3 + Arco Design 构建，采用现代化的前端架构，提供流畅的用户体验和强大的功能支持。
+## 术语表
 
-## Glossary
-
-- **Quality_Center**: 质量中心系统，负责测试管理、需求管理、反馈管理等功能
-- **Test_Case**: 测试用例，描述测试场景、步骤和预期结果的实体
-- **Project**: 项目实体，包含测试用例、需求、模块等资源的容器
-- **Module**: 模块实体，用于组织测试用例的树形结构单元
-- **Requirement**: 需求实体，描述业务需求和功能规格
-- **Feedback**: 反馈实体，用户提交的问题、建议或Bug报告
-- **AI_Generator**: AI生成器，基于需求自动生成测试用例的服务
-- **Mindmap**: 脑图，用于可视化展示数据关系的交互式图形界面
-- **Dashboard**: 仪表盘，展示质量指标和统计数据的可视化界面
+- **Quality_Center**: 质量中心系统，负责测试管理和质量保障
+- **Test_Case**: 测试用例，包含测试步骤、预期结果和实际结果
+- **Test_Execution**: 测试执行记录，记录测试用例的执行历史
+- **Project**: 项目，测试用例和需求的组织单元
+- **Module**: 模块，项目下的功能模块，支持树形结构
+- **Requirement**: 需求，描述系统功能或业务需求
+- **Feedback**: 用户反馈，包含问题描述和跟进记录
+- **Bug**: 缺陷，测试过程中发现的问题
+- **AI_Generator**: AI 生成器，基于需求自动生成测试用例或需求
 - **Coverage_Rate**: 覆盖率，需求被测试用例覆盖的百分比
 - **Pass_Rate**: 通过率，测试用例执行通过的百分比
+- **ORM**: 对象关系映射，数据库访问抽象层
+- **DI_Container**: 依赖注入容器，管理服务依赖关系
+- **Arena_Allocator**: Arena 分配器，批量内存管理工具
 
-## Requirements
+## 需求
 
-### Requirement 1: 测试用例管理
+### 需求 1: 测试用例管理
 
-**User Story:** 作为测试人员，我想要管理测试用例，以便系统化地组织和执行测试工作
+**用户故事**: 作为测试工程师，我想要管理测试用例，以便组织和执行测试活动。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN 用户访问测试用例列表页面，THE Quality_Center SHALL 展示所有测试用例，包括用例名称、所属模块、状态、优先级、创建时间
-2. WHEN 用户点击新增按钮，THE Quality_Center SHALL 打开测试用例创建表单，包含必填字段（用例名称、所属项目、所属模块）和可选字段（描述、前置条件、测试步骤、预期结果、优先级、标签）
-3. WHEN 用户提交创建表单且数据验证通过，THE Quality_Center SHALL 保存测试用例并返回成功提示
-4. WHEN 用户点击编辑按钮，THE Quality_Center SHALL 打开编辑表单并预填充当前用例数据
-5. WHEN 用户点击删除按钮，THE Quality_Center SHALL 显示确认对话框，确认后删除用例并刷新列表
-6. WHEN 用户选择多个用例并点击批量操作，THE Quality_Center SHALL 支持批量删除、批量修改状态、批量分配负责人
-7. WHEN 用户点击执行按钮，THE Quality_Center SHALL 打开执行对话框，允许记录执行结果（通过/失败/阻塞）、实际结果、截图、执行时间
-8. WHEN 用例执行完成，THE Quality_Center SHALL 保存执行记录到历史记录表，包含执行人、执行时间、执行结果、备注
-9. WHEN 用户查看用例详情，THE Quality_Center SHALL 展示完整用例信息和执行历史记录列表
-10. WHEN 用户点击关联需求按钮，THE Quality_Center SHALL 打开需求选择对话框，支持搜索和多选需求进行关联
-11. WHEN 用户点击关联Bug按钮，THE Quality_Center SHALL 打开Bug选择对话框，支持关联已有Bug或创建新Bug
-12. WHEN 用户点击关联反馈按钮，THE Quality_Center SHALL 打开反馈选择对话框，支持关联用户反馈记录
+1. THE Quality_Center SHALL 提供测试用例的创建、读取、更新、删除功能
+2. WHEN 用户创建测试用例时，THE Quality_Center SHALL 验证必填字段（标题、所属项目、所属模块）
+3. THE Quality_Center SHALL 支持批量删除测试用例
+4. THE Quality_Center SHALL 支持批量修改测试用例状态（待执行、执行中、已通过、未通过、已阻塞）
+5. THE Quality_Center SHALL 支持批量分配测试用例负责人
+6. WHEN 用户执行测试用例时，THE Quality_Center SHALL 记录执行结果（通过、失败、阻塞）和执行时间
+7. THE Quality_Center SHALL 保存测试用例的执行历史记录
+8. THE Quality_Center SHALL 支持测试用例关联需求、Bug、反馈
+9. WHEN 用户查询测试用例时，THE Quality_Center SHALL 支持按项目、模块、状态、负责人、关键字筛选
+10. THE Quality_Center SHALL 支持测试用例分页查询，每页显示 20 条记录
 
-### Requirement 2: AI自动生成测试用例
+### 需求 2: AI 自动生成测试用例
 
-**User Story:** 作为测试人员，我想要AI自动生成测试用例，以便提高测试用例编写效率
+**用户故事**: 作为测试工程师，我想要基于需求自动生成测试用例，以便提高测试用例编写效率。
 
-#### Acceptance Criteria
+#### 验收标准
 
+1. WHEN 用户选择需求并触发 AI 生成时，THE AI_Generator SHALL 分析需求内容
+2. THE AI_Generator SHALL 识别关键测试点（正常流程、边界条件、异常场景、性能要求）
+3. THE AI_Generator SHALL 生成测试用例标题、前置条件、测试步骤、预期结果
+4. WHILE AI 生成过程中，THE Quality_Center SHALL 显示生成进度（百分比和当前步骤）
+5. WHEN AI 生成完成时，THE Quality_Center SHALL 展示生成结果预览
+6. THE Quality_Center SHALL 支持批量编辑生成的测试用例
+7. THE Quality_Center SHALL 支持批量保存生成的测试用例到数据库
+8. WHEN 保存测试用例时，THE Quality_Center SHALL 自动关联到对应需求
+9. IF AI 生成失败，THEN THE Quality_Center SHALL 显示错误信息并允许重试
+10. THE AI_Generator SHALL 在 30 秒内完成单个需求的测试用例生成
 
-1. WHEN 用户选择一个或多个需求并点击AI生成用例按钮，THE AI_Generator SHALL 分析需求内容并生成测试用例建议
-2. WHEN AI分析需求，THE AI_Generator SHALL 识别关键测试点，包括正常流程、边界条件、异常场景、性能要求
-3. WHEN AI生成用例完成，THE Quality_Center SHALL 展示生成进度和结果预览，包含用例数量、覆盖的测试点
-4. WHEN 用户查看生成的用例，THE Quality_Center SHALL 展示每个用例的详细信息，支持单个编辑或批量编辑
-5. WHEN 用户确认生成的用例，THE Quality_Center SHALL 批量保存用例到数据库，并自动关联到对应需求
-6. WHEN AI生成过程中发生错误，THE Quality_Center SHALL 显示友好的错误提示，并允许用户重试或手动创建
-7. WHEN 用户点击预览按钮，THE Quality_Center SHALL 在保存前展示所有待生成用例的完整列表
-8. FOR ALL 生成的测试用例，THE Quality_Center SHALL 自动标记为"AI生成"来源，并记录生成时间和使用的AI模型
+### 需求 3: 项目管理
 
-### Requirement 3: 项目管理
+**用户故事**: 作为项目经理，我想要管理测试项目，以便组织团队和跟踪项目质量。
 
-**User Story:** 作为项目管理员，我想要管理测试项目，以便组织和协调团队的测试工作
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 提供项目的创建、读取、更新、删除功能
+2. WHEN 用户创建项目时，THE Quality_Center SHALL 验证必填字段（项目名称、项目描述）
+3. THE Quality_Center SHALL 支持项目成员管理（添加成员、移除成员、分配角色）
+4. THE Quality_Center SHALL 支持项目设置配置（测试环境、通知设置、工作流规则）
+5. THE Quality_Center SHALL 展示项目统计数据（用例总数、执行次数、通过率、Bug 数量、需求覆盖率）
+6. WHEN 用户查看项目详情时，THE Quality_Center SHALL 在 500 毫秒内加载统计数据
+7. THE Quality_Center SHALL 支持项目归档和恢复功能
+8. WHEN 删除项目时，THE Quality_Center SHALL 提示确认并说明关联数据处理方式
+9. THE Quality_Center SHALL 支持项目模板功能，快速创建相似项目
+10. THE Quality_Center SHALL 记录项目操作日志（创建、修改、删除、成员变更）
 
-1. WHEN 用户访问项目列表页面，THE Quality_Center SHALL 展示所有项目，包括项目名称、负责人、成员数量、用例数量、Bug数量、创建时间
-2. WHEN 用户点击创建项目按钮，THE Quality_Center SHALL 打开项目创建表单，包含项目名称、描述、负责人、测试环境配置
-3. WHEN 用户提交项目创建表单，THE Quality_Center SHALL 验证项目名称唯一性，保存项目并自动将创建者添加为项目成员
-4. WHEN 用户点击项目卡片，THE Quality_Center SHALL 进入项目详情页面，展示项目统计数据和快捷操作入口
-5. WHEN 用户点击成员管理按钮，THE Quality_Center SHALL 打开成员管理对话框，展示当前成员列表和角色
-6. WHEN 用户添加项目成员，THE Quality_Center SHALL 提供用户搜索功能，支持选择角色（管理员/测试人员/查看者）
-7. WHEN 用户移除项目成员，THE Quality_Center SHALL 显示确认对话框，确认后移除成员并更新权限
-8. WHEN 用户配置项目设置，THE Quality_Center SHALL 支持配置测试环境URL、通知设置（邮件/钉钉/企业微信）、工作流规则
-9. WHEN 用户查看项目统计，THE Quality_Center SHALL 展示用例总数、执行次数、通过率、Bug数量、需求覆盖率等指标
-10. WHEN 用户删除项目，THE Quality_Center SHALL 显示警告对话框，说明删除项目将同时删除所有关联数据，需要输入项目名称确认
+### 需求 4: 模块管理
 
-### Requirement 4: 模块管理
+**用户故事**: 作为测试工程师，我想要管理功能模块，以便组织测试用例的层级结构。
 
-**User Story:** 作为测试人员，我想要管理测试模块，以便按照功能模块组织测试用例
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 以树形结构展示模块
+2. THE Quality_Center SHALL 提供模块的创建、读取、更新、删除功能
+3. THE Quality_Center SHALL 支持模块的父子关系（最多 5 层嵌套）
+4. THE Quality_Center SHALL 支持拖拽调整模块层级和顺序
+5. WHEN 用户拖拽模块时，THE Quality_Center SHALL 在 200 毫秒内更新树形结构
+6. THE Quality_Center SHALL 展示模块质量统计（用例总数、通过率、Bug 数量、覆盖率）
+7. WHEN 删除模块时，THE Quality_Center SHALL 提示确认并说明子模块和测试用例的处理方式
+8. THE Quality_Center SHALL 支持模块搜索和高亮显示
+9. THE Quality_Center SHALL 支持模块展开和折叠状态记忆
+10. WHEN 用户创建模块时，THE Quality_Center SHALL 验证模块名称在同一父模块下唯一
 
-1. WHEN 用户访问模块管理页面，THE Quality_Center SHALL 以树形结构展示所有模块，支持展开/折叠节点
-2. WHEN 用户点击添加根模块按钮，THE Quality_Center SHALL 打开模块创建表单，包含模块名称、描述、负责人
-3. WHEN 用户点击某个模块的添加子模块按钮，THE Quality_Center SHALL 打开子模块创建表单，自动设置父模块ID
-4. WHEN 用户提交模块创建表单，THE Quality_Center SHALL 验证同级模块名称唯一性，保存模块并刷新树形结构
-5. WHEN 用户拖拽模块节点，THE Quality_Center SHALL 支持调整模块层级和顺序，实时更新树形结构
-6. WHEN 用户点击模块节点，THE Quality_Center SHALL 展示模块详情，包括关联的测试用例数量、质量统计
-7. WHEN 用户点击编辑模块按钮，THE Quality_Center SHALL 打开编辑表单，支持修改模块名称、描述、负责人
-8. WHEN 用户删除模块，THE Quality_Center SHALL 检查是否存在子模块或关联用例，如果存在则提示无法删除，需要先处理子项
-9. WHEN 用户查看模块质量统计，THE Quality_Center SHALL 展示该模块及其子模块的用例总数、通过率、Bug数量、覆盖率
-10. WHEN 用户点击模块名称，THE Quality_Center SHALL 跳转到测试用例列表页面，自动筛选该模块的所有用例
+### 需求 5: 需求管理
 
-### Requirement 5: 需求管理
+**用户故事**: 作为产品经理，我想要管理产品需求，以便跟踪需求实现和测试覆盖情况。
 
-**User Story:** 作为产品经理，我想要管理产品需求，以便跟踪需求的测试覆盖情况
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 提供需求的创建、读取、更新、删除功能
+2. WHEN 用户创建需求时，THE Quality_Center SHALL 验证必填字段（需求标题、所属项目、需求描述）
+3. THE Quality_Center SHALL 支持 AI 生成需求（基于项目描述或用户故事）
+4. THE Quality_Center SHALL 支持需求状态流转（待评审→已评审→开发中→待测试→测试中→已完成→已关闭）
+5. WHEN 需求状态变更时，THE Quality_Center SHALL 记录变更历史（时间、操作人、原状态、新状态）
+6. THE Quality_Center SHALL 计算需求覆盖率（关联测试用例数 / 建议测试用例数）
+7. THE Quality_Center SHALL 展示需求关联的测试用例列表
+8. THE Quality_Center SHALL 支持需求关联测试用例的添加和移除
+9. WHEN 用户查询需求时，THE Quality_Center SHALL 支持按项目、状态、优先级、负责人、关键字筛选
+10. THE Quality_Center SHALL 支持需求导入和导出（Excel 格式）
 
-1. WHEN 用户访问需求列表页面，THE Quality_Center SHALL 展示所有需求，包括需求标题、状态、优先级、关联用例数、覆盖率、创建时间
-2. WHEN 用户点击创建需求按钮，THE Quality_Center SHALL 打开需求创建表单，包含需求标题、描述、验收标准、优先级、所属项目
-3. WHEN 用户提交需求创建表单，THE Quality_Center SHALL 保存需求并初始化状态为"待评审"
-4. WHEN 用户点击AI生成需求按钮，THE Quality_Center SHALL 打开AI对话框，支持输入项目描述或用户故事
-5. WHEN AI分析用户输入，THE AI_Generator SHALL 生成结构化需求文档，包含需求标题、详细描述、验收标准、测试要点
-6. WHEN 用户确认AI生成的需求，THE Quality_Center SHALL 批量保存需求到数据库
-7. WHEN 用户点击需求详情，THE Quality_Center SHALL 展示需求完整信息和关联的测试用例列表
-8. WHEN 用户修改需求状态，THE Quality_Center SHALL 支持状态流转（待评审→已评审→开发中→待测试→测试中→已完成→已关闭）
-9. WHEN 用户查看需求覆盖率，THE Quality_Center SHALL 计算关联测试用例数量占总测试点的百分比
-10. WHEN 用户删除需求，THE Quality_Center SHALL 检查是否存在关联用例，如果存在则提示需要先解除关联
+### 需求 6: 数据可视化增强
 
-### Requirement 6: 数据可视化增强
+**用户故事**: 作为项目经理，我想要查看质量数据可视化图表，以便快速了解项目质量状况。
 
-**User Story:** 作为管理者，我想要查看质量数据的可视化图表，以便快速了解项目质量状况
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 展示模块质量分布饼图（按模块分类）
+2. WHEN 用户点击饼图扇区时，THE Quality_Center SHALL 跳转到对应模块详情页
+3. THE Quality_Center SHALL 展示 Bug 质量分布图（按类型分类：功能缺陷、性能问题、UI 问题、兼容性问题）
+4. THE Quality_Center SHALL 展示反馈状态分布图（待处理、处理中、已解决、已关闭）
+5. THE Quality_Center SHALL 展示质量趋势图（通过率、Bug 数量、执行次数）
+6. THE Quality_Center SHALL 支持图表时间范围筛选（最近 7 天、最近 30 天、最近 90 天、自定义）
+7. THE Quality_Center SHALL 支持图表导出功能（PNG、SVG、PDF 格式）
+8. WHEN 用户查看图表时，THE Quality_Center SHALL 在 1 秒内加载图表数据
+9. THE Quality_Center SHALL 支持图表交互（悬停显示详细数据、点击筛选、缩放）
+10. THE Quality_Center SHALL 使用响应式设计，适配不同屏幕尺寸
 
-1. WHEN 用户访问Dashboard页面，THE Quality_Center SHALL 展示模块质量分布饼图，显示各模块的用例数量占比
-2. WHEN 用户点击模块质量分布图的某个扇区，THE Quality_Center SHALL 跳转到测试用例列表页面，自动筛选该模块的用例
-3. WHEN 用户查看Bug质量分布图，THE Quality_Center SHALL 展示Bug按类型（功能/性能/UI/安全）的分布情况
-4. WHEN 用户点击Bug分布图的某个类型，THE Quality_Center SHALL 跳转到Bug列表页面，自动筛选该类型的Bug
-5. WHEN 用户查看反馈状态分布图，THE Quality_Center SHALL 展示反馈按状态（待处理/处理中/已解决/已关闭）的分布情况
-6. WHEN 用户点击反馈分布图的某个状态，THE Quality_Center SHALL 跳转到反馈列表页面，自动筛选该状态的反馈
-7. WHEN 用户查看质量趋势图，THE Quality_Center SHALL 展示近7天/30天/90天的通过率、Bug数量、执行次数趋势
-8. WHEN 用户点击趋势图的某个数据点，THE Quality_Center SHALL 展示该日期的详细数据弹窗
-9. WHEN 用户使用图表筛选功能，THE Quality_Center SHALL 支持按项目、模块、时间范围筛选数据
-10. WHEN 用户点击导出按钮，THE Quality_Center SHALL 支持导出图表为PNG/PDF格式，或导出原始数据为Excel/CSV格式
+### 需求 7: 反馈列表重构
 
-### Requirement 7: 反馈列表重构
+**用户故事**: 作为客服人员，我想要管理用户反馈，以便跟踪问题解决进度。
 
-**User Story:** 作为客服人员，我想要使用重构后的反馈列表，以便更高效地处理用户反馈
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 使用 Arco Design 表格组件展示反馈列表
+2. THE Quality_Center SHALL 支持指派反馈负责人
+3. THE Quality_Center SHALL 支持反馈状态管理（待处理、处理中、已解决、已关闭、已拒绝）
+4. THE Quality_Center SHALL 展示反馈跟进进度（跟进次数、最后跟进时间、跟进人）
+5. WHEN 用户提交反馈时，THE AI_Generator SHALL 分析反馈内容并识别 Bug 类型、严重程度、影响范围
+6. THE Quality_Center SHALL 支持批量操作（批量指派、批量修改状态、批量删除）
+7. THE Quality_Center SHALL 支持高级筛选（按状态、负责人、严重程度、提交时间、关键字）
+8. THE Quality_Center SHALL 支持富文本跟进记录（支持图片、链接、代码块）
+9. WHEN 用户添加跟进记录时，THE Quality_Center SHALL 发送通知给反馈提交人和负责人
+10. THE Quality_Center SHALL 支持反馈导出（Excel 格式，包含跟进记录）
 
-1. WHEN 用户访问反馈列表页面，THE Quality_Center SHALL 使用Arco Design表格组件展示反馈列表，支持分页、排序、筛选
-2. WHEN 用户点击指派负责人按钮，THE Quality_Center SHALL 打开用户选择下拉框，支持搜索用户并指派
-3. WHEN 用户修改反馈状态，THE Quality_Center SHALL 展示状态流转下拉框，支持状态变更并记录操作日志
-4. WHEN 用户查看跟进进度，THE Quality_Center SHALL 展示进度条和状态标签，直观显示处理进度
-5. WHEN 用户点击AI分析按钮，THE AI_Generator SHALL 分析反馈内容，识别Bug类型、严重程度、影响范围
-6. WHEN AI分析完成，THE Quality_Center SHALL 展示分析结果，包含问题分类、建议修复方案、预估工作量
-7. WHEN 用户选择多条反馈并点击批量操作，THE Quality_Center SHALL 支持批量指派、批量修改状态、批量关闭
-8. WHEN 用户使用高级筛选，THE Quality_Center SHALL 支持按状态、类型、负责人、优先级、时间范围组合筛选
-9. WHEN 用户点击反馈详情，THE Quality_Center SHALL 展示完整反馈信息、处理历史、关联的测试用例和Bug
-10. WHEN 用户添加跟进记录，THE Quality_Center SHALL 支持富文本编辑，可上传附件和截图
+### 需求 8: 脑图 UI 优化
 
-### Requirement 8: 脑图UI优化
+**用户故事**: 作为测试工程师，我想要使用优化的脑图查看测试用例结构，以便更直观地理解测试覆盖范围。
 
-**User Story:** 作为用户，我想要使用优化后的脑图界面，以便更清晰地查看数据关系
+#### 验收标准
 
-#### Acceptance Criteria
+1. THE Quality_Center SHALL 支持脑图自适应缩放（根据节点数量自动调整）
+2. THE Quality_Center SHALL 支持节点大小自动调整（根据子节点数量）
+3. WHEN 用户展开或折叠节点时，THE Quality_Center SHALL 使用平滑动画过渡（300 毫秒）
+4. THE Quality_Center SHALL 使用贝塞尔曲线绘制节点连接线
+5. WHEN 脑图节点超过 100 个时，THE Quality_Center SHALL 使用虚拟渲染优化性能
+6. THE Quality_Center SHALL 支持节点搜索和高亮显示
+7. THE Quality_Center SHALL 支持脑图导出功能（PNG、SVG、PDF 格式）
+8. THE Quality_Center SHALL 支持脑图缩放（鼠标滚轮、缩放按钮、双指缩放）
+9. THE Quality_Center SHALL 支持脑图拖拽平移
+10. WHEN 用户点击节点时，THE Quality_Center SHALL 展示节点详细信息（测试用例数、通过率、Bug 数量）
 
-1. WHEN 用户缩小脑图视图，THE Mindmap SHALL 自动调整节点大小和字体，保持可读性
-2. WHEN 节点内容较长，THE Mindmap SHALL 自动换行或截断显示，鼠标悬停时展示完整内容
-3. WHEN 用户缩放脑图，THE Mindmap SHALL 使用平滑动画过渡，避免突兀的视觉跳跃
-4. WHEN 节点之间存在连接线，THE Mindmap SHALL 使用贝塞尔曲线绘制，自动避让节点
-5. WHEN 用户拖拽节点，THE Mindmap SHALL 实时更新连接线位置，保持连接关系
-6. WHEN 用户点击节点的折叠/展开按钮，THE Mindmap SHALL 使用动画效果展示子节点的显示/隐藏
-7. WHEN 脑图包含大量节点，THE Mindmap SHALL 支持虚拟渲染，只渲染可视区域的节点
-8. WHEN 用户双击节点，THE Mindmap SHALL 聚焦到该节点，自动调整视图居中显示
-9. WHEN 用户使用搜索功能，THE Mindmap SHALL 高亮匹配的节点，并自动滚动到第一个匹配项
-10. WHEN 用户导出脑图，THE Mindmap SHALL 支持导出为PNG/SVG/PDF格式，保持布局和样式
+### 需求 9: 数据库安全和性能
 
+**用户故事**: 作为系统架构师，我想要确保数据库操作安全和高效，以便保障系统稳定性。
+
+#### 验收标准
+
+1. THE Quality_Center SHALL 使用 ORM 或 QueryBuilder 执行所有数据库操作
+2. THE Quality_Center SHALL 禁止使用 rawExec 执行 SQL 语句
+3. THE Quality_Center SHALL 使用参数化查询防止 SQL 注入攻击
+4. WHEN 执行批量查询时，THE Quality_Center SHALL 使用 whereIn 避免 N+1 查询问题
+5. THE Quality_Center SHALL 使用关系预加载（with 方法）优化关联查询
+6. WHEN 处理 ORM 查询结果时，THE Quality_Center SHALL 使用 Arena_Allocator 或深拷贝字符串字段
+7. THE Quality_Center SHALL 在查询结束后调用 freeModels 释放内存
+8. THE Quality_Center SHALL 使用 defer 确保资源正确释放
+9. WHEN 数据库操作失败时，THE Quality_Center SHALL 使用 errdefer 清理已分配资源
+10. THE Quality_Center SHALL 使用索引优化高频查询字段（project_id、module_id、status、created_at）
+
+### 需求 10: 架构和代码质量
+
+**用户故事**: 作为开发工程师，我想要遵循整洁架构和最佳实践，以便保持代码可维护性。
+
+#### 验收标准
+
+1. THE Quality_Center SHALL 遵循整洁架构分层（domain → application → infrastructure → api）
+2. THE Quality_Center SHALL 在 domain 层定义实体、值对象、仓储接口
+3. THE Quality_Center SHALL 在 application 层实现业务逻辑和用例编排
+4. THE Quality_Center SHALL 在 infrastructure 层实现仓储、缓存、外部服务
+5. THE Quality_Center SHALL 在 api 层实现控制器、DTO、路由注册
+6. THE Quality_Center SHALL 使用 DI_Container 管理服务依赖关系
+7. THE Quality_Center SHALL 使用仓储模式抽象数据访问
+8. THE Quality_Center SHALL 控制器只做参数解析和响应返回，不包含业务逻辑
+9. THE Quality_Center SHALL 使用显式错误处理（try/catch/errdefer）
+10. THE Quality_Center SHALL 所有公共 API 必须有单元测试覆盖
+
+### 需求 11: 前端 UI 和用户体验
+
+**用户故事**: 作为用户，我想要使用美观易用的界面，以便高效完成工作。
+
+#### 验收标准
+
+1. THE Quality_Center SHALL 使用 Arco Design 组件库保持 UI 一致性
+2. THE Quality_Center SHALL 支持响应式设计，适配桌面端（1920x1080）、平板端（768x1024）、移动端（375x667）
+3. WHEN 用户执行操作时，THE Quality_Center SHALL 在 200 毫秒内提供视觉反馈（加载动画、按钮状态变化）
+4. THE Quality_Center SHALL 使用 Toast 提示操作结果（成功、失败、警告）
+5. THE Quality_Center SHALL 使用 Modal 确认危险操作（删除、批量操作）
+6. THE Quality_Center SHALL 支持键盘快捷键（Ctrl+S 保存、Ctrl+F 搜索、Esc 关闭弹窗）
+7. THE Quality_Center SHALL 支持暗色模式和亮色模式切换
+8. THE Quality_Center SHALL 使用骨架屏优化首屏加载体验
+9. THE Quality_Center SHALL 支持表格列宽调整和列显示隐藏
+10. THE Quality_Center SHALL 支持表格排序和筛选状态记忆
+
+### 需求 12: 性能和可扩展性
+
+**用户故事**: 作为系统管理员，我想要系统具备良好的性能和可扩展性，以便支持业务增长。
+
+#### 验收标准
+
+1. WHEN 用户查询测试用例列表时，THE Quality_Center SHALL 在 500 毫秒内返回结果
+2. WHEN 用户查看项目统计数据时，THE Quality_Center SHALL 在 1 秒内加载完成
+3. WHEN 用户执行批量操作时，THE Quality_Center SHALL 支持最多 1000 条记录
+4. THE Quality_Center SHALL 使用分页查询避免一次性加载大量数据
+5. THE Quality_Center SHALL 使用缓存优化高频查询（项目统计、模块树、用户信息）
+6. THE Quality_Center SHALL 缓存过期时间设置为 5 分钟
+7. WHEN 数据更新时，THE Quality_Center SHALL 清除相关缓存
+8. THE Quality_Center SHALL 支持并发用户数达到 100 人
+9. THE Quality_Center SHALL 使用数据库连接池管理连接（最小 5 个，最大 20 个）
+10. THE Quality_Center SHALL 使用异步任务处理耗时操作（AI 生成、数据导出、批量操作）
+
+## 特殊需求指导
+
+### Parser 和 Serializer 需求
+
+本系统涉及 JSON 数据解析和序列化：
+
+**需求 13: JSON 数据处理**
+
+**用户故事**: 作为开发工程师，我想要安全地处理 JSON 数据，以便与前端进行数据交互。
+
+#### 验收标准
+
+1. WHEN 接收前端请求时，THE Quality_Center SHALL 解析 JSON 请求体为 DTO 对象
+2. WHEN 解析失败时，THE Quality_Center SHALL 返回 400 错误和详细错误信息
+3. THE Quality_Center SHALL 提供 JSON 序列化功能，将实体对象转换为 JSON 响应
+4. THE Quality_Center SHALL 提供 JSON 反序列化功能，将 JSON 字符串转换为实体对象
+5. FOR ALL 有效的实体对象，序列化后反序列化应产生等价对象（round-trip property）
+6. THE Quality_Center SHALL 验证 JSON 字段类型和必填字段
+7. THE Quality_Center SHALL 支持 JSON 字段默认值
+8. THE Quality_Center SHALL 支持 JSON 字段别名映射
+9. THE Quality_Center SHALL 处理 JSON 中的特殊字符（引号、换行符、Unicode）
+10. THE Quality_Center SHALL 限制 JSON 请求体大小不超过 10MB
+
+## 迭代和反馈规则
+
+- 本文档将根据用户反馈进行迭代优化
+- 所有需求必须符合 EARS 模式和 INCOSE 质量规则
+- 需求变更必须记录变更历史和原因
+
+## 阶段完成
+
+本需求文档已完成初稿，等待用户审阅和反馈。
