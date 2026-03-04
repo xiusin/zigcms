@@ -15,7 +15,7 @@
 
 ### 阶段 1: 数据库和基础设施准备
 
-- [ ] 1. 创建数据库迁移文件
+- [x] 1. 创建数据库迁移文件
   - 创建 `migrations/20260303_quality_center_enhancement.sql`
   - 定义所有表结构（test_cases, test_executions, projects, modules, requirements, feedbacks, bugs, link_records）
   - 添加索引优化（单列索引、复合索引、覆盖索引）
@@ -23,7 +23,7 @@
   - _需求: 9.10, 10.1_
   - _验收标准: 执行迁移后所有表创建成功，索引生效_
 
-- [ ] 2. 执行数据库迁移
+- [x] 2. 执行数据库迁移
   - 运行迁移命令创建表
   - 验证表结构和索引
   - 插入测试数据（至少 3 个项目、10 个模块、50 个测试用例）
@@ -32,96 +32,96 @@
 
 ### 阶段 2: 领域层实现（Domain Layer）
 
-- [ ] 3. 实现领域实体
-  - [ ] 3.1 创建测试用例实体
+- [x] 3. 实现领域实体
+  - [x] 3.1 创建测试用例实体
     - 创建 `src/domain/entities/test_case.model.zig`
     - 定义 TestCase 结构体（包含所有字段、枚举类型、关系定义）
     - 定义 Priority 和 TestCaseStatus 枚举
     - 定义关系（executions, requirement, bugs）
     - _需求: 1.1, 10.2_
 
-  - [ ] 3.2 创建测试执行记录实体
+  - [x] 3.2 创建测试执行记录实体
     - 创建 `src/domain/entities/test_execution.model.zig`
     - 定义 TestExecution 结构体
     - 定义 ExecutionStatus 枚举
     - _需求: 1.6, 10.2_
 
-  - [ ] 3.3 创建项目实体
+  - [x] 3.3 创建项目实体
     - 创建 `src/domain/entities/project.model.zig`
     - 定义 Project 结构体
     - 定义 ProjectStatus 枚举
     - 定义关系（modules, test_cases, requirements）
     - _需求: 3.1, 10.2_
 
-  - [ ] 3.4 创建模块实体
+  - [x] 3.4 创建模块实体
     - 创建 `src/domain/entities/module.model.zig`
     - 定义 Module 结构体
     - 定义关系（children, test_cases）
     - _需求: 4.1, 10.2_
 
-  - [ ] 3.5 创建需求实体
+  - [x] 3.5 创建需求实体
     - 创建 `src/domain/entities/requirement.model.zig`
     - 定义 Requirement 结构体
     - 定义 Priority 和 RequirementStatus 枚举
     - 定义关系（test_cases）
     - _需求: 5.1, 10.2_
 
-  - [ ] 3.6 创建反馈实体
+  - [x] 3.6 创建反馈实体
     - 创建 `src/domain/entities/feedback.model.zig`
     - 定义 Feedback 结构体
     - 定义 FeedbackType, Severity, FeedbackStatus 枚举
     - _需求: 7.1, 10.2_
 
-  - [ ] 3.7 创建 Bug 实体
+  - [x] 3.7 创建 Bug 实体
     - 创建 `src/domain/entities/bug.model.zig`
     - 定义 Bug 结构体
     - 定义 BugStatus 和 BugSeverity 枚举
     - _需求: 1.8, 10.2_
 
-  - [ ] 3.8 创建关联记录实体
+  - [x] 3.8 创建关联记录实体
     - 创建 `src/domain/entities/link_record.model.zig`
     - 定义 LinkRecord 结构体（用于多对多关系）
     - _需求: 1.8, 10.2_
 
-- [ ] 4. 实现仓储接口
-  - [ ] 4.1 创建测试用例仓储接口
+- [x] 4. 实现仓储接口
+  - [x] 4.1 创建测试用例仓储接口
     - 创建 `src/domain/repositories/test_case_repository.zig`
     - 定义 TestCaseRepository 接口（VTable 模式）
     - 定义方法：findById, findByProject, findByModule, save, delete, batchDelete, batchUpdateStatus, batchUpdateAssignee, search
     - 定义 PageQuery, SearchQuery, PageResult 类型
     - _需求: 1.1, 1.3, 1.4, 1.5, 1.9, 10.7_
 
-  - [ ] 4.2 创建测试执行记录仓储接口
+  - [x] 4.2 创建测试执行记录仓储接口
     - 创建 `src/domain/repositories/test_execution_repository.zig`
     - 定义 TestExecutionRepository 接口
     - 定义方法：findById, findByTestCase, save, delete
     - _需求: 1.6, 1.7, 10.7_
 
-  - [ ] 4.3 创建项目仓储接口
+  - [x] 4.3 创建项目仓储接口
     - 创建 `src/domain/repositories/project_repository.zig`
     - 定义 ProjectRepository 接口
     - 定义方法：findById, findAll, save, delete, archive, restore
     - _需求: 3.1, 3.7, 10.7_
 
-  - [ ] 4.4 创建模块仓储接口
+  - [x] 4.4 创建模块仓储接口
     - 创建 `src/domain/repositories/module_repository.zig`
     - 定义 ModuleRepository 接口
     - 定义方法：findById, findByProject, findTree, save, delete, move
     - _需求: 4.1, 4.2, 4.4, 10.7_
 
-  - [ ] 4.5 创建需求仓储接口
+  - [x] 4.5 创建需求仓储接口
     - 创建 `src/domain/repositories/requirement_repository.zig`
     - 定义 RequirementRepository 接口
     - 定义方法：findById, findByProject, save, delete, linkTestCase, unlinkTestCase
     - _需求: 5.1, 5.8, 10.7_
 
-  - [ ] 4.6 创建反馈仓储接口
+  - [x] 4.6 创建反馈仓储接口
     - 创建 `src/domain/repositories/feedback_repository.zig`
     - 定义 FeedbackRepository 接口
     - 定义方法：findById, findAll, save, delete, addFollowUp, batchAssign, batchUpdateStatus
     - _需求: 7.1, 7.3, 7.6, 10.7_
 
-- [ ] 5. 实现 AI 生成器接口
+- [x] 5. 实现 AI 生成器接口
   - 创建 `src/domain/services/ai_generator_interface.zig`
   - 定义 AIGeneratorInterface 接口（VTable 模式）
   - 定义方法：generateTestCases, generateRequirement, analyzeFeedback
@@ -130,8 +130,8 @@
 
 ### 阶段 3: 基础设施层实现（Infrastructure Layer）
 
-- [ ] 6. 实现数据库仓储
-  - [ ] 6.1 实现测试用例仓储
+- [x] 6. 实现数据库仓储
+  - [x] 6.1 实现测试用例仓储
     - 创建 `src/infrastructure/database/mysql_test_case_repository.zig`
     - 实现 TestCaseRepository 接口的所有方法
     - 使用 ORM QueryBuilder 构建查询（禁止 rawExec）
@@ -141,39 +141,39 @@
     - 使用 Arena Allocator 或深拷贝管理 ORM 查询结果内存
     - _需求: 1.1, 1.3, 1.4, 1.5, 1.9, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6_
 
-  - [ ] 6.2 实现测试执行记录仓储
+  - [x] 6.2 实现测试执行记录仓储
     - 创建 `src/infrastructure/database/mysql_test_execution_repository.zig`
     - 实现 TestExecutionRepository 接口
     - 使用 ORM QueryBuilder 和参数化查询
     - _需求: 1.6, 1.7, 9.1, 9.2, 9.3_
 
-  - [ ] 6.3 实现项目仓储
+  - [x] 6.3 实现项目仓储
     - 创建 `src/infrastructure/database/mysql_project_repository.zig`
     - 实现 ProjectRepository 接口
     - 使用关系预加载优化统计查询
     - _需求: 3.1, 3.5, 3.7, 9.1, 9.2, 9.5_
 
-  - [ ] 6.4 实现模块仓储
+  - [x] 6.4 实现模块仓储
     - 创建 `src/infrastructure/database/mysql_module_repository.zig`
     - 实现 ModuleRepository 接口
     - 实现树形结构查询（递归 CTE 或多次查询）
     - 实现拖拽移动逻辑（更新 parent_id 和 sort_order）
     - _需求: 4.1, 4.2, 4.3, 4.4, 9.1, 9.2_
 
-  - [ ] 6.5 实现需求仓储
+  - [x] 6.5 实现需求仓储
     - 创建 `src/infrastructure/database/mysql_requirement_repository.zig`
     - 实现 RequirementRepository 接口
     - 实现关联测试用例的添加和移除
     - _需求: 5.1, 5.7, 5.8, 9.1, 9.2_
 
-  - [ ] 6.6 实现反馈仓储
+  - [x] 6.6 实现反馈仓储
     - 创建 `src/infrastructure/database/mysql_feedback_repository.zig`
     - 实现 FeedbackRepository 接口
     - 实现跟进记录的 JSON 序列化和反序列化
     - _需求: 7.1, 7.3, 7.6, 7.8, 9.1, 9.2_
 
-- [ ] 7. 实现 AI 生成器
-  - [ ] 7.1 实现 OpenAI 生成器
+- [x] 7. 实现 AI 生成器
+  - [x] 7.1 实现 OpenAI 生成器
     - 创建 `src/infrastructure/ai/openai_generator.zig`
     - 实现 AIGeneratorInterface 接口
     - 实现 generateTestCases 方法（构建 Prompt、调用 OpenAI API、解析响应）
@@ -190,7 +190,7 @@
     - 测试错误处理
     - _需求: 2.9, 10.10_
 
-- [ ] 8. 实现缓存层
+- [x] 8. 实现缓存层
   - 创建 `src/infrastructure/cache/quality_center_cache.zig`
   - 实现缓存键生成函数（testCase, project, moduleTree, projectStatistics）
   - 实现缓存失效策略（按前缀删除）
@@ -199,7 +199,7 @@
 
 ### 阶段 4: 应用层实现（Application Layer）
 
-- [ ] 9. 实现测试用例服务
+- [x] 9. 实现测试用例服务
   - 创建 `src/application/services/test_case_service.zig`
   - 实现 TestCaseService 结构体（包含 allocator, test_case_repo, execution_repo, cache）
   - 实现 create 方法（验证必填字段、创建测试用例、清除缓存）
@@ -214,7 +214,7 @@
   - 使用 errdefer 确保资源释放
   - _需求: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.9, 10.3, 10.9, 12.5_
 
-- [ ] 10. 实现项目服务
+- [x] 10. 实现项目服务
   - 创建 `src/application/services/project_service.zig`
   - 实现 ProjectService 结构体
   - 实现 create, update, delete, archive, restore 方法
@@ -222,7 +222,7 @@
   - 实现 warmupCache 方法（预加载统计数据、模块树、热门测试用例）
   - _需求: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.10, 12.5_
 
-- [ ] 11. 实现模块服务
+- [x] 11. 实现模块服务
   - 创建 `src/application/services/module_service.zig`
   - 实现 ModuleService 结构体
   - 实现 create, update, delete 方法
@@ -231,7 +231,7 @@
   - 实现 getStatistics 方法（计算用例总数、通过率、Bug 数量、覆盖率）
   - _需求: 4.1, 4.2, 4.3, 4.4, 4.6, 4.10_
 
-- [ ] 12. 实现需求服务
+- [x] 12. 实现需求服务
   - 创建 `src/application/services/requirement_service.zig`
   - 实现 RequirementService 结构体
   - 实现 create, update, delete 方法
@@ -241,7 +241,7 @@
   - 实现 importFromExcel, exportToExcel 方法
   - _需求: 5.1, 5.2, 5.4, 5.5, 5.6, 5.7, 5.8, 5.10_
 
-- [ ] 13. 实现反馈服务
+- [x] 13. 实现反馈服务
   - 创建 `src/application/services/feedback_service.zig`
   - 实现 FeedbackService 结构体
   - 实现 create, update, delete 方法
@@ -251,7 +251,7 @@
   - 集成 AI 生成器分析反馈内容
   - _需求: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.8, 7.9, 7.10_
 
-- [ ] 14. 实现统计服务
+- [x] 14. 实现统计服务
   - 创建 `src/application/services/statistics_service.zig`
   - 实现 StatisticsService 结构体
   - 实现 getModuleDistribution 方法（按模块分类统计）
@@ -262,7 +262,7 @@
   - 使用缓存优化查询性能
   - _需求: 6.1, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 12.5_
 
-- [ ] 15. Checkpoint - 确保所有服务测试通过
+- [-] 15. Checkpoint - 确保所有服务测试通过
   - 运行所有服务层单元测试
   - 验证核心业务逻辑正确性
   - 验证缓存策略生效
