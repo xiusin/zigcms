@@ -262,7 +262,7 @@
   - 使用缓存优化查询性能
   - _需求: 6.1, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 12.5_
 
-- [-] 15. Checkpoint - 确保所有服务测试通过
+- [x] 15. Checkpoint - 确保所有服务测试通过
   - 运行所有服务层单元测试
   - 验证核心业务逻辑正确性
   - 验证缓存策略生效
@@ -271,8 +271,8 @@
 
 ### 阶段 5: API 层实现（API Layer）
 
-- [ ] 16. 实现 DTO
-  - [ ] 16.1 创建测试用例 DTO
+- [x] 16. 实现 DTO
+  - [x] 16.1 创建测试用例 DTO
     - 创建 `src/api/dto/test_case_create.dto.zig`（CreateTestCaseDto）
     - 创建 `src/api/dto/test_case_update.dto.zig`（UpdateTestCaseDto）
     - 创建 `src/api/dto/test_case_execute.dto.zig`（ExecuteTestCaseDto）
@@ -281,37 +281,37 @@
     - 创建 `src/api/dto/batch_update_assignee.dto.zig`（BatchUpdateAssigneeDto）
     - _需求: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-  - [ ] 16.2 创建项目 DTO
+  - [x] 16.2 创建项目 DTO
     - 创建 `src/api/dto/project_create.dto.zig`
     - 创建 `src/api/dto/project_update.dto.zig`
     - _需求: 3.1, 3.2_
 
-  - [ ] 16.3 创建模块 DTO
+  - [x] 16.3 创建模块 DTO
     - 创建 `src/api/dto/module_create.dto.zig`
     - 创建 `src/api/dto/module_update.dto.zig`
     - 创建 `src/api/dto/module_move.dto.zig`
     - _需求: 4.1, 4.2, 4.4_
 
-  - [ ] 16.4 创建需求 DTO
+  - [x] 16.4 创建需求 DTO
     - 创建 `src/api/dto/requirement_create.dto.zig`
     - 创建 `src/api/dto/requirement_update.dto.zig`
     - 创建 `src/api/dto/requirement_link_test_case.dto.zig`
     - _需求: 5.1, 5.2, 5.8_
 
-  - [ ] 16.5 创建反馈 DTO
+  - [x] 16.5 创建反馈 DTO
     - 创建 `src/api/dto/feedback_create.dto.zig`
     - 创建 `src/api/dto/feedback_update.dto.zig`
     - 创建 `src/api/dto/feedback_follow_up.dto.zig`
     - _需求: 7.1, 7.2, 7.8_
 
-  - [ ] 16.6 创建 AI 生成 DTO
+  - [x] 16.6 创建 AI 生成 DTO
     - 创建 `src/api/dto/ai_generate_test_cases.dto.zig`
     - 创建 `src/api/dto/ai_generate_requirement.dto.zig`
     - 创建 `src/api/dto/ai_analyze_feedback.dto.zig`
     - _需求: 2.1, 5.3, 7.5_
 
-- [ ] 17. 实现控制器
-  - [ ] 17.1 实现测试用例控制器
+- [x] 17. 实现控制器
+  - [x] 17.1 实现测试用例控制器
     - 创建 `src/api/controllers/test_case.controller.zig`
     - 实现 create 方法（解析请求体、调用服务、返回响应）
     - 实现 get 方法（解析路径参数、调用服务、返回响应）
@@ -326,7 +326,7 @@
     - 实现错误处理（返回 400/403/404/500 错误）
     - _需求: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.9, 10.8, 12.3_
 
-  - [ ] 17.2 实现 AI 生成控制器
+  - [x] 17.2 实现 AI 生成控制器
     - 创建 `src/api/controllers/ai.controller.zig`
     - 实现 generateTestCases 方法（解析请求体、调用 AI 生成器、返回响应）
     - 实现 generateRequirement 方法
@@ -334,14 +334,14 @@
     - 实现进度推送（可选，使用 WebSocket 或 SSE）
     - _需求: 2.1, 2.4, 5.3, 7.5_
 
-  - [ ] 17.3 实现项目控制器
+  - [x] 17.3 实现项目控制器
     - 创建 `src/api/controllers/project.controller.zig`
     - 实现 create, get, update, delete 方法
     - 实现 archive, restore 方法
     - 实现 getStatistics 方法
     - _需求: 3.1, 3.2, 3.5, 3.6, 3.7, 3.8_
 
-  - [ ] 17.4 实现模块控制器
+  - [x] 17.4 实现模块控制器
     - 创建 `src/api/controllers/module.controller.zig`
     - 实现 create, get, update, delete 方法
     - 实现 getTree 方法
@@ -349,14 +349,14 @@
     - 实现 getStatistics 方法
     - _需求: 4.1, 4.2, 4.4, 4.6_
 
-  - [ ] 17.5 实现需求控制器
+  - [x] 17.5 实现需求控制器
     - 创建 `src/api/controllers/requirement.controller.zig`
     - 实现 create, get, update, delete 方法
     - 实现 linkTestCase, unlinkTestCase 方法
     - 实现 importFromExcel, exportToExcel 方法
     - _需求: 5.1, 5.2, 5.8, 5.10_
 
-  - [ ] 17.6 实现反馈控制器
+  - [x] 17.6 实现反馈控制器
     - 创建 `src/api/controllers/feedback.controller.zig`
     - 实现 create, get, update, delete 方法
     - 实现 addFollowUp 方法
@@ -364,7 +364,7 @@
     - 实现 exportToExcel 方法
     - _需求: 7.1, 7.2, 7.3, 7.6, 7.8, 7.10_
 
-  - [ ] 17.7 实现统计控制器
+  - [x] 17.7 实现统计控制器
     - 创建 `src/api/controllers/statistics.controller.zig`
     - 实现 getModuleDistribution 方法
     - 实现 getBugDistribution 方法
@@ -373,7 +373,7 @@
     - 实现 exportChart 方法
     - _需求: 6.1, 6.3, 6.4, 6.5, 6.6, 6.7_
 
-- [ ] 18. 注册路由
+- [x] 18. 注册路由
   - 在 `src/api/bootstrap.zig` 中注册所有质量中心路由
   - 注册测试用例路由（POST/GET/PUT/DELETE /api/quality/test-cases）
   - 注册 AI 生成路由（POST /api/quality/ai/*）
@@ -385,7 +385,7 @@
   - 添加权限中间件（可选）
   - _需求: 10.5_
 
-- [ ] 19. 注册到 DI 容器
+- [x] 19. 注册到 DI 容器
   - 在 `root.zig` 中创建 registerQualityCenterServices 函数
   - 注册所有仓储实例（MysqlTestCaseRepository, MysqlProjectRepository 等）
   - 注册 AI 生成器实例（OpenAIGenerator）
@@ -393,7 +393,7 @@
   - 使用 factory 函数解析依赖
   - _需求: 10.6_
 
-- [ ] 20. Checkpoint - 确保所有 API 测试通过
+- [x] 20. Checkpoint - 确保所有 API 测试通过
   - 使用 Postman 或 curl 测试所有 API 端点
   - 验证请求体解析正确
   - 验证响应格式正确

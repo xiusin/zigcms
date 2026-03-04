@@ -51,6 +51,37 @@ const SqliteUserRepository = @import("src/infrastructure/database/sqlite_user_re
 // 认证服务导入
 const AuthService = @import("src/api/services/auth_service.zig").AuthService;
 
+// 质量中心服务导入
+const TestCaseService = @import("src/application/services/test_case_service.zig").TestCaseService;
+const ProjectService = @import("src/application/services/project_service.zig").ProjectService;
+const ModuleService = @import("src/application/services/module_service.zig").ModuleService;
+const RequirementService = @import("src/application/services/requirement_service.zig").RequirementService;
+const FeedbackService = @import("src/application/services/feedback_service.zig").FeedbackService;
+const StatisticsService = @import("src/application/services/statistics_service.zig").StatisticsService;
+
+// 质量中心仓储接口导入
+const TestCaseRepository = @import("src/domain/repositories/test_case_repository.zig").TestCaseRepository;
+const TestExecutionRepository = @import("src/domain/repositories/test_execution_repository.zig").TestExecutionRepository;
+const ProjectRepository = @import("src/domain/repositories/project_repository.zig").ProjectRepository;
+const ModuleRepository = @import("src/domain/repositories/module_repository.zig").ModuleRepository;
+const RequirementRepository = @import("src/domain/repositories/requirement_repository.zig").RequirementRepository;
+const FeedbackRepository = @import("src/domain/repositories/feedback_repository.zig").FeedbackRepository;
+
+// 质量中心仓储实现导入
+const MysqlTestCaseRepository = @import("src/infrastructure/database/mysql_test_case_repository.zig").MysqlTestCaseRepository;
+const MysqlTestExecutionRepository = @import("src/infrastructure/database/mysql_test_execution_repository.zig").MysqlTestExecutionRepository;
+const MysqlProjectRepository = @import("src/infrastructure/database/mysql_project_repository.zig").MysqlProjectRepository;
+const MysqlModuleRepository = @import("src/infrastructure/database/mysql_module_repository.zig").MysqlModuleRepository;
+const MysqlRequirementRepository = @import("src/infrastructure/database/mysql_requirement_repository.zig").MysqlRequirementRepository;
+const MysqlFeedbackRepository = @import("src/infrastructure/database/mysql_feedback_repository.zig").MysqlFeedbackRepository;
+
+// AI 生成器导入
+const AIGeneratorInterface = @import("src/domain/services/ai_generator_interface.zig").AIGeneratorInterface;
+const OpenAIGenerator = @import("src/infrastructure/ai/openai_generator.zig").OpenAIGenerator;
+
+// 缓存接口导入
+const CacheInterface = @import("src/infrastructure/cache/contract.zig").CacheInterface;
+
 // ============================================================================
 // 编译选项
 // ============================================================================
@@ -358,6 +389,14 @@ pub fn initSystem(allocator: std.mem.Allocator, config: SystemConfig) !void {
     // 将服务管理器注册到 DI 容器，实现更好的生命周期管理
     if (core.di.getGlobalContainer()) |container| {
         try container.registerInstance(ServiceManager, &service_manager.?, null);
+
+        // 注册 CacheInterface（从 ServiceManager 获取）
+        const cache_service = service_manager.?.getCacheService();
+        const cache_interface = cache_service.asInterface();
+        const cache_ptr = try container.allocator.create(CacheInterface);
+        errdefer container.allocator.destroy(cache_ptr);
+        cache_ptr.* = cache_interface;
+        try container.registerInstance(CacheInterface, cache_ptr, null);
     }
 }
 
@@ -376,10 +415,13 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
         // 1. 注册用户服务相关
         try registerUserServices(container, allocator, db);
 
-        // 4. 注册认证服务
+        // 2. 注册质量中心服务相关
+        try registerQualityCenterServices(container, allocator, db);
+
+        // 3. 注册认证服务
         try registerAuthServices(container);
 
-        // 5. 注册基础设施服务
+        // 4. 注册基础设施服务
         try container.registerInstance(sql_orm.Database, db, null);
 
         logger.info("应用服务注册到DI容器完成", .{});
@@ -432,6 +474,254 @@ fn registerAuthServices(container: *core.di.DIContainer) !void {
             return auth_service;
         }
     }.factory, null);
+}
+
+/// 注册质量中心服务到DI容器
+///
+/// 注册所有质量中心相关的仓储、AI生成器和服务，遵循整洁架构原则。
+///
+/// ## 参数
+/// - `container`: DI容器
+/// - `func_allocator`: 内存分配器
+/// - `db`: 数据库连接
+///
+/// ## 错误
+/// 如果服务注册失败，返回相应的错误。
+fn registerQualityCenterServices(container: *core.di.DIContainer, func_allocator: std.mem.Allocator, db: *sql_orm.Database) !void {
+    _ = func_allocator;
+
+    // ========================================
+    // 1. 注册测试用例相关服务
+    // ========================================
+
+    // 1.1 创建测试用例仓储实例
+    const mysql_test_case_repo = try container.allocator.create(MysqlTestCaseRepository);
+    errdefer container.allocator.destroy(mysql_test_case_repo);
+    mysql_test_case_repo.* = MysqlTestCaseRepository.init(container.allocator, db);
+
+    const test_case_repo = try container.allocator.create(TestCaseRepository);
+    errdefer container.allocator.destroy(test_case_repo);
+    test_case_repo.* = domain.repositories.test_case_repository.create(mysql_test_case_repo, &MysqlTestCaseRepository.vtable());
+
+    // 1.2 创建测试执行记录仓储实例
+    const mysql_execution_repo = try container.allocator.create(MysqlTestExecutionRepository);
+    errdefer container.allocator.destroy(mysql_execution_repo);
+    mysql_execution_repo.* = MysqlTestExecutionRepository.init(container.allocator, db);
+
+    const execution_repo = try container.allocator.create(TestExecutionRepository);
+    errdefer container.allocator.destroy(execution_repo);
+    execution_repo.* = domain.repositories.test_execution_repository.create(mysql_execution_repo, &MysqlTestExecutionRepository.vtable());
+
+    // 1.3 注册到容器
+    try container.registerInstance(MysqlTestCaseRepository, mysql_test_case_repo, null);
+    try container.registerInstance(TestCaseRepository, test_case_repo, null);
+    try container.registerInstance(MysqlTestExecutionRepository, mysql_execution_repo, null);
+    try container.registerInstance(TestExecutionRepository, execution_repo, null);
+
+    // ========================================
+    // 2. 注册项目相关服务
+    // ========================================
+
+    // 2.1 创建项目仓储实例
+    const mysql_project_repo = try container.allocator.create(MysqlProjectRepository);
+    errdefer container.allocator.destroy(mysql_project_repo);
+    mysql_project_repo.* = MysqlProjectRepository.init(container.allocator, db);
+
+    const project_repo = try container.allocator.create(ProjectRepository);
+    errdefer container.allocator.destroy(project_repo);
+    project_repo.* = domain.repositories.project_repository.create(mysql_project_repo, &MysqlProjectRepository.vtable());
+
+    // 2.2 注册到容器
+    try container.registerInstance(MysqlProjectRepository, mysql_project_repo, null);
+    try container.registerInstance(ProjectRepository, project_repo, null);
+
+    // ========================================
+    // 3. 注册模块相关服务
+    // ========================================
+
+    // 3.1 创建模块仓储实例
+    const mysql_module_repo = try container.allocator.create(MysqlModuleRepository);
+    errdefer container.allocator.destroy(mysql_module_repo);
+    mysql_module_repo.* = MysqlModuleRepository.init(container.allocator, db);
+
+    const module_repo = try container.allocator.create(ModuleRepository);
+    errdefer container.allocator.destroy(module_repo);
+    module_repo.* = domain.repositories.module_repository.create(mysql_module_repo, &MysqlModuleRepository.vtable());
+
+    // 3.2 注册到容器
+    try container.registerInstance(MysqlModuleRepository, mysql_module_repo, null);
+    try container.registerInstance(ModuleRepository, module_repo, null);
+
+    // ========================================
+    // 4. 注册需求相关服务
+    // ========================================
+
+    // 4.1 创建需求仓储实例
+    const mysql_requirement_repo = try container.allocator.create(MysqlRequirementRepository);
+    errdefer container.allocator.destroy(mysql_requirement_repo);
+    mysql_requirement_repo.* = MysqlRequirementRepository.init(container.allocator, db);
+
+    const requirement_repo = try container.allocator.create(RequirementRepository);
+    errdefer container.allocator.destroy(requirement_repo);
+    requirement_repo.* = domain.repositories.requirement_repository.create(mysql_requirement_repo, &MysqlRequirementRepository.vtable());
+
+    // 4.2 注册到容器
+    try container.registerInstance(MysqlRequirementRepository, mysql_requirement_repo, null);
+    try container.registerInstance(RequirementRepository, requirement_repo, null);
+
+    // ========================================
+    // 5. 注册反馈相关服务
+    // ========================================
+
+    // 5.1 创建反馈仓储实例
+    const mysql_feedback_repo = try container.allocator.create(MysqlFeedbackRepository);
+    errdefer container.allocator.destroy(mysql_feedback_repo);
+    mysql_feedback_repo.* = MysqlFeedbackRepository.init(container.allocator, db);
+
+    const feedback_repo = try container.allocator.create(FeedbackRepository);
+    errdefer container.allocator.destroy(feedback_repo);
+    feedback_repo.* = domain.repositories.feedback_repository.create(mysql_feedback_repo, &MysqlFeedbackRepository.vtable());
+
+    // 5.2 注册到容器
+    try container.registerInstance(MysqlFeedbackRepository, mysql_feedback_repo, null);
+    try container.registerInstance(FeedbackRepository, feedback_repo, null);
+
+    // ========================================
+    // 6. 注册 AI 生成器
+    // ========================================
+
+    // 6.1 创建 OpenAI 生成器实例（从环境变量读取配置）
+    const api_key = std.process.getEnvVarOwned(container.allocator, "OPENAI_API_KEY") catch "";
+    const base_url = std.process.getEnvVarOwned(container.allocator, "OPENAI_BASE_URL") catch "https://api.openai.com";
+
+    const openai_generator = try container.allocator.create(OpenAIGenerator);
+    errdefer container.allocator.destroy(openai_generator);
+    openai_generator.* = OpenAIGenerator.init(container.allocator, api_key, base_url);
+
+    const ai_generator = try container.allocator.create(AIGeneratorInterface);
+    errdefer container.allocator.destroy(ai_generator);
+    ai_generator.* = domain.services.ai_generator_interface.create(openai_generator, &OpenAIGenerator.vtable());
+
+    // 6.2 注册到容器
+    try container.registerInstance(OpenAIGenerator, openai_generator, null);
+    try container.registerInstance(AIGeneratorInterface, ai_generator, null);
+
+    // ========================================
+    // 7. 注册应用服务（使用 factory 函数解析依赖）
+    // ========================================
+
+    // 7.1 注册测试用例服务
+    try container.registerSingleton(TestCaseService, TestCaseService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*TestCaseService {
+            const resolved_test_case_repo = try di.resolve(TestCaseRepository);
+            const resolved_execution_repo = try di.resolve(TestExecutionRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(TestCaseService);
+            errdefer allocator.destroy(service);
+            service.* = TestCaseService.init(allocator, resolved_test_case_repo.*, resolved_execution_repo.*, resolved_cache.*);
+            return service;
+        }
+    }.factory, null);
+
+    // 7.2 注册项目服务
+    try container.registerSingleton(ProjectService, ProjectService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*ProjectService {
+            const resolved_project_repo = try di.resolve(ProjectRepository);
+            const resolved_test_case_repo = try di.resolve(TestCaseRepository);
+            const resolved_requirement_repo = try di.resolve(RequirementRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(ProjectService);
+            errdefer allocator.destroy(service);
+            service.* = ProjectService.init(
+                allocator,
+                resolved_project_repo.*,
+                resolved_test_case_repo.*,
+                resolved_requirement_repo.*,
+                resolved_cache.*,
+            );
+            return service;
+        }
+    }.factory, null);
+
+    // 7.3 注册模块服务
+    try container.registerSingleton(ModuleService, ModuleService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*ModuleService {
+            const resolved_module_repo = try di.resolve(ModuleRepository);
+            const resolved_test_case_repo = try di.resolve(TestCaseRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(ModuleService);
+            errdefer allocator.destroy(service);
+            service.* = ModuleService.init(
+                allocator,
+                resolved_module_repo.*,
+                resolved_test_case_repo.*,
+                resolved_cache.*,
+            );
+            return service;
+        }
+    }.factory, null);
+
+    // 7.4 注册需求服务
+    try container.registerSingleton(RequirementService, RequirementService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*RequirementService {
+            const resolved_requirement_repo = try di.resolve(RequirementRepository);
+            const resolved_test_case_repo = try di.resolve(TestCaseRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(RequirementService);
+            errdefer allocator.destroy(service);
+            service.* = RequirementService.init(
+                allocator,
+                resolved_requirement_repo.*,
+                resolved_test_case_repo.*,
+                resolved_cache.*,
+            );
+            return service;
+        }
+    }.factory, null);
+
+    // 7.5 注册反馈服务
+    try container.registerSingleton(FeedbackService, FeedbackService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*FeedbackService {
+            const resolved_feedback_repo = try di.resolve(FeedbackRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(FeedbackService);
+            errdefer allocator.destroy(service);
+            service.* = FeedbackService.init(
+                allocator,
+                resolved_feedback_repo.*,
+                resolved_cache.*,
+            );
+            return service;
+        }
+    }.factory, null);
+
+    // 7.6 注册统计服务
+    try container.registerSingleton(StatisticsService, StatisticsService, struct {
+        fn factory(di: *core.di.DIContainer, allocator: std.mem.Allocator) anyerror!*StatisticsService {
+            const resolved_module_repo = try di.resolve(ModuleRepository);
+            const resolved_test_case_repo = try di.resolve(TestCaseRepository);
+            const resolved_feedback_repo = try di.resolve(FeedbackRepository);
+            const resolved_cache = try di.resolve(CacheInterface);
+
+            const service = try allocator.create(StatisticsService);
+            errdefer allocator.destroy(service);
+            service.* = StatisticsService.init(
+                allocator,
+                resolved_module_repo.*,
+                resolved_test_case_repo.*,
+                resolved_feedback_repo.*,
+                resolved_cache.*,
+            );
+            return service;
+        }
+    }.factory, null);
+
+    logger.info("质量中心服务注册到DI容器完成", .{});
 }
 
 /// 清理整个系统
