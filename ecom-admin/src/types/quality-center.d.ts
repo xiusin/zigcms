@@ -1,365 +1,429 @@
 /**
  * 质量中心类型定义
- * 融合自动化测试系统与反馈系统的统一数据模型
  */
 
-// ==================== 质量中心Dashboard统计 ====================
+// ==================== 枚举类型 ====================
 
-/** 质量概览统计 */
-export interface QualityOverview {
-  /** 测试通过率 */
-  pass_rate: number;
-  /** 总测试任务数 */
-  total_tasks: number;
-  /** 活跃Bug数 */
-  active_bugs: number;
-  /** 待处理反馈数 */
-  pending_feedbacks: number;
-  /** AI修复成功率 */
-  ai_fix_rate: number;
-  /** 本周测试执行次数 */
-  weekly_executions: number;
-  /** 反馈转测试任务数 */
-  feedback_to_task_count: number;
-  /** 平均Bug修复时长(小时) */
-  avg_bug_fix_hours: number;
-}
+export type Priority = 'low' | 'medium' | 'high' | 'critical';
 
-/** 趋势数据点 */
-export interface TrendDataPoint {
-  date: string;
-  pass_rate: number;
-  bug_count: number;
-  feedback_count: number;
-  execution_count: number;
-}
+export type TestCaseStatus = 'pending' | 'in_progress' | 'passed' | 'failed' | 'blocked';
 
-/** 质量趋势 */
-export interface QualityTrend {
-  trend_data: TrendDataPoint[];
-  period: 'week' | 'month' | 'quarter';
-}
+export type ExecutionStatus = 'passed' | 'failed' | 'blocked';
 
-/** 模块质量分布 */
-export interface ModuleQualityItem {
-  module_name: string;
-  pass_rate: number;
-  bug_count: number;
-  case_count: number;
-  feedback_count: number;
-}
+export type ProjectStatus = 'active' | 'archived' | 'closed';
 
-/** Bug类型分布 */
-export interface BugTypeDistribution {
-  type: string;
-  type_name: string;
-  count: number;
-  percentage: number;
-}
+export type RequirementStatus = 
+  | 'pending' 
+  | 'reviewed' 
+  | 'developing' 
+  | 'testing' 
+  | 'in_test' 
+  | 'completed' 
+  | 'closed';
 
-/** 反馈状态分布 */
-export interface FeedbackStatusDistribution {
-  status: number;
-  status_name: string;
-  count: number;
-  percentage: number;
-}
+export type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question';
 
-// ==================== 反馈与测试联动 ====================
+export type FeedbackSeverity = 'low' | 'medium' | 'high' | 'critical';
 
-/** 反馈转测试任务参数 */
-export interface FeedbackToTestTaskParams {
-  feedback_id: number;
-  task_name: string;
-  task_type: string;
-  priority: number;
-  description?: string;
-  auto_generate_cases?: boolean;
-  case_count?: number;
-  assign_to?: number;
-}
+export type FeedbackStatus = 'pending' | 'in_progress' | 'resolved' | 'closed' | 'rejected';
 
-/** 反馈转测试任务响应 */
-export interface FeedbackToTestTaskResponse {
-  task_id: number;
-  task_name: string;
-  generated_cases: number;
-  status: string;
-}
+// ==================== 实体类型 ====================
 
-/** Bug同步到反馈参数 */
-export interface BugToFeedbackParams {
-  bug_analysis_id: number;
-  feedback_title?: string;
-  feedback_type?: number;
-  priority?: number;
-  assign_to?: number;
-}
-
-/** Bug同步到反馈响应 */
-export interface BugToFeedbackResponse {
-  feedback_id: number;
-  feedback_title: string;
-  status: string;
-}
-
-/** 关联记录 */
-export interface LinkRecord {
-  id: number;
-  source_type: 'feedback' | 'bug' | 'task' | 'case';
-  source_id: number;
-  source_title: string;
-  target_type: 'feedback' | 'bug' | 'task' | 'case';
-  target_id: number;
-  target_title: string;
-  link_type: 'feedback_to_task' | 'bug_to_feedback' | 'task_to_bug' | 'case_to_bug';
-  created_at: string;
+export interface TestCase {
+  id?: number;
+  title: string;
+  project_id: number;
+  module_id: number;
+  requirement_id?: number | null;
+  priority: Priority;
+  status: TestCaseStatus;
+  precondition: string;
+  steps: string;
+  expected_result: string;
+  actual_result: string;
+  assignee?: string | null;
+  tags: string;
   created_by: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+  
+  // 关联数据
+  executions?: TestExecution[];
+  requirement?: Requirement;
+  bugs?: Bug[];
 }
 
-// ==================== 活动流 ====================
-
-/** 活动记录 */
-export interface ActivityRecord {
-  id: number;
-  type: 'test_pass' | 'test_fail' | 'bug_found' | 'bug_fixed' | 'feedback_created' | 'feedback_resolved' | 'ai_analysis' | 'ai_fix';
-  title: string;
-  description: string;
-  module: string;
-  user_name: string;
-  user_avatar?: string;
-  related_id?: number;
-  related_type?: string;
-  created_at: string;
+export interface TestExecution {
+  id?: number;
+  test_case_id: number;
+  executor: string;
+  status: ExecutionStatus;
+  actual_result: string;
+  remark: string;
+  duration_ms: number;
+  executed_at: number;
 }
 
-// ==================== AI洞察 ====================
-
-/** AI质量洞察 */
-export interface AIQualityInsight {
-  id: number;
-  type: 'risk' | 'suggestion' | 'anomaly' | 'trend';
-  severity: 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  module?: string;
-  action_url?: string;
-  action_text?: string;
-  created_at: string;
-}
-
-// ==================== 定时报表 ====================
-
-/** 定时报表任务 */
-export interface ScheduledReport {
-  id: number;
+export interface Project {
+  id?: number;
   name: string;
   description: string;
-  /** 报表类型 */
-  report_type: 'daily' | 'weekly' | 'monthly' | 'custom';
-  /** cron表达式或简单周期 */
-  schedule: string;
-  /** 包含模块 */
-  modules: string[];
-  /** 收件人邮箱列表 */
-  recipients: string[];
-  /** 报表格式 */
-  format: 'pdf' | 'excel' | 'both';
-  /** 是否启用水印 */
-  watermark_enabled: boolean;
-  /** 是否启用 */
-  enabled: boolean;
-  /** 上次执行时间 */
-  last_run_at?: string;
-  /** 下次执行时间 */
-  next_run_at?: string;
-  /** 上次执行状态 */
-  last_status?: 'success' | 'failed' | 'running';
-  /** 创建人 */
+  status: ProjectStatus;
+  owner: string;
+  members: string;
+  settings: string;
+  archived: boolean;
   created_by: string;
-  created_at: string;
-  updated_at?: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+  
+  // 关联数据
+  modules?: Module[];
+  test_cases?: TestCase[];
+  requirements?: Requirement[];
 }
 
-/** 报表执行历史 */
-export interface ReportHistory {
-  id: number;
-  report_id: number;
-  report_name: string;
-  status: 'success' | 'failed' | 'running';
-  format: 'pdf' | 'excel' | 'both';
-  file_url?: string;
-  file_size?: number;
-  recipients: string[];
-  sent_count: number;
-  error_message?: string;
-  started_at: string;
-  finished_at?: string;
-  duration_ms?: number;
-}
-
-/** 创建/编辑定时报表参数 */
-export interface ScheduledReportParams {
-  name: string;
-  description?: string;
-  report_type: 'daily' | 'weekly' | 'monthly' | 'custom';
-  schedule: string;
-  modules: string[];
-  recipients: string[];
-  format: 'pdf' | 'excel' | 'both';
-  watermark_enabled?: boolean;
-  enabled?: boolean;
-}
-
-// ==================== Bug关联分析 ====================
-
-/** Bug关联数据（脑图用） */
-export interface BugLinkData {
-  id: number;
-  title: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  module: string;
-  status: string;
-  related_cases: Array<{ id: number; name: string; status: string }>;
-  related_feedbacks: Array<{ id: number; title: string; status: string }>;
-}
-
-// ==================== 反馈分类分析 ====================
-
-/** 反馈分类数据（脑图用） */
-export interface FeedbackClassification {
-  id: number;
-  title: string;
-  type: string;
-  type_name: string;
-  status: number;
-  status_name: string;
-  priority: string;
-  module?: string;
-  created_at: string;
-}
-
-// ==================== 报表模板 ====================
-
-/** 报表模板区块 */
-export interface ReportTemplateBlock {
-  id: string;
-  type: 'stat_cards' | 'trend_chart' | 'module_table' | 'bug_pie' | 'feedback_pie' | 'ai_insights' | 'custom_text' | 'divider';
-  title: string;
-  enabled: boolean;
-  order: number;
-  config?: Record<string, unknown>;
-}
-
-/** 报表模板 */
-export interface ReportTemplate {
-  id: number;
+export interface Module {
+  id?: number;
+  project_id: number;
+  parent_id?: number | null;
   name: string;
   description: string;
-  /** 模板区块列表 */
-  blocks: ReportTemplateBlock[];
-  /** 页面方向 */
-  orientation: 'portrait' | 'landscape';
-  /** 是否含水印 */
-  watermark: boolean;
-  /** 页眉文字 */
-  header_text?: string;
-  /** 页脚文字 */
-  footer_text?: string;
-  /** 是否为默认模板 */
-  is_default: boolean;
+  level: number;
+  sort_order: number;
   created_by: string;
-  created_at: string;
-  updated_at?: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+  
+  // 关联数据
+  children?: Module[];
+  test_cases?: TestCase[];
 }
 
-/** 报表模板创建/编辑参数 */
-export interface ReportTemplateParams {
-  name: string;
-  description?: string;
-  blocks: ReportTemplateBlock[];
-  orientation?: 'portrait' | 'landscape';
-  watermark?: boolean;
-  header_text?: string;
-  footer_text?: string;
-  is_default?: boolean;
-}
-
-// ==================== 邮件模板 ====================
-
-/** 邮件模板 */
-export interface EmailTemplate {
-  id: number;
-  name: string;
-  subject: string;
-  /** HTML正文 */
-  body_html: string;
-  /** 变量列表 */
-  variables: string[];
-  /** 是否为默认模板 */
-  is_default: boolean;
-  /** 使用场景 */
-  scene: 'daily_report' | 'weekly_report' | 'monthly_report' | 'alert' | 'custom';
+export interface Requirement {
+  id?: number;
+  project_id: number;
+  title: string;
+  description: string;
+  priority: Priority;
+  status: RequirementStatus;
+  assignee?: string | null;
+  estimated_cases: number;
+  actual_cases: number;
+  coverage_rate: number;
   created_by: string;
-  created_at: string;
-  updated_at?: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+  
+  // 关联数据
+  test_cases?: TestCase[];
 }
 
-/** 邮件模板创建/编辑参数 */
-export interface EmailTemplateParams {
-  name: string;
-  subject: string;
-  body_html: string;
-  variables?: string[];
-  is_default?: boolean;
-  scene: EmailTemplate['scene'];
-}
-
-// ==================== AI分析 ====================
-
-/** AI分析请求参数 */
-export interface AIAnalysisRequest {
-  /** 分析类型 */
-  type: 'quality_overview' | 'bug_analysis' | 'feedback_analysis' | 'trend_prediction' | 'risk_assessment' | 'custom';
-  /** 分析上下文 */
-  context: Record<string, unknown>;
-  /** 自定义问题（custom类型时使用） */
-  question?: string;
-  /** 关联模块 */
-  module?: string;
-}
-
-/** AI分析响应 */
-export interface AIAnalysisResponse {
-  task_id: string;
-  status: 'pending' | 'analyzing' | 'completed' | 'error';
-  /** 分析结果摘要 */
-  summary: string;
-  /** 详细分析 */
-  details: AIAnalysisDetail[];
-  /** 建议列表 */
-  suggestions: AIAnalysisSuggestion[];
-  /** 风险评分 0-100 */
-  risk_score?: number;
-  /** 分析耗时(ms) */
-  duration_ms?: number;
-  created_at: string;
-}
-
-/** AI分析详细项 */
-export interface AIAnalysisDetail {
+export interface Feedback {
+  id?: number;
   title: string;
   content: string;
-  type: 'text' | 'chart_data' | 'table_data' | 'code';
-  data?: unknown;
+  type: FeedbackType;
+  severity: FeedbackSeverity;
+  status: FeedbackStatus;
+  assignee?: string | null;
+  submitter: string;
+  follow_ups: string;
+  follow_count: number;
+  last_follow_at?: number | null;
+  created_at?: number | null;
+  updated_at?: number | null;
 }
 
-/** AI分析建议 */
-export interface AIAnalysisSuggestion {
-  id: number;
-  priority: 'high' | 'medium' | 'low';
+export interface Bug {
+  id?: number;
   title: string;
   description: string;
-  action_type?: 'navigate' | 'api_call' | 'info';
-  action_url?: string;
+  severity: FeedbackSeverity;
+  status: string;
+  assignee?: string | null;
+  created_by: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+}
+
+// ==================== DTO 类型 ====================
+
+export interface CreateTestCaseDto {
+  title: string;
+  project_id: number;
+  module_id: number;
+  requirement_id?: number | null;
+  priority?: Priority;
+  precondition?: string;
+  steps?: string;
+  expected_result?: string;
+  assignee?: string | null;
+  tags?: string;
+  created_by: string;
+}
+
+export interface UpdateTestCaseDto {
+  title?: string;
+  module_id?: number;
+  requirement_id?: number | null;
+  priority?: Priority;
+  status?: TestCaseStatus;
+  precondition?: string;
+  steps?: string;
+  expected_result?: string;
+  actual_result?: string;
+  assignee?: string | null;
+  tags?: string;
+}
+
+export interface ExecuteTestCaseDto {
+  executor: string;
+  status: ExecutionStatus;
+  actual_result?: string;
+  remark?: string;
+  duration_ms?: number;
+}
+
+export interface BatchDeleteDto {
+  ids: number[];
+}
+
+export interface BatchUpdateStatusDto {
+  ids: number[];
+  status: TestCaseStatus;
+}
+
+export interface BatchUpdateAssigneeDto {
+  ids: number[];
+  assignee: string;
+}
+
+export interface CreateProjectDto {
+  name: string;
+  description: string;
+  owner?: string;
+  members?: string;
+  settings?: string;
+  created_by: string;
+}
+
+export interface UpdateProjectDto {
+  name?: string;
+  description?: string;
+  status?: ProjectStatus;
+  owner?: string;
+  members?: string;
+  settings?: string;
+}
+
+export interface CreateModuleDto {
+  project_id: number;
+  parent_id?: number | null;
+  name: string;
+  description?: string;
+  created_by: string;
+}
+
+export interface UpdateModuleDto {
+  name?: string;
+  description?: string;
+  sort_order?: number;
+}
+
+export interface MoveModuleDto {
+  parent_id?: number | null;
+  sort_order: number;
+}
+
+export interface CreateRequirementDto {
+  project_id: number;
+  title: string;
+  description: string;
+  priority?: Priority;
+  assignee?: string | null;
+  estimated_cases?: number;
+  created_by: string;
+}
+
+export interface UpdateRequirementDto {
+  title?: string;
+  description?: string;
+  priority?: Priority;
+  status?: RequirementStatus;
+  assignee?: string | null;
+  estimated_cases?: number;
+}
+
+export interface LinkTestCaseDto {
+  test_case_id: number;
+}
+
+export interface CreateFeedbackDto {
+  title: string;
+  content: string;
+  type?: FeedbackType;
+  severity?: FeedbackSeverity;
+  assignee?: string | null;
+  submitter: string;
+}
+
+export interface UpdateFeedbackDto {
+  title?: string;
+  content?: string;
+  type?: FeedbackType;
+  severity?: FeedbackSeverity;
+  status?: FeedbackStatus;
+  assignee?: string | null;
+}
+
+export interface AddFollowUpDto {
+  content: string;
+  follower: string;
+}
+
+export interface AIGenerateTestCasesDto {
+  requirement_id: number;
+  max_cases?: number;
+  include_edge_cases?: boolean;
+  include_performance?: boolean;
+  language?: string;
+}
+
+export interface AIGenerateRequirementDto {
+  project_description: string;
+  max_requirements?: number;
+  language?: string;
+}
+
+export interface AIAnalyzeFeedbackDto {
+  feedback_id: number;
+}
+
+// ==================== 查询参数类型 ====================
+
+export interface SearchTestCasesQuery {
+  project_id?: number;
+  module_id?: number;
+  status?: TestCaseStatus;
+  assignee?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface SearchRequirementsQuery {
+  project_id?: number;
+  status?: RequirementStatus;
+  priority?: Priority;
+  assignee?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface SearchFeedbacksQuery {
+  status?: FeedbackStatus;
+  assignee?: string;
+  severity?: FeedbackSeverity;
+  type?: FeedbackType;
+  category?: string;
+  keyword?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface StatisticsQuery {
+  project_id?: number;
+  start_date?: string;
+  end_date?: string;
+  time_range?: 'week' | 'month' | 'quarter' | 'custom';
+}
+
+// ==================== 响应类型 ====================
+
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ProjectStatistics {
+  total_cases: number;
+  execution_count: number;
+  pass_rate: number;
+  bug_count: number;
+  requirement_coverage: number;
+}
+
+export interface ModuleStatistics {
+  total_cases: number;
+  pass_rate: number;
+  bug_count: number;
+  coverage_rate: number;
+}
+
+export interface ModuleDistribution {
+  moduleId: number;
+  moduleName: string;
+  testCaseCount: number;
+  passRate: number;
+  bugCount: number;
+}
+
+export interface BugDistribution {
+  moduleName: string;
+  functionalBugs: number;
+  performanceBugs: number;
+  uiBugs: number;
+  compatibilityBugs: number;
+}
+
+export interface FeedbackDistribution {
+  status: FeedbackStatus;
+  count: number;
+}
+
+export interface QualityTrendPoint {
+  date: string;
+  passRate: number;
+  bugCount: number;
+  executionCount: number;
+}
+
+export interface GeneratedTestCase {
+  title: string;
+  precondition: string;
+  steps: string;
+  expected_result: string;
+  priority: Priority;
+  tags: string[];
+  selected?: boolean;
+}
+
+export interface GeneratedRequirement {
+  title: string;
+  description: string;
+  priority: Priority;
+  estimated_cases: number;
+}
+
+export interface FeedbackAnalysis {
+  bug_type: string;
+  severity: FeedbackSeverity;
+  affected_modules: string[];
+  suggested_actions: string[];
+}
+
+export interface AIGenerateResponse {
+  test_cases: GeneratedTestCase[];
+  progress?: number;
+  message?: string;
+}
+
+export interface ModuleTreeNode extends Module {
+  children?: ModuleTreeNode[];
 }

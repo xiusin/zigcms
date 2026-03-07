@@ -1,6 +1,6 @@
 const std = @import("std");
 const Feedback = @import("../entities/feedback.model.zig").Feedback;
-const FeedbackStatus = @import("../entities/feedback.model.zig").FeedbackStatus;
+const FeedbackStatus = Feedback.FeedbackStatus;
 const PageQuery = @import("./test_case_repository.zig").PageQuery;
 const PageResult = @import("./test_case_repository.zig").PageResult;
 

@@ -13,6 +13,8 @@ import stock from './modules/stock';
 import system from './modules/system';
 import autoTest from './modules/auto-test';
 import qualityCenter from './modules/quality-center';
+import security from './modules/security';
+import moderation from './modules/moderation';
 
 const allModules = [
   business,
@@ -27,6 +29,8 @@ const allModules = [
   system,
   autoTest,
   qualityCenter,
+  security,
+  moderation,
 ];
 
 const externalModules = import.meta.glob('./externalModules/*.ts', {

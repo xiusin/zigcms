@@ -1,228 +1,316 @@
-/* 响应式布局优化 */
+// ==================== 响应式设计系统 ====================
 
-/* 移动端优化 */
-@media (max-width: 768px) {
-  /* 表格横向滚动 */
-  .arco-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+// 断点定义
+@screen-xs: 375px;  // 移动端
+@screen-sm: 768px;  // 平板端
+@screen-md: 1024px; // 小屏桌面
+@screen-lg: 1440px; // 标准桌面
+@screen-xl: 1920px; // 大屏桌面
+
+// ==================== 移动端适配 (375px - 767px) ====================
+@media (max-width: 767px) {
+  // 全局容器
+  .content-box {
+    padding: 8px !important;
   }
 
-  /* 卡片间距调整 */
+  // 卡片间距
   .arco-card {
-    margin-bottom: 12px;
+    margin-bottom: 12px !important;
+    
+    .arco-card-header {
+      padding: 12px !important;
+    }
+    
+    .arco-card-body {
+      padding: 12px !important;
+    }
   }
 
-  /* 按钮组堆叠 */
-  .arco-space {
-    flex-wrap: wrap;
+  // 表格适配
+  .arco-table {
+    font-size: 11px !important;
+    
+    .arco-table-th,
+    .arco-table-td {
+      padding: 6px 8px !important;
+      font-size: 11px !important;
+    }
+    
+    // 隐藏次要列
+    .arco-table-col-hide-mobile {
+      display: none !important;
+    }
   }
 
-  /* 表单标签上下布局 */
-  .arco-form-layout-vertical .arco-form-item-label-col {
-    padding-bottom: 4px;
+  // 表单适配
+  .arco-form {
+    .arco-form-item {
+      margin-bottom: 12px !important;
+    }
+    
+    .arco-form-item-label-col {
+      margin-bottom: 4px !important;
+    }
+    
+    // 表单项全宽
+    .arco-form-item-wrapper-col {
+      flex: 1 !important;
+    }
   }
 
-  /* 模态框全屏 */
-  .arco-modal {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    top: 0 !important;
-    height: 100vh;
+  // 按钮组适配
+  .arco-space,
+  .action-btns {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    
+    .arco-btn {
+      flex: 1 !important;
+      min-width: 80px !important;
+    }
   }
 
-  .arco-modal-wrapper {
-    padding: 0 !important;
-  }
-
-  /* 搜索框宽度 */
-  .arco-input-search {
-    width: 100% !important;
-  }
-
-  /* 分页器简化 */
+  // 分页适配
   .arco-pagination {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    
     .arco-pagination-item {
-      display: none;
-
-      &.arco-pagination-item-active {
-        display: inline-flex;
-      }
+      min-width: 32px !important;
+      height: 32px !important;
+    }
+    
+    // 隐藏页码跳转
+    .arco-pagination-jumper {
+      display: none !important;
     }
   }
 
-  /* 隐藏部分列 */
-  .mobile-hidden {
+  // 抽屉全屏
+  .arco-drawer {
+    .arco-drawer-content {
+      width: 100% !important;
+    }
+  }
+
+  // 弹窗适配
+  .arco-modal {
+    width: 90% !important;
+    max-width: 90% !important;
+    margin: 20px auto !important;
+  }
+
+  // 栅格系统
+  .arco-col {
+    &.mobile-full {
+      flex: 0 0 100% !important;
+      max-width: 100% !important;
+    }
+  }
+
+  // 隐藏移动端不需要的元素
+  .hide-mobile {
     display: none !important;
   }
 
-  /* 触摸优化 */
-  .arco-btn,
-  .arco-menu-item {
-    min-height: 44px;
-    padding: 12px 16px;
-  }
-}
-
-/* 平板端优化 */
-@media (min-width: 768px) and (max-width: 1024px) {
-  /* 侧边栏宽度调整 */
-  .arco-layout-sider {
-    width: 200px !important;
-  }
-
-  /* 卡片网格 */
-  .arco-col {
-    &.arco-col-12 {
-      flex: 0 0 50%;
-      max-width: 50%;
+  // 质量中心特定适配
+  .test-case-table,
+  .project-card-grid,
+  .module-tree-container {
+    .arco-table-cell {
+      max-width: 120px !important;
     }
   }
 
-  /* 表格字体 */
-  .arco-table {
-    font-size: 12px;
+  // 图表适配
+  .chart-container {
+    height: 250px !important;
+  }
+
+  // 脑图适配
+  .mindmap-canvas {
+    height: 400px !important;
   }
 }
 
-/* 大屏优化 */
-@media (min-width: 1440px) {
-  /* 容器最大宽度 */
+// ==================== 平板端适配 (768px - 1023px) ====================
+@media (min-width: 768px) and (max-width: 1023px) {
+  // 全局容器
+  .content-box {
+    padding: 12px !important;
+  }
+
+  // 卡片间距
+  .arco-card {
+    margin-bottom: 16px !important;
+  }
+
+  // 表格适配
+  .arco-table {
+    .arco-table-th,
+    .arco-table-td {
+      padding: 8px 12px !important;
+    }
+    
+    // 隐藏次要列
+    .arco-table-col-hide-tablet {
+      display: none !important;
+    }
+  }
+
+  // 栅格系统
+  .arco-col {
+    &.tablet-half {
+      flex: 0 0 50% !important;
+      max-width: 50% !important;
+    }
+  }
+
+  // 隐藏平板端不需要的元素
+  .hide-tablet {
+    display: none !important;
+  }
+
+  // 图表适配
+  .chart-container {
+    height: 300px !important;
+  }
+
+  // 脑图适配
+  .mindmap-canvas {
+    height: 500px !important;
+  }
+}
+
+// ==================== 桌面端适配 (1024px+) ====================
+@media (min-width: 1024px) {
+  // 显示桌面端元素
+  .show-desktop {
+    display: block !important;
+  }
+
+  // 隐藏桌面端不需要的元素
+  .hide-desktop {
+    display: none !important;
+  }
+
+  // 图表适配
+  .chart-container {
+    height: 400px !important;
+  }
+
+  // 脑图适配
+  .mindmap-canvas {
+    height: 600px !important;
+  }
+}
+
+// ==================== 大屏适配 (1920px+) ====================
+@media (min-width: 1920px) {
+  // 容器最大宽度
   .container-max {
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: 1800px !important;
+    margin: 0 auto !important;
   }
 
-  /* 卡片网格 */
-  .arco-col {
-    &.arco-col-6 {
-      flex: 0 0 20%;
-      max-width: 20%;
-    }
-  }
-}
-
-/* 触摸设备优化 */
-@media (hover: none) and (pointer: coarse) {
-  /* 增大点击区域 */
-  .arco-btn,
-  .arco-checkbox,
-  .arco-radio,
-  .arco-switch {
-    min-height: 44px;
-    min-width: 44px;
+  // 图表适配
+  .chart-container {
+    height: 500px !important;
   }
 
-  /* 禁用 hover 效果 */
-  .arco-btn:hover,
-  .arco-menu-item:hover {
-    transform: none !important;
-  }
-
-  /* 优化滚动 */
-  * {
-    -webkit-overflow-scrolling: touch;
+  // 脑图适配
+  .mindmap-canvas {
+    height: 700px !important;
   }
 }
 
-/* 打印优化 */
-@media print {
-  /* 隐藏不必要元素 */
-  .arco-layout-sider,
-  .arco-layout-header,
-  .arco-btn,
-  .arco-pagination {
-    display: none !important;
-  }
+// ==================== 响应式工具类 ====================
 
-  /* 表格优化 */
-  .arco-table {
-    page-break-inside: avoid;
-  }
+// 显示/隐藏工具类
+.visible-xs { display: none !important; }
+.visible-sm { display: none !important; }
+.visible-md { display: none !important; }
+.visible-lg { display: none !important; }
+.visible-xl { display: none !important; }
 
-  /* 移除阴影和边框 */
-  .arco-card {
-    box-shadow: none !important;
-    border: 1px solid #ddd !important;
+@media (max-width: 767px) {
+  .visible-xs { display: block !important; }
+  .hidden-xs { display: none !important; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .visible-sm { display: block !important; }
+  .hidden-sm { display: none !important; }
+}
+
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .visible-md { display: block !important; }
+  .hidden-md { display: none !important; }
+}
+
+@media (min-width: 1440px) and (max-width: 1919px) {
+  .visible-lg { display: block !important; }
+  .hidden-lg { display: none !important; }
+}
+
+@media (min-width: 1920px) {
+  .visible-xl { display: block !important; }
+  .hidden-xl { display: none !important; }
+}
+
+// 响应式间距
+@media (max-width: 767px) {
+  .responsive-padding {
+    padding: 8px !important;
+  }
+  .responsive-margin {
+    margin: 8px !important;
   }
 }
 
-/* 横屏优化 */
-@media (orientation: landscape) and (max-height: 600px) {
-  /* 减少垂直间距 */
-  .arco-card {
-    margin-bottom: 8px;
+@media (min-width: 768px) and (max-width: 1023px) {
+  .responsive-padding {
+    padding: 12px !important;
   }
-
-  /* 紧凑模式 */
-  .arco-form-item {
-    margin-bottom: 12px;
+  .responsive-margin {
+    margin: 12px !important;
   }
 }
 
-/* 暗色模式响应式 */
-@media (prefers-color-scheme: dark) {
-  /* 移动端暗色优化 */
-  @media (max-width: 768px) {
-    body {
-      background: #1a1a1a;
-    }
-
-    .arco-card {
-      background: #2a2a2a;
-    }
+@media (min-width: 1024px) {
+  .responsive-padding {
+    padding: 16px !important;
+  }
+  .responsive-margin {
+    margin: 16px !important;
   }
 }
 
-/* 减少动画 */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+// 响应式文字大小
+@media (max-width: 767px) {
+  .responsive-text {
+    font-size: 11px !important;
+  }
+  .responsive-title {
+    font-size: 14px !important;
   }
 }
 
-/* 工具类 */
-.mobile-only {
-  display: none;
-}
-
-.desktop-only {
-  display: block;
-}
-
-@media (max-width: 768px) {
-  .mobile-only {
-    display: block;
+@media (min-width: 768px) and (max-width: 1023px) {
+  .responsive-text {
+    font-size: 12px !important;
   }
-
-  .desktop-only {
-    display: none;
+  .responsive-title {
+    font-size: 16px !important;
   }
 }
 
-/* Flex 响应式 */
-.flex-responsive {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-
-  @media (max-width: 768px) {
-    flex-direction: column;
-    gap: 12px;
+@media (min-width: 1024px) {
+  .responsive-text {
+    font-size: 12px !important;
   }
-}
-
-/* Grid 响应式 */
-.grid-responsive {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
-
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-    gap: 12px;
+  .responsive-title {
+    font-size: 18px !important;
   }
 }

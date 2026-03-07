@@ -9,8 +9,8 @@ const sql = @import("../../application/services/sql/orm.zig");
 
 // 导入领域层定义
 const Requirement = @import("../../domain/entities/requirement.model.zig").Requirement;
-const Priority = @import("../../domain/entities/requirement.model.zig").Priority;
-const RequirementStatus = @import("../../domain/entities/requirement.model.zig").RequirementStatus;
+const Priority = Requirement.Priority;
+const RequirementStatus = Requirement.RequirementStatus;
 const RequirementRepository = @import("../../domain/repositories/requirement_repository.zig").RequirementRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
@@ -94,9 +94,9 @@ pub const MysqlRequirementRepository = struct {
 
         // 参数化查询，按创建时间倒序排列（最新的在前）
         _ = q.where("project_id", "=", project_id)
-            .orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+            .orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -125,7 +125,7 @@ pub const MysqlRequirementRepository = struct {
     }
 
     /// 保存需求（创建或更新）
-    pub fn save(self: *Self, requirement: *Requirement) !void {
+    pub fn save(_: *Self, requirement: *Requirement) !void {
         if (requirement.id) |id| {
             // 更新现有记录
             _ = try OrmRequirement.UpdateWith(id, .{
@@ -167,12 +167,16 @@ pub const MysqlRequirementRepository = struct {
         defer q.deinit();
 
         _ = q.where("requirement_id", "=", id);
-        try q.update(.{
+        _ = try q.update(.{
             .requirement_id = null,
         });
 
         // 2. 删除需求
-        try OrmRequirement.Delete(id);
+        var del_q = OrmRequirement.query(self.db);
+        defer del_q.deinit();
+        
+        _ = del_q.where("id", "=", id);
+        _ = try del_q.delete();
     }
 
     /// 关联测试用例

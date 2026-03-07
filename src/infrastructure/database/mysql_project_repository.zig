@@ -9,7 +9,7 @@ const sql = @import("../../application/services/sql/orm.zig");
 
 // 导入领域层定义
 const Project = @import("../../domain/entities/project.model.zig").Project;
-const ProjectStatus = @import("../../domain/entities/project.model.zig").ProjectStatus;
+const ProjectStatus = Project.ProjectStatus;
 const ProjectRepository = @import("../../domain/repositories/project_repository.zig").ProjectRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
@@ -82,9 +82,9 @@ pub const MysqlProjectRepository = struct {
 
         // 默认不包含归档项目
         _ = q.where("archived", "=", 0)
-            .orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+            .orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -113,7 +113,7 @@ pub const MysqlProjectRepository = struct {
     }
 
     /// 保存项目（创建或更新）
-    pub fn save(self: *Self, project: *Project) !void {
+    pub fn save(_: *Self, project: *Project) !void {
         if (project.id) |id| {
             // 更新现有记录
             _ = try OrmProject.UpdateWith(id, .{
@@ -146,12 +146,15 @@ pub const MysqlProjectRepository = struct {
 
     /// 删除项目
     pub fn delete(self: *Self, id: i32) !void {
-        _ = self;
-        try OrmProject.Delete(id);
+        var q = OrmProject.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        _ = try q.delete();
     }
 
     /// 归档项目
-    pub fn archive(self: *Self, id: i32) !void {
+    pub fn archive(_: *Self, id: i32) !void {
         _ = try OrmProject.UpdateWith(id, .{
             .archived = @as(i32, 1),
             .status = "archived",
@@ -160,7 +163,7 @@ pub const MysqlProjectRepository = struct {
     }
 
     /// 恢复项目
-    pub fn restore(self: *Self, id: i32) !void {
+    pub fn restore(_: *Self, id: i32) !void {
         _ = try OrmProject.UpdateWith(id, .{
             .archived = @as(i32, 0),
             .status = "active",

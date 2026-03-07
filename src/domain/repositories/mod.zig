@@ -71,3 +71,11 @@ pub const Repository = struct {
 pub const user_repository = @import("user_repository.zig");
 // pub const member_repository = @import("member_repository.zig");
 // pub const category_repository = @import("category_repository.zig");
+
+// 质量中心仓储接口导出
+pub const test_case_repository = @import("test_case_repository.zig");
+pub const test_execution_repository = @import("test_execution_repository.zig");
+pub const project_repository = @import("project_repository.zig");
+pub const module_repository = @import("module_repository.zig");
+pub const requirement_repository = @import("requirement_repository.zig");
+pub const feedback_repository = @import("feedback_repository.zig");

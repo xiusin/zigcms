@@ -71,6 +71,29 @@ const useUserStore = defineStore('user', {
       }
       return role === this.role_id;
     },
+    
+    // 检查是否有指定权限
+    hasPermissionCode(permission: string): boolean {
+      // 超级管理员拥有所有权限
+      if (this.role_id === 1) return true;
+      
+      // 检查按钮权限
+      if (this.buttons && Array.isArray(this.buttons)) {
+        return this.buttons.includes(permission);
+      }
+      
+      return false;
+    },
+    
+    // 检查是否有任一权限
+    hasAnyPermission(permissions: string[]): boolean {
+      return permissions.some(permission => this.hasPermissionCode(permission));
+    },
+    
+    // 检查是否有所有权限
+    hasAllPermissions(permissions: string[]): boolean {
+      return permissions.every(permission => this.hasPermissionCode(permission));
+    },
     switchRoles(role: number) {
       return new Promise((resolve) => {
         this.role_id = role;

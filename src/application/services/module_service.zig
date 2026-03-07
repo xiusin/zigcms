@@ -43,7 +43,7 @@ const Module = @import("../../domain/entities/module.model.zig").Module;
 const ModuleRepository = @import("../../domain/repositories/module_repository.zig").ModuleRepository;
 const TestCaseRepository = @import("../../domain/repositories/test_case_repository.zig").TestCaseRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
-const CacheInterface = @import("../../infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("cache/contract.zig").CacheInterface;
 const qc_cache = @import("../../infrastructure/cache/quality_center_cache.zig");
 
 const Allocator = std.mem.Allocator;
@@ -302,7 +302,6 @@ pub const ModuleService = struct {
             defer self.freeModule(parent);
 
             const new_level = parent.level + 1;
-            const level_diff = new_level - module.level;
 
             // 检查子树的最大深度
             const max_child_depth = try self.getMaxChildDepth(id);
@@ -341,14 +340,11 @@ pub const ModuleService = struct {
 
     /// 获取模块子树的最大深度
     fn getMaxChildDepth(self: *Self, module_id: i32) !i32 {
-        const module = try self.module_repo.findById(module_id) orelse {
-            return 0;
-        };
-        defer self.freeModule(module);
-
+        _ = self;
+        _ = module_id;
+        
         // 简化实现:假设子树深度为 0
         // TODO: 实现完整的子树深度计算逻辑
-        _ = module;
         return 0;
     }
 

@@ -365,9 +365,11 @@ pub const CacheService = struct {
     }
 
     /// 接口方法实现：获取缓存
-    fn cacheGet(ptr: *anyopaque, key: []const u8) ?[]const u8 {
+    fn cacheGet(ptr: *anyopaque, key: []const u8, allocator: std.mem.Allocator) anyerror!?[]const u8 {
         const self: *CacheService = @ptrCast(@alignCast(ptr));
-        return self.get(key);
+        const value = self.get(key) orelse return null;
+        // 复制值以便调用者拥有所有权
+        return try allocator.dupe(u8, value);
     }
 
     /// 接口方法实现：删除缓存

@@ -78,6 +78,11 @@
         <FeedbackNotificationCenter />
       </li>
 
+      <!--安全告警通知-->
+      <li>
+        <AlertNotification />
+      </li>
+
       <!--页面布局相关设置-->
       <!--<li>
         <a-tooltip :content="$t('settings.title')">
@@ -117,6 +122,7 @@ import UserGuide from './user-guide.vue';
 import RelationGuide from './relation-guide.vue';
 import NotificationCenter from '@/components/notification-center/index.vue';
 import FeedbackNotificationCenter from '@/views/feedback/components/NotificationCenter.vue';
+import AlertNotification from '@/components/security/AlertNotification.vue';
 
   const router = useRouter();
 

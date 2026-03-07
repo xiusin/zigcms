@@ -1,0 +1,165 @@
+// 移动端适配样式
+@media screen and (max-width: 768px) {
+  .alert-detail-drawer {
+    :deep(.arco-drawer) {
+      width: 100% !important;
+    }
+
+    .alert-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+
+      .alert-title {
+        font-size: 16px;
+      }
+
+      .alert-actions {
+        width: 100%;
+        justify-content: space-between;
+
+        .arco-btn {
+          flex: 1;
+          font-size: 12px;
+          padding: 6px 12px;
+        }
+      }
+    }
+
+    .alert-content {
+      .arco-descriptions {
+        :deep(.arco-descriptions-row) {
+          flex-direction: column;
+
+          .arco-descriptions-item {
+            width: 100% !important;
+            margin-bottom: 12px;
+
+            .arco-descriptions-item-label {
+              width: 100px;
+            }
+
+            .arco-descriptions-item-value {
+              flex: 1;
+              word-break: break-all;
+            }
+          }
+        }
+      }
+
+      .json-viewer {
+        font-size: 12px;
+        padding: 8px;
+        max-height: 300px;
+        overflow-x: auto;
+
+        pre {
+          white-space: pre-wrap;
+          word-break: break-all;
+        }
+      }
+
+      .timeline-section {
+        .arco-timeline {
+          :deep(.arco-timeline-item) {
+            .arco-timeline-item-content {
+              font-size: 12px;
+
+              .event-time {
+                font-size: 11px;
+              }
+            }
+          }
+        }
+      }
+
+      .handle-records {
+        .record-item {
+          padding: 12px;
+
+          .record-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+
+            .record-action {
+              font-size: 13px;
+            }
+
+            .record-meta {
+              font-size: 11px;
+            }
+          }
+
+          .record-comment {
+            font-size: 12px;
+            margin-top: 8px;
+          }
+        }
+      }
+    }
+  }
+}
+
+// 小屏幕手机适配
+@media screen and (max-width: 480px) {
+  .alert-detail-drawer {
+    .alert-header {
+      .alert-actions {
+        flex-direction: column;
+        gap: 8px;
+
+        .arco-btn {
+          width: 100%;
+        }
+      }
+    }
+
+    .alert-content {
+      .arco-card {
+        margin-bottom: 12px;
+
+        :deep(.arco-card-header) {
+          padding: 12px;
+          font-size: 14px;
+        }
+
+        :deep(.arco-card-body) {
+          padding: 12px;
+        }
+      }
+
+      .arco-descriptions {
+        :deep(.arco-descriptions-item-label) {
+          width: 80px;
+          font-size: 12px;
+        }
+
+        :deep(.arco-descriptions-item-value) {
+          font-size: 12px;
+        }
+      }
+
+      .json-viewer {
+        font-size: 11px;
+        padding: 6px;
+      }
+    }
+  }
+}
+
+// 横屏适配
+@media screen and (max-width: 768px) and (orientation: landscape) {
+  .alert-detail-drawer {
+    .alert-content {
+      .json-viewer {
+        max-height: 200px;
+      }
+
+      .timeline-section {
+        max-height: 250px;
+        overflow-y: auto;
+      }
+    }
+  }
+}

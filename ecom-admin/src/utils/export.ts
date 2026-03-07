@@ -581,6 +581,152 @@ export async function exportMindMapPNG(
   img.src = url;
 }
 
+/** 导出脑图为PDF（支持水印） */
+export async function exportMindMapPDF(
+  root: MindMapNode,
+  filename = '测试脑图.pdf',
+  options?: {
+    title?: string;
+    orientation?: 'portrait' | 'landscape';
+    watermark?: WatermarkConfig | boolean;
+  }
+) {
+  const { title, orientation = 'landscape', watermark } = options || {};
+
+  console.log(`[导出工具][脑图PDF导出][开始][${filename}]`);
+
+  // 生成 SVG
+  const svg = generateMindMapSVG(root);
+  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+
+  return new Promise<void>((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      try {
+        // 创建高分辨率 Canvas
+        const canvas = document.createElement('canvas');
+        const scale = 2;
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('无法创建 Canvas 上下文'));
+          return;
+        }
+
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, img.width, img.height);
+        ctx.drawImage(img, 0, 0);
+
+        // 添加水印到 Canvas
+        if (watermark !== false) {
+          const wmConfig = typeof watermark === 'object' ? watermark : undefined;
+          addCanvasWatermark(canvas, wmConfig);
+        }
+
+        // 转换为图片数据
+        const imgData = canvas.toDataURL('image/png');
+
+        // 创建 PDF
+        const pdf = new jsPDF({
+          orientation,
+          unit: 'mm',
+          format: 'a4',
+        });
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        // 添加标题
+        if (title) {
+          pdf.setFontSize(16);
+          pdf.text(title, pageWidth / 2, 15, { align: 'center' });
+        }
+
+        const startY = title ? 25 : 10;
+        const imgWidth = pageWidth - 20;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        // 分页处理
+        if (imgHeight + startY <= pageHeight - 10) {
+          // 单页
+          pdf.addImage(imgData, 'PNG', 10, startY, imgWidth, imgHeight);
+        } else {
+          // 多页
+          let remainingHeight = imgHeight;
+          let sourceY = 0;
+          let currentY = startY;
+
+          while (remainingHeight > 0) {
+            const availableHeight = currentY === startY ? pageHeight - startY - 10 : pageHeight - 20;
+            const sliceHeight = Math.min(remainingHeight, availableHeight);
+            const sliceRatio = sliceHeight / imgHeight;
+
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = canvas.height * sliceRatio;
+            const sliceCtx = sliceCanvas.getContext('2d');
+
+            if (sliceCtx) {
+              sliceCtx.drawImage(
+                canvas,
+                0, sourceY * (canvas.height / imgHeight),
+                canvas.width, canvas.height * sliceRatio,
+                0, 0,
+                sliceCanvas.width, sliceCanvas.height
+              );
+              const sliceData = sliceCanvas.toDataURL('image/png');
+              pdf.addImage(sliceData, 'PNG', 10, currentY, imgWidth, sliceHeight);
+            }
+
+            remainingHeight -= sliceHeight;
+            sourceY += sliceHeight;
+
+            if (remainingHeight > 0) {
+              pdf.addPage();
+              currentY = 10;
+            }
+          }
+        }
+
+        // 添加页脚
+        const totalPages = pdf.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          pdf.setPage(i);
+          pdf.setFontSize(8);
+          pdf.setTextColor(150);
+          pdf.text(
+            `第 ${i} / ${totalPages} 页  |  生成时间: ${new Date().toLocaleString()}`,
+            pageWidth / 2,
+            pageHeight - 5,
+            { align: 'center' }
+          );
+        }
+
+        // 保存 PDF
+        pdf.save(filename);
+        console.log(`[导出工具][脑图PDF导出][完成][${filename}][${totalPages}页]`);
+
+        URL.revokeObjectURL(url);
+        resolve();
+      } catch (error) {
+        console.error('[导出工具][脑图PDF导出][失败]', error);
+        reject(error);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('图片加载失败'));
+    };
+
+    img.src = url;
+  });
+}
+
 /** 从测试用例数据生成脑图树结构 */
 export function buildTestCaseMindMap(
   cases: Array<Record<string, unknown>>,

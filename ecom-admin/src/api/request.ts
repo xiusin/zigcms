@@ -59,9 +59,29 @@ export default async function request(
       reject(new Error(`token失效-${url}-${token}`));
     });
   }
+  // 获取 CSRF Token（从 cookie 或 meta 标签）
+  const getCsrfToken = (): string | null => {
+    // 优先从 cookie 读取
+    const cookieMatch = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+    if (cookieMatch) {
+      return decodeURIComponent(cookieMatch[1]);
+    }
+    
+    // 其次从 meta 标签读取
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    if (metaTag) {
+      return metaTag.getAttribute('content');
+    }
+    
+    return null;
+  };
+
+  const csrfToken = getCsrfToken();
+  
   const config: any = {
     headers: {
       Authorization: token ? `Bearer ${token}` : '',
+      ...(csrfToken && method === 'post' ? { 'X-CSRF-Token': csrfToken } : {}),
     },
     ...dconfig,
   };

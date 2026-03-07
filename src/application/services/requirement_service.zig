@@ -47,7 +47,7 @@ const RequirementRepository = @import("../../domain/repositories/requirement_rep
 const TestCaseRepository = @import("../../domain/repositories/test_case_repository.zig").TestCaseRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
-const CacheInterface = @import("../../infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("cache/contract.zig").CacheInterface;
 const qc_cache = @import("../../infrastructure/cache/quality_center_cache.zig");
 
 const Allocator = std.mem.Allocator;

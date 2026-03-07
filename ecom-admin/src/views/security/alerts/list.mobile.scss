@@ -1,0 +1,312 @@
+// 移动端适配样式
+@media screen and (max-width: 768px) {
+  .security-alerts-list {
+    padding: 12px;
+
+    .page-header {
+      margin-bottom: 16px;
+
+      h1 {
+        font-size: 20px;
+      }
+    }
+
+    .stats-cards {
+      .arco-row {
+        margin: 0 -6px;
+
+        .arco-col {
+          padding: 0 6px;
+          margin-bottom: 12px;
+        }
+      }
+
+      .stat-card {
+        :deep(.arco-card-body) {
+          padding: 12px;
+        }
+
+        .stat-value {
+          font-size: 20px;
+        }
+
+        .stat-label {
+          font-size: 12px;
+        }
+
+        .stat-icon {
+          font-size: 24px;
+        }
+      }
+    }
+
+    .filter-section {
+      margin-bottom: 16px;
+
+      .arco-space {
+        width: 100%;
+        flex-direction: column;
+        gap: 12px;
+
+        .arco-select,
+        .arco-input-search {
+          width: 100% !important;
+        }
+      }
+    }
+
+    .alerts-table {
+      :deep(.arco-table) {
+        font-size: 12px;
+
+        .arco-table-th,
+        .arco-table-td {
+          padding: 8px 4px;
+        }
+
+        // 隐藏部分列
+        .column-details,
+        .column-created-at {
+          display: none;
+        }
+
+        // 调整操作列
+        .column-actions {
+          .arco-space {
+            flex-direction: column;
+            gap: 4px;
+
+            .arco-btn {
+              width: 100%;
+              font-size: 11px;
+              padding: 4px 8px;
+            }
+          }
+        }
+
+        // 调整标签大小
+        .arco-tag {
+          font-size: 11px;
+          padding: 2px 6px;
+        }
+      }
+
+      // 移动端使用卡片布局
+      .mobile-card-list {
+        display: block;
+
+        .alert-card {
+          background: #fff;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+          .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+
+            .alert-level {
+              .arco-tag {
+                font-size: 11px;
+              }
+            }
+
+            .alert-checkbox {
+              margin-left: 8px;
+            }
+          }
+
+          .card-body {
+            .alert-message {
+              font-size: 14px;
+              font-weight: 500;
+              margin-bottom: 8px;
+              color: #1d2129;
+            }
+
+            .alert-meta {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              margin-bottom: 12px;
+
+              .meta-item {
+                font-size: 12px;
+                color: #86909c;
+
+                .meta-label {
+                  margin-right: 4px;
+                }
+
+                .meta-value {
+                  color: #4e5969;
+                }
+              }
+            }
+          }
+
+          .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 12px;
+            border-top: 1px solid #f2f3f5;
+
+            .alert-time {
+              font-size: 11px;
+              color: #86909c;
+            }
+
+            .alert-actions {
+              display: flex;
+              gap: 8px;
+
+              .arco-btn {
+                font-size: 11px;
+                padding: 4px 8px;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    .pagination {
+      margin-top: 16px;
+
+      :deep(.arco-pagination) {
+        justify-content: center;
+
+        .arco-pagination-item {
+          min-width: 28px;
+          height: 28px;
+          font-size: 12px;
+        }
+
+        .arco-pagination-jumper {
+          display: none;
+        }
+      }
+    }
+  }
+}
+
+// 小屏幕手机适配
+@media screen and (max-width: 480px) {
+  .security-alerts-list {
+    padding: 8px;
+
+    .stats-cards {
+      .arco-row {
+        .arco-col {
+          flex: 0 0 50%;
+          max-width: 50%;
+        }
+      }
+
+      .stat-card {
+        .stat-value {
+          font-size: 18px;
+        }
+
+        .stat-label {
+          font-size: 11px;
+        }
+
+        .stat-icon {
+          font-size: 20px;
+        }
+      }
+    }
+
+    .alerts-table {
+      .mobile-card-list {
+        .alert-card {
+          padding: 10px;
+
+          .card-body {
+            .alert-message {
+              font-size: 13px;
+            }
+
+            .alert-meta {
+              .meta-item {
+                font-size: 11px;
+              }
+            }
+          }
+
+          .card-footer {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+
+            .alert-actions {
+              width: 100%;
+
+              .arco-btn {
+                flex: 1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// 横屏适配
+@media screen and (max-width: 768px) and (orientation: landscape) {
+  .security-alerts-list {
+    .stats-cards {
+      .arco-row {
+        .arco-col {
+          flex: 0 0 25%;
+          max-width: 25%;
+        }
+      }
+    }
+
+    .alerts-table {
+      .mobile-card-list {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+
+        .alert-card {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
+}
+
+// 触摸优化
+@media (hover: none) and (pointer: coarse) {
+  .security-alerts-list {
+    .arco-btn {
+      min-height: 36px;
+      padding: 8px 16px;
+    }
+
+    .arco-checkbox {
+      :deep(.arco-checkbox-icon) {
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .alerts-table {
+      .mobile-card-list {
+        .alert-card {
+          &:active {
+            background: #f7f8fa;
+          }
+        }
+      }
+    }
+  }
+}

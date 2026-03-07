@@ -46,3 +46,18 @@ app.use(directive);
 app.use(checkVersion);
 
 app.mount('#app');
+
+// 初始化安全告警/通知系统
+import { useSecurityStore } from '@/store/modules/security';
+
+router.isReady().then(() => {
+  const securityStore = useSecurityStore();
+  
+  // 加载通知配置
+  securityStore.loadNotificationConfig();
+  
+  // 启动实时告警轮询（30秒间隔）
+  securityStore.startRealtimePolling(30000);
+  
+  console.log('[安全管理] 已启动实时告警轮询');
+});

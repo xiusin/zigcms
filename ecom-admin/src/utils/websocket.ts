@@ -1,263 +1,354 @@
 /**
- * WebSocket 实时推送服务
- * 【功能】报表执行状态、AI分析进度、系统通知的实时推送
- * 【高级特性】自动重连、心跳检测、事件订阅、Mock模拟
+ * WebSocket 客户端
+ * 提供自动重连、心跳检测、消息队列等功能
  */
 
-/** WebSocket消息类型 */
-export interface WSMessage<T = unknown> {
-  type: 'report_status' | 'ai_progress' | 'notification' | 'heartbeat';
-  payload: T;
-  timestamp: number;
+export interface WebSocketMessage {
+  type: string;
+  data: any;
 }
 
-/** 报表执行状态推送 */
-export interface ReportStatusPayload {
-  report_id: number;
-  report_name: string;
-  status: 'running' | 'success' | 'failed';
-  progress: number;
-  message?: string;
-  file_url?: string;
-  duration_ms?: number;
-}
-
-/** AI分析进度推送 */
-export interface AIProgressPayload {
-  task_id: string;
-  type: 'analyzing' | 'generating' | 'completed' | 'error';
-  progress: number;
-  message: string;
-  result?: unknown;
-}
-
-/** 系统通知推送 */
-export interface NotificationPayload {
-  id: number;
-  title: string;
-  content: string;
-  level: 'info' | 'warning' | 'error' | 'success';
-  module: string;
-  action_url?: string;
-}
-
-type MessageHandler<T = unknown> = (data: WSMessage<T>) => void;
-
-/** WebSocket配置 */
-interface WSConfig {
+export interface WebSocketOptions {
   url: string;
-  /** 自动重连 */
-  autoReconnect: boolean;
-  /** 重连间隔(ms) */
-  reconnectInterval: number;
-  /** 最大重连次数 */
-  maxReconnects: number;
-  /** 心跳间隔(ms) */
-  heartbeatInterval: number;
-  /** 是否启用Mock模拟 */
-  mock: boolean;
+  reconnectInterval?: number;
+  heartbeatInterval?: number;
+  maxReconnectAttempts?: number;
+  debug?: boolean;
 }
 
-const DEFAULT_CONFIG: WSConfig = {
-  url: `ws://${window.location.host}/ws/quality-center`,
-  autoReconnect: true,
-  reconnectInterval: 3000,
-  maxReconnects: 10,
-  heartbeatInterval: 30000,
-  mock: true,
-};
+export type MessageHandler = (message: WebSocketMessage) => void;
+export type EventHandler = (event: Event) => void;
 
-class QualityWebSocket {
+export class WebSocketClient {
   private ws: WebSocket | null = null;
-  private config: WSConfig;
-  private handlers = new Map<string, Set<MessageHandler>>();
-  private reconnectCount = 0;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private mockTimer: ReturnType<typeof setInterval> | null = null;
-  private _connected = false;
+  private url: string;
+  private reconnectInterval: number;
+  private heartbeatInterval: number;
+  private maxReconnectAttempts: number;
+  private debug: boolean;
 
-  constructor(config?: Partial<WSConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  private reconnectTimer: number | null = null;
+  private heartbeatTimer: number | null = null;
+  private reconnectAttempts = 0;
+  private isManualClose = false;
+
+  private messageHandlers: Map<string, Set<MessageHandler>> = new Map();
+  private eventHandlers: Map<string, Set<EventHandler>> = new Map();
+  private messageQueue: WebSocketMessage[] = [];
+
+  constructor(options: WebSocketOptions) {
+    this.url = options.url;
+    this.reconnectInterval = options.reconnectInterval || 5000;
+    this.heartbeatInterval = options.heartbeatInterval || 30000;
+    this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
+    this.debug = options.debug || false;
   }
 
-  get connected(): boolean {
-    return this._connected;
+  /**
+   * 连接 WebSocket
+   */
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.log('Connecting to WebSocket...', this.url);
+        this.ws = new WebSocket(this.url);
+
+        this.ws.onopen = (event) => {
+          this.log('WebSocket connected');
+          this.reconnectAttempts = 0;
+          this.isManualClose = false;
+
+          // 启动心跳
+          this.startHeartbeat();
+
+          // 发送认证消息
+          this.authenticate();
+
+          // 发送队列中的消息
+          this.flushMessageQueue();
+
+          // 触发 open 事件
+          this.triggerEvent('open', event);
+
+          resolve();
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const message: WebSocketMessage = JSON.parse(event.data);
+            this.log('Received message:', message);
+
+            // 触发消息处理器
+            this.triggerMessage(message);
+
+            // 触发 message 事件
+            this.triggerEvent('message', event);
+          } catch (error) {
+            this.log('Failed to parse message:', error);
+          }
+        };
+
+        this.ws.onerror = (event) => {
+          this.log('WebSocket error:', event);
+          this.triggerEvent('error', event);
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        this.ws.onclose = (event) => {
+          this.log('WebSocket closed:', event.code, event.reason);
+          this.stopHeartbeat();
+          this.triggerEvent('close', event);
+
+          // 自动重连
+          if (!this.isManualClose) {
+            this.reconnect();
+          }
+        };
+      } catch (error) {
+        this.log('Failed to create WebSocket:', error);
+        reject(error);
+      }
+    });
   }
 
-  /** 连接WebSocket（生产模式连真实ws，开发模式启用Mock） */
-  connect(): void {
-    if (this.config.mock) {
-      this.startMock();
-      return;
-    }
-
-    try {
-      this.ws = new WebSocket(this.config.url);
-      this.ws.onopen = () => {
-        this._connected = true;
-        this.reconnectCount = 0;
-        this.startHeartbeat();
-        console.log('[WebSocket][已连接]', this.config.url);
-      };
-      this.ws.onmessage = (event) => {
-        try {
-          const msg: WSMessage = JSON.parse(event.data);
-          this.dispatch(msg);
-        } catch (e) {
-          console.error('[WebSocket][消息解析失败]', e);
-        }
-      };
-      this.ws.onclose = () => {
-        this._connected = false;
-        this.stopHeartbeat();
-        console.log('[WebSocket][已断开]');
-        if (this.config.autoReconnect && this.reconnectCount < this.config.maxReconnects) {
-          this.scheduleReconnect();
-        }
-      };
-      this.ws.onerror = (err) => {
-        console.error('[WebSocket][错误]', err);
-      };
-    } catch (err) {
-      console.error('[WebSocket][连接失败]', err);
-      if (this.config.autoReconnect) this.scheduleReconnect();
-    }
-  }
-
-  /** 断开连接 */
+  /**
+   * 断开连接
+   */
   disconnect(): void {
+    this.log('Disconnecting WebSocket...');
+    this.isManualClose = true;
     this.stopHeartbeat();
-    this.stopMock();
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.stopReconnect();
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    this._connected = false;
-    console.log('[WebSocket][主动断开]');
   }
 
-  /** 订阅消息 */
-  on<T = unknown>(type: string, handler: MessageHandler<T>): () => void {
-    if (!this.handlers.has(type)) {
-      this.handlers.set(type, new Set());
-    }
-    this.handlers.get(type)!.add(handler as MessageHandler);
-    return () => {
-      this.handlers.get(type)?.delete(handler as MessageHandler);
-    };
-  }
-
-  /** 取消所有订阅 */
-  offAll(): void {
-    this.handlers.clear();
-  }
-
-  /** 分发消息给订阅者 */
-  private dispatch(msg: WSMessage): void {
-    const typeHandlers = this.handlers.get(msg.type);
-    if (typeHandlers) {
-      typeHandlers.forEach((h) => h(msg));
-    }
-    // 同时通知 * 监听者
-    const allHandlers = this.handlers.get('*');
-    if (allHandlers) {
-      allHandlers.forEach((h) => h(msg));
+  /**
+   * 发送消息
+   */
+  send(message: WebSocketMessage): void {
+    if (this.isConnected()) {
+      const data = JSON.stringify(message);
+      this.ws!.send(data);
+      this.log('Sent message:', message);
+    } else {
+      // 连接未建立，加入队列
+      this.messageQueue.push(message);
+      this.log('Message queued:', message);
     }
   }
 
-  private scheduleReconnect(): void {
-    this.reconnectCount++;
-    console.log(`[WebSocket][重连][第${this.reconnectCount}次][${this.config.reconnectInterval}ms后]`);
-    this.reconnectTimer = setTimeout(() => this.connect(), this.config.reconnectInterval);
+  /**
+   * 注册消息处理器
+   */
+  on(type: string, handler: MessageHandler): void {
+    if (!this.messageHandlers.has(type)) {
+      this.messageHandlers.set(type, new Set());
+    }
+    this.messageHandlers.get(type)!.add(handler);
   }
 
+  /**
+   * 移除消息处理器
+   */
+  off(type: string, handler: MessageHandler): void {
+    const handlers = this.messageHandlers.get(type);
+    if (handlers) {
+      handlers.delete(handler);
+    }
+  }
+
+  /**
+   * 注册事件处理器
+   */
+  addEventListener(event: string, handler: EventHandler): void {
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, new Set());
+    }
+    this.eventHandlers.get(event)!.add(handler);
+  }
+
+  /**
+   * 移除事件处理器
+   */
+  removeEventListener(event: string, handler: EventHandler): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.delete(handler);
+    }
+  }
+
+  /**
+   * 检查连接状态
+   */
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * 获取连接状态
+   */
+  getReadyState(): number {
+    return this.ws?.readyState ?? WebSocket.CLOSED;
+  }
+
+  /**
+   * 认证
+   */
+  private authenticate(): void {
+    // 从 localStorage 获取 token
+    const token = localStorage.getItem('token');
+    if (token) {
+      this.send({
+        type: 'auth',
+        data: { token },
+      });
+    }
+  }
+
+  /**
+   * 启动心跳
+   */
   private startHeartbeat(): void {
-    this.heartbeatTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.isConnected()) {
+        this.send({
+          type: 'heartbeat',
+          data: { timestamp: Date.now() },
+        });
       }
-    }, this.config.heartbeatInterval);
+    }, this.heartbeatInterval);
   }
 
+  /**
+   * 停止心跳
+   */
   private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
+    if (this.heartbeatTimer !== null) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
   }
 
-  // ==================== Mock 模式 ====================
-
-  private startMock(): void {
-    this._connected = true;
-    console.log('[WebSocket][Mock模式已启动]');
-    let step = 0;
-
-    this.mockTimer = setInterval(() => {
-      step++;
-      // 模拟报表执行进度
-      if (step <= 10) {
-        const progress = step * 10;
-        const status: ReportStatusPayload['status'] = progress >= 100 ? 'success' : 'running';
-        this.dispatch({
-          type: 'report_status',
-          payload: {
-            report_id: 1,
-            report_name: '每日质量日报',
-            status,
-            progress: Math.min(progress, 100),
-            message: progress >= 100 ? '报表生成完成' : `正在生成报表... ${progress}%`,
-            file_url: progress >= 100 ? '/files/report_daily.pdf' : undefined,
-            duration_ms: progress >= 100 ? 12500 : undefined,
-          } satisfies ReportStatusPayload,
-          timestamp: Date.now(),
-        });
-      }
-
-      // 模拟系统通知（每30s一条）
-      if (step % 6 === 0) {
-        const notifications: NotificationPayload[] = [
-          { id: step, title: '新Bug已提交', content: '订单模块发现新的高优先级Bug', level: 'warning', module: '订单系统', action_url: '/auto-test/bug' },
-          { id: step, title: '测试通过率提升', content: '支付模块测试通过率已达95%', level: 'success', module: '支付模块' },
-          { id: step, title: '反馈已处理', content: '用户反馈#207已由张三处理完成', level: 'info', module: '反馈系统', action_url: '/feedback/list' },
-        ];
-        this.dispatch({
-          type: 'notification',
-          payload: notifications[step % notifications.length],
-          timestamp: Date.now(),
-        });
-      }
-    }, 5000);
-  }
-
-  private stopMock(): void {
-    if (this.mockTimer) {
-      clearInterval(this.mockTimer);
-      this.mockTimer = null;
+  /**
+   * 重连
+   */
+  private reconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.log('Max reconnect attempts reached');
+      return;
     }
-    this._connected = false;
+
+    this.reconnectAttempts++;
+    this.log(`Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+    this.stopReconnect();
+    this.reconnectTimer = window.setTimeout(() => {
+      this.connect().catch((error) => {
+        this.log('Reconnect failed:', error);
+      });
+    }, this.reconnectInterval);
+  }
+
+  /**
+   * 停止重连
+   */
+  private stopReconnect(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * 触发消息处理器
+   */
+  private triggerMessage(message: WebSocketMessage): void {
+    const handlers = this.messageHandlers.get(message.type);
+    if (handlers) {
+      handlers.forEach((handler) => {
+        try {
+          handler(message);
+        } catch (error) {
+          this.log('Message handler error:', error);
+        }
+      });
+    }
+  }
+
+  /**
+   * 触发事件处理器
+   */
+  private triggerEvent(event: string, data: Event): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.forEach((handler) => {
+        try {
+          handler(data);
+        } catch (error) {
+          this.log('Event handler error:', error);
+        }
+      });
+    }
+  }
+
+  /**
+   * 发送队列中的消息
+   */
+  private flushMessageQueue(): void {
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift()!;
+      this.send(message);
+    }
+  }
+
+  /**
+   * 日志输出
+   */
+  private log(...args: any[]): void {
+    if (this.debug) {
+      console.log('[WebSocket]', ...args);
+    }
   }
 }
 
-/** 全局单例 */
-let instance: QualityWebSocket | null = null;
-
-export function useWebSocket(config?: Partial<WSConfig>): QualityWebSocket {
-  if (!instance) {
-    instance = new QualityWebSocket(config);
-  }
-  return instance;
+/**
+ * 创建 WebSocket 客户端
+ */
+export function createWebSocketClient(options: WebSocketOptions): WebSocketClient {
+  return new WebSocketClient(options);
 }
 
-export function destroyWebSocket(): void {
-  if (instance) {
-    instance.disconnect();
-    instance.offAll();
-    instance = null;
+/**
+ * 全局 WebSocket 客户端实例
+ */
+let globalClient: WebSocketClient | null = null;
+
+/**
+ * 获取全局 WebSocket 客户端
+ */
+export function getGlobalWebSocketClient(): WebSocketClient | null {
+  return globalClient;
+}
+
+/**
+ * 设置全局 WebSocket 客户端
+ */
+export function setGlobalWebSocketClient(client: WebSocketClient): void {
+  globalClient = client;
+}
+
+/**
+ * 初始化全局 WebSocket 客户端
+ */
+export function initGlobalWebSocketClient(options: WebSocketOptions): WebSocketClient {
+  if (globalClient) {
+    globalClient.disconnect();
   }
+  globalClient = new WebSocketClient(options);
+  return globalClient;
 }

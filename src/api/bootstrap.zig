@@ -163,6 +163,9 @@ pub const Bootstrap = struct {
         // 质量中心路由
         try self.registerQualityCenterRoutes();
 
+        // 安全管理路由
+        try self.registerSecurityRoutes();
+
         // 注意：MCP 路由需要在 initListener 之后注册
     }
 
@@ -552,55 +555,132 @@ pub const Bootstrap = struct {
             }
         }.exec;
 
-        // Dashboard 统计
-        try registerWithAlias(self.app, "/quality-center/overview", ctrl, Auth.requireAuth(&QC.overview));
-        try registerWithAlias(self.app, "/quality-center/trend", ctrl, Auth.requireAuth(&QC.trend));
-        try registerWithAlias(self.app, "/quality-center/module-quality", ctrl, Auth.requireAuth(&QC.module_quality));
-        try registerWithAlias(self.app, "/quality-center/bug-distribution", ctrl, Auth.requireAuth(&QC.bug_distribution));
-        try registerWithAlias(self.app, "/quality-center/feedback-distribution", ctrl, Auth.requireAuth(&QC.feedback_distribution));
+        // Dashboard 统计（匹配前端 /api/quality/statistics/...）
+        try registerWithAlias(self.app, "/quality/statistics/overview", ctrl, Auth.requireAuth(&QC.overview));
+        try registerWithAlias(self.app, "/quality/statistics/quality-trend", ctrl, Auth.requireAuth(&QC.trend));
+        try registerWithAlias(self.app, "/quality/statistics/module-distribution", ctrl, Auth.requireAuth(&QC.module_quality));
+        try registerWithAlias(self.app, "/quality/statistics/bug-distribution", ctrl, Auth.requireAuth(&QC.bug_distribution));
+        try registerWithAlias(self.app, "/quality/statistics/feedback-distribution", ctrl, Auth.requireAuth(&QC.feedback_distribution));
 
-        // 反馈与测试联动
-        try registerWithAlias(self.app, "/quality-center/feedback-to-task", ctrl, Auth.requireAuth(&QC.feedback_to_task));
-        try registerWithAlias(self.app, "/quality-center/bug-to-feedback", ctrl, Auth.requireAuth(&QC.bug_to_feedback));
-        try registerWithAlias(self.app, "/quality-center/link-records", ctrl, Auth.requireAuth(&QC.link_records));
+        // 反馈与测试联动（匹配前端 /api/quality/feedbacks/... 和 /api/quality/bugs/...）
+        try registerWithAlias(self.app, "/quality/feedbacks/to-task", ctrl, Auth.requireAuth(&QC.feedback_to_task));
+        try registerWithAlias(self.app, "/quality/bugs/to-feedback", ctrl, Auth.requireAuth(&QC.bug_to_feedback));
+        try registerWithAlias(self.app, "/quality/links", ctrl, Auth.requireAuth(&QC.link_records));
 
-        // 活动流 + AI 洞察
-        try registerWithAlias(self.app, "/quality-center/activities", ctrl, Auth.requireAuth(&QC.activities));
-        try registerWithAlias(self.app, "/quality-center/ai-insights", ctrl, Auth.requireAuth(&QC.ai_insights));
+        // 活动流 + AI 洞察（匹配前端 /api/quality/activities/... 和 /api/quality/ai/...）
+        try registerWithAlias(self.app, "/quality/activities/recent", ctrl, Auth.requireAuth(&QC.activities));
+        try registerWithAlias(self.app, "/quality/ai/insights", ctrl, Auth.requireAuth(&QC.ai_insights));
 
-        // 定时报表 CRUD
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports", ctrl, Auth.requireAuth(&QC.scheduled_report_list));
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports/create", ctrl, Auth.requireAuth(&QC.scheduled_report_create));
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports/update", ctrl, Auth.requireAuth(&QC.scheduled_report_update));
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports/delete", ctrl, Auth.requireAuth(&QC.scheduled_report_delete));
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports/toggle", ctrl, Auth.requireAuth(&QC.scheduled_report_toggle));
-        try registerWithAlias(self.app, "/quality-center/scheduled-reports/trigger", ctrl, Auth.requireAuth(&QC.scheduled_report_trigger));
+        // 定时报表 CRUD（匹配前端 /api/quality/reports/scheduled/...）
+        try registerWithAlias(self.app, "/quality/reports/scheduled", ctrl, Auth.requireAuth(&QC.scheduled_report_list));
+        try registerWithAlias(self.app, "/quality/reports/scheduled", ctrl, Auth.requireAuth(&QC.scheduled_report_create));
+        try registerWithAlias(self.app, "/quality/reports/scheduled/:id", ctrl, Auth.requireAuth(&QC.scheduled_report_update));
+        try registerWithAlias(self.app, "/quality/reports/scheduled/:id", ctrl, Auth.requireAuth(&QC.scheduled_report_delete));
+        try registerWithAlias(self.app, "/quality/reports/scheduled/:id/toggle", ctrl, Auth.requireAuth(&QC.scheduled_report_toggle));
+        try registerWithAlias(self.app, "/quality/reports/scheduled/:id/trigger", ctrl, Auth.requireAuth(&QC.scheduled_report_trigger));
 
-        // 报表历史
-        try registerWithAlias(self.app, "/quality-center/report-history", ctrl, Auth.requireAuth(&QC.report_history));
+        // 报表历史（匹配前端 /api/quality/reports/history）
+        try registerWithAlias(self.app, "/quality/reports/history", ctrl, Auth.requireAuth(&QC.report_history));
 
-        // Bug 关联 + 反馈分类
-        try registerWithAlias(self.app, "/quality-center/bug-links", ctrl, Auth.requireAuth(&QC.bug_links));
-        try registerWithAlias(self.app, "/quality-center/feedback-classification", ctrl, Auth.requireAuth(&QC.feedback_classification));
+        // Bug 关联 + 反馈分类（匹配前端 /api/quality/bugs/links 和 /api/quality/feedbacks/classification）
+        try registerWithAlias(self.app, "/quality/bugs/links", ctrl, Auth.requireAuth(&QC.bug_links));
+        try registerWithAlias(self.app, "/quality/feedbacks/classification", ctrl, Auth.requireAuth(&QC.feedback_classification));
 
-        // 报表模板 CRUD
-        try registerWithAlias(self.app, "/quality-center/report-templates", ctrl, Auth.requireAuth(&QC.report_template_list));
-        try registerWithAlias(self.app, "/quality-center/report-templates/create", ctrl, Auth.requireAuth(&QC.report_template_create));
-        try registerWithAlias(self.app, "/quality-center/report-templates/update", ctrl, Auth.requireAuth(&QC.report_template_update));
-        try registerWithAlias(self.app, "/quality-center/report-templates/delete", ctrl, Auth.requireAuth(&QC.report_template_delete));
+        // 报表模板 CRUD（匹配前端 /api/quality/reports/templates/...）
+        try registerWithAlias(self.app, "/quality/reports/templates", ctrl, Auth.requireAuth(&QC.report_template_list));
+        try registerWithAlias(self.app, "/quality/reports/templates", ctrl, Auth.requireAuth(&QC.report_template_create));
+        try registerWithAlias(self.app, "/quality/reports/templates/:id", ctrl, Auth.requireAuth(&QC.report_template_update));
+        try registerWithAlias(self.app, "/quality/reports/templates/:id", ctrl, Auth.requireAuth(&QC.report_template_delete));
 
-        // 邮件模板 CRUD
-        try registerWithAlias(self.app, "/quality-center/email-templates", ctrl, Auth.requireAuth(&QC.email_template_list));
-        try registerWithAlias(self.app, "/quality-center/email-templates/create", ctrl, Auth.requireAuth(&QC.email_template_create));
-        try registerWithAlias(self.app, "/quality-center/email-templates/update", ctrl, Auth.requireAuth(&QC.email_template_update));
-        try registerWithAlias(self.app, "/quality-center/email-templates/delete", ctrl, Auth.requireAuth(&QC.email_template_delete));
-        try registerWithAlias(self.app, "/quality-center/email-templates/preview", ctrl, Auth.requireAuth(&QC.email_template_preview));
+        // 邮件模板 CRUD（匹配前端 /api/quality/email/templates/...）
+        try registerWithAlias(self.app, "/quality/email/templates", ctrl, Auth.requireAuth(&QC.email_template_list));
+        try registerWithAlias(self.app, "/quality/email/templates", ctrl, Auth.requireAuth(&QC.email_template_create));
+        try registerWithAlias(self.app, "/quality/email/templates/:id", ctrl, Auth.requireAuth(&QC.email_template_update));
+        try registerWithAlias(self.app, "/quality/email/templates/:id", ctrl, Auth.requireAuth(&QC.email_template_delete));
+        try registerWithAlias(self.app, "/quality/email/templates/:id/preview", ctrl, Auth.requireAuth(&QC.email_template_preview));
 
-        // AI 分析
-        try registerWithAlias(self.app, "/quality-center/ai-analysis", ctrl, Auth.requireAuth(&QC.ai_analysis));
-        try registerWithAlias(self.app, "/quality-center/ai-analysis/history", ctrl, Auth.requireAuth(&QC.ai_analysis_history));
+        // AI 分析（匹配前端 /api/quality/ai/analysis/...）
+        try registerWithAlias(self.app, "/quality/ai/analysis", ctrl, Auth.requireAuth(&QC.ai_analysis));
+        try registerWithAlias(self.app, "/quality/ai/analysis/history", ctrl, Auth.requireAuth(&QC.ai_analysis_history));
 
         self.route_count += 30;
+    }
+
+    /// 注册安全管理路由
+    fn registerSecurityRoutes(self: *Self) !void {
+        const SecurityEvent = controllers.security.SecurityEvent;
+        const AuditLog = controllers.security.AuditLog;
+        const Alert = controllers.security.Alert;
+
+        // 注册安全事件控制器
+        if (!self.container.isRegistered(SecurityEvent)) {
+            try self.container.registerSingleton(SecurityEvent, SecurityEvent, struct {
+                fn factory(_: *DIContainer, allocator: std.mem.Allocator) anyerror!*SecurityEvent {
+                    const ctrl = try allocator.create(SecurityEvent);
+                    ctrl.* = SecurityEvent{};
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        // 注册审计日志控制器
+        if (!self.container.isRegistered(AuditLog)) {
+            try self.container.registerSingleton(AuditLog, AuditLog, struct {
+                fn factory(_: *DIContainer, allocator: std.mem.Allocator) anyerror!*AuditLog {
+                    const ctrl = try allocator.create(AuditLog);
+                    ctrl.* = AuditLog{};
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        // 注册告警控制器
+        if (!self.container.isRegistered(Alert)) {
+            try self.container.registerSingleton(Alert, Alert, struct {
+                fn factory(_: *DIContainer, allocator: std.mem.Allocator) anyerror!*Alert {
+                    const ctrl = try allocator.create(Alert);
+                    ctrl.* = Alert{};
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const security_event = try self.container.resolve(SecurityEvent);
+        const audit_log = try self.container.resolve(AuditLog);
+        const alert = try self.container.resolve(Alert);
+
+        // 安全事件路由
+        try self.app.route("/api/security/events", security_event, &SecurityEvent.list);
+        try self.app.route("/api/security/events/:id", security_event, &SecurityEvent.get);
+        try self.app.route("/api/security/events/stats", security_event, &SecurityEvent.getStats);
+        try self.app.route("/api/security/ban-ip", security_event, &SecurityEvent.banIP);
+        try self.app.route("/api/security/unban-ip", security_event, &SecurityEvent.unbanIP);
+        try self.app.route("/api/security/banned-ips", security_event, &SecurityEvent.getBannedIPs);
+
+        // 审计日志路由
+        try self.app.route("/api/security/audit-logs", audit_log, &AuditLog.list);
+        try self.app.route("/api/security/audit-logs/:id", audit_log, &AuditLog.get);
+        try self.app.route("/api/security/audit-logs/export", audit_log, &AuditLog.exportLogs);
+        try self.app.route("/api/security/audit-logs/user/:user_id", audit_log, &AuditLog.getUserLogs);
+        try self.app.route("/api/security/audit-logs/resource/:resource_type/:resource_id", audit_log, &AuditLog.getResourceLogs);
+
+        // 告警规则路由
+        try self.app.route("/api/security/alert-rules", alert, &Alert.listRules);
+        try self.app.route("/api/security/alert-rules/:id", alert, &Alert.getRule);
+        try self.app.route("/api/security/alert-rules/create", alert, &Alert.createRule);
+        try self.app.route("/api/security/alert-rules/:id/update", alert, &Alert.updateRule);
+        try self.app.route("/api/security/alert-rules/:id/delete", alert, &Alert.deleteRule);
+        try self.app.route("/api/security/alert-rules/:id/toggle", alert, &Alert.toggleRule);
+
+        // 告警历史路由
+        try self.app.route("/api/security/alert-history", alert, &Alert.listHistory);
+        try self.app.route("/api/security/alert-history/:id", alert, &Alert.getHistory);
+        try self.app.route("/api/security/alert-history/:id/resolve", alert, &Alert.resolveAlert);
+        try self.app.route("/api/security/alert-history/:id/ignore", alert, &Alert.ignoreAlert);
+        try self.app.route("/api/security/alert-history/stats", alert, &Alert.getStats);
+
+        self.route_count += 23;
+        logger.info("✅ 安全管理路由已注册: 23 个路由", .{});
     }
 
     /// 注册 MCP 路由（AI 辅助开发）

@@ -72,6 +72,9 @@ pub const quality_center = struct {
     pub const QualityCenter = @import("quality_center.controller.zig");
 };
 
+// 安全管理控制器
+pub const security = @import("security/mod.zig");
+
 // 实时通信控制器
 pub const realtime = struct {
     // TODO: WebSocket 和 SSE 功能需要 zap 支持，暂时注释

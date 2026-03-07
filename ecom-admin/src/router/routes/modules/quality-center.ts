@@ -31,7 +31,120 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:dashboard',
       },
     },
-    // 2. 关联追踪
+    // 2. 测试用例管理
+    {
+      path: 'test-case',
+      name: 'quality-center-test-case',
+      component: () => import('@/views/quality-center/test-case/index.vue'),
+      meta: {
+        locale: '测试用例',
+        requiresAuth: true,
+        icon: 'icon-file-text',
+        roles: ['*'],
+        permission: 'quality:center:test-case',
+      },
+    },
+    {
+      path: 'test-case/:id',
+      name: 'quality-center-test-case-detail',
+      component: () => import('@/views/quality-center/test-case/detail.vue'),
+      meta: {
+        locale: '测试用例详情',
+        requiresAuth: true,
+        hideInMenu: true,
+        roles: ['*'],
+        permission: 'quality:center:test-case',
+      },
+    },
+    // 3. 项目管理
+    {
+      path: 'project',
+      name: 'quality-center-project',
+      component: () => import('@/views/quality-center/project/index.vue'),
+      meta: {
+        locale: '项目管理',
+        requiresAuth: true,
+        icon: 'icon-apps',
+        roles: ['*'],
+        permission: 'quality:center:project',
+      },
+    },
+    {
+      path: 'project/:id',
+      name: 'quality-center-project-detail',
+      component: () => import('@/views/quality-center/project/detail.vue'),
+      meta: {
+        locale: '项目详情',
+        requiresAuth: true,
+        hideInMenu: true,
+        roles: ['*'],
+        permission: 'quality:center:project',
+      },
+    },
+    // 4. 模块管理
+    {
+      path: 'module',
+      name: 'quality-center-module',
+      component: () => import('@/views/quality-center/module/index.vue'),
+      meta: {
+        locale: '模块管理',
+        requiresAuth: true,
+        icon: 'icon-folder',
+        roles: ['*'],
+        permission: 'quality:center:module',
+      },
+    },
+    // 5. 需求管理
+    {
+      path: 'requirement',
+      name: 'quality-center-requirement',
+      component: () => import('@/views/quality-center/requirement/index.vue'),
+      meta: {
+        locale: '需求管理',
+        requiresAuth: true,
+        icon: 'icon-file',
+        roles: ['*'],
+        permission: 'quality:center:requirement',
+      },
+    },
+    {
+      path: 'requirement/:id',
+      name: 'quality-center-requirement-detail',
+      component: () => import('@/views/quality-center/requirement/detail.vue'),
+      meta: {
+        locale: '需求详情',
+        requiresAuth: true,
+        hideInMenu: true,
+        roles: ['*'],
+        permission: 'quality:center:requirement',
+      },
+    },
+    // 6. 反馈管理
+    {
+      path: 'feedback',
+      name: 'quality-center-feedback',
+      component: () => import('@/views/quality-center/feedback/index.vue'),
+      meta: {
+        locale: '反馈管理',
+        requiresAuth: true,
+        icon: 'icon-message',
+        roles: ['*'],
+        permission: 'quality:center:feedback',
+      },
+    },
+    {
+      path: 'feedback/:id',
+      name: 'quality-center-feedback-detail',
+      component: () => import('@/views/quality-center/feedback/detail.vue'),
+      meta: {
+        locale: '反馈详情',
+        requiresAuth: true,
+        hideInMenu: true,
+        roles: ['*'],
+        permission: 'quality:center:feedback',
+      },
+    },
+    // 7. 关联追踪
     {
       path: 'link-records',
       name: 'quality-center-link-records',
@@ -44,7 +157,7 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:link',
       },
     },
-    // 3. 定时报表
+    // 8. 定时报表
     {
       path: 'scheduled-reports',
       name: 'quality-center-scheduled-reports',
@@ -57,7 +170,7 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:report',
       },
     },
-    // 4. 脑图分析
+    // 9. 脑图分析
     {
       path: 'mindmap',
       name: 'quality-center-mindmap',
@@ -70,7 +183,7 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:mindmap',
       },
     },
-    // 5. 报表模板编辑器
+    // 10. 报表模板编辑器
     {
       path: 'report-templates',
       name: 'quality-center-report-templates',
@@ -83,7 +196,7 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:report-template',
       },
     },
-    // 6. 邮件模板管理
+    // 11. 邮件模板管理
     {
       path: 'email-templates',
       name: 'quality-center-email-templates',
@@ -94,6 +207,19 @@ const RouterConfig: AppRouteRecordRaw = {
         icon: 'icon-email',
         roles: ['super_admin', 'admin'],
         permission: 'quality:center:email-template',
+      },
+    },
+    // 12. 质量报表 ⭐ 新增
+    {
+      path: 'reports',
+      name: 'quality-center-reports',
+      component: () => import('@/views/quality-center/reports/index.vue'),
+      meta: {
+        locale: '质量报表',
+        requiresAuth: true,
+        icon: 'icon-bar-chart',
+        roles: ['*'],
+        permission: 'quality:center:report',
       },
     },
   ],

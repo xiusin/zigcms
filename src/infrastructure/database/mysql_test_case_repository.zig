@@ -29,8 +29,8 @@ const sql = @import("../../application/services/sql/orm.zig");
 
 // 导入领域层定义
 const TestCase = @import("../../domain/entities/test_case.model.zig").TestCase;
-const TestCaseStatus = @import("../../domain/entities/test_case.model.zig").TestCaseStatus;
-const Priority = @import("../../domain/entities/test_case.model.zig").Priority;
+const TestCaseStatus = TestCase.TestCaseStatus;
+const Priority = TestCase.Priority;
 const TestCaseRepository = @import("../../domain/repositories/test_case_repository.zig").TestCaseRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const SearchQuery = @import("../../domain/repositories/test_case_repository.zig").SearchQuery;
@@ -106,9 +106,9 @@ pub const MysqlTestCaseRepository = struct {
 
         // 参数化查询
         _ = q.where("project_id", "=", project_id)
-            .orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+            .orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -144,9 +144,9 @@ pub const MysqlTestCaseRepository = struct {
 
         // 参数化查询
         _ = q.where("module_id", "=", module_id)
-            .orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+            .orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -175,7 +175,7 @@ pub const MysqlTestCaseRepository = struct {
     }
 
     /// 保存测试用例（创建或更新）
-    pub fn save(self: *Self, test_case: *TestCase) !void {
+    pub fn save(_: *Self, test_case: *TestCase) !void {
         if (test_case.id) |id| {
             // 更新现有记录
             _ = try OrmTestCase.UpdateWith(id, .{
@@ -218,8 +218,11 @@ pub const MysqlTestCaseRepository = struct {
 
     /// 删除测试用例
     pub fn delete(self: *Self, id: i32) !void {
-        _ = self;
-        try OrmTestCase.Delete(id);
+        var q = OrmTestCase.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        _ = try q.delete();
     }
 
     /// 批量删除测试用例
@@ -232,7 +235,7 @@ pub const MysqlTestCaseRepository = struct {
         defer q.deinit();
 
         _ = q.whereIn("id", ids);
-        try q.delete();
+        _ = try q.delete();
     }
 
     /// 批量更新测试用例状态
@@ -245,7 +248,7 @@ pub const MysqlTestCaseRepository = struct {
         defer q.deinit();
 
         _ = q.whereIn("id", ids);
-        try q.update(.{
+        _ = try q.update(.{
             .status = status.toString(),
             .updated_at = std.time.timestamp(),
         });
@@ -261,7 +264,7 @@ pub const MysqlTestCaseRepository = struct {
         defer q.deinit();
 
         _ = q.whereIn("id", ids);
-        try q.update(.{
+        _ = try q.update(.{
             .assignee = assignee,
             .updated_at = std.time.timestamp(),
         });
@@ -302,9 +305,9 @@ pub const MysqlTestCaseRepository = struct {
         }
 
         // 分页和排序
-        _ = q.orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+        _ = q.orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();

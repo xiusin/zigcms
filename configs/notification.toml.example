@@ -1,0 +1,262 @@
+# 通知系统配置文件
+# 复制此文件为 notification.toml 并填写实际配置
+
+[notification]
+# 是否启用通知系统
+enabled = true
+
+# 默认通知渠道（email, sms, dingtalk）
+default_channel = "email"
+
+# 是否启用批量发送
+enable_batch = true
+
+# 批量发送最大数量
+batch_size = 100
+
+# 发送失败重试次数
+max_retries = 3
+
+# 重试间隔（秒）
+retry_interval = 5
+
+# ============================================
+# 邮件通知配置
+# ============================================
+[notification.email]
+# 是否启用邮件通知
+enabled = true
+
+# SMTP 服务器地址
+smtp_host = "smtp.example.com"
+
+# SMTP 端口（25, 465, 587）
+smtp_port = 587
+
+# SMTP 用户名
+username = "noreply@example.com"
+
+# SMTP 密码
+password = "your_password_here"
+
+# 发件人地址
+from_address = "noreply@example.com"
+
+# 发件人名称
+from_name = "ZigCMS 质量中心"
+
+# 是否使用 TLS
+use_tls = true
+
+# 是否使用 SSL
+use_ssl = false
+
+# 连接超时（秒）
+timeout = 30
+
+# ============================================
+# 短信通知配置（阿里云短信）
+# ============================================
+[notification.sms]
+# 是否启用短信通知
+enabled = false
+
+# 阿里云 AccessKey ID
+access_key_id = "your_access_key_id"
+
+# 阿里云 AccessKey Secret
+access_key_secret = "your_access_key_secret"
+
+# 短信签名
+sign_name = "ZigCMS"
+
+# 短信模板 ID
+template_code = "SMS_123456"
+
+# API 端点
+endpoint = "dysmsapi.aliyuncs.com"
+
+# 连接超时（秒）
+timeout = 10
+
+# ============================================
+# 钉钉通知配置
+# ============================================
+[notification.dingtalk]
+# 是否启用钉钉通知
+enabled = false
+
+# 钉钉机器人 Webhook URL
+webhook_url = "https://oapi.dingtalk.com/robot/send?access_token=your_token"
+
+# 钉钉机器人签名密钥（可选）
+secret = "your_secret_key"
+
+# 默认消息类型（text, markdown, link, actionCard）
+default_message_type = "markdown"
+
+# @ 所有人
+at_all = false
+
+# @ 指定用户（手机号列表，逗号分隔）
+at_mobiles = ""
+
+# 连接超时（秒）
+timeout = 10
+
+# ============================================
+# 企业微信通知配置
+# ============================================
+[notification.wechat_work]
+# 是否启用企业微信通知
+enabled = false
+
+# 企业微信机器人 Webhook URL
+webhook_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_key"
+
+# 默认消息类型（text, markdown）
+default_message_type = "markdown"
+
+# @ 所有人
+mentioned_list = ["@all"]
+
+# 连接超时（秒）
+timeout = 10
+
+# ============================================
+# 告警规则配置
+# ============================================
+[notification.alerts]
+# 是否启用告警
+enabled = true
+
+# SLA 告警配置
+[notification.alerts.sla]
+# 是否启用 SLA 告警
+enabled = true
+
+# SLA 即将超时告警阈值（百分比）
+warning_threshold = 80
+
+# SLA 已超时告警阈值（百分比）
+critical_threshold = 100
+
+# 告警通知渠道（逗号分隔）
+channels = "email,dingtalk"
+
+# 告警接收人（邮箱或手机号，逗号分隔）
+recipients = "admin@example.com"
+
+# 反馈状态变更告警
+[notification.alerts.feedback_status]
+# 是否启用反馈状态变更告警
+enabled = true
+
+# 需要告警的状态变更（逗号分隔）
+# 可选值：pending, in_progress, resolved, closed, rejected
+trigger_statuses = "resolved,closed"
+
+# 告警通知渠道
+channels = "email"
+
+# 告警接收人
+recipients = "admin@example.com"
+
+# AI 分析完成告警
+[notification.alerts.ai_analysis]
+# 是否启用 AI 分析完成告警
+enabled = true
+
+# 告警通知渠道
+channels = "email,dingtalk"
+
+# 告警接收人
+recipients = "admin@example.com"
+
+# 高优先级反馈告警
+[notification.alerts.high_priority]
+# 是否启用高优先级反馈告警
+enabled = true
+
+# 需要告警的优先级（逗号分隔）
+# 可选值：low, medium, high, critical
+trigger_priorities = "high,critical"
+
+# 告警通知渠道
+channels = "email,sms,dingtalk"
+
+# 告警接收人
+recipients = "admin@example.com,13800138000"
+
+# ============================================
+# 通知模板配置
+# ============================================
+[notification.templates]
+# 反馈创建通知模板
+feedback_created = """
+【质量中心】新反馈提交
+
+反馈ID: {{feedback_id}}
+标题: {{title}}
+类型: {{type}}
+严重程度: {{severity}}
+提交人: {{submitter}}
+提交时间: {{created_at}}
+
+详情: {{url}}
+"""
+
+# 反馈状态变更通知模板
+feedback_status_changed = """
+【质量中心】反馈状态变更
+
+反馈ID: {{feedback_id}}
+标题: {{title}}
+原状态: {{old_status}}
+新状态: {{new_status}}
+操作人: {{operator}}
+操作时间: {{updated_at}}
+
+详情: {{url}}
+"""
+
+# SLA 告警通知模板
+sla_warning = """
+【质量中心】SLA 告警
+
+反馈ID: {{feedback_id}}
+标题: {{title}}
+严重程度: {{severity}}
+SLA 进度: {{sla_progress}}%
+剩余时间: {{remaining_time}}
+
+请尽快处理！
+详情: {{url}}
+"""
+
+# SLA 超时告警模板
+sla_critical = """
+【质量中心】SLA 超时告警
+
+反馈ID: {{feedback_id}}
+标题: {{title}}
+严重程度: {{severity}}
+超时时间: {{overtime}}
+
+请立即处理！
+详情: {{url}}
+"""
+
+# AI 分析完成通知模板
+ai_analysis_completed = """
+【质量中心】AI 分析完成
+
+反馈ID: {{feedback_id}}
+标题: {{title}}
+Bug 类型: {{bug_type}}
+严重程度: {{severity}}
+影响范围: {{impact}}
+建议操作: {{suggested_action}}
+
+详情: {{url}}
+"""

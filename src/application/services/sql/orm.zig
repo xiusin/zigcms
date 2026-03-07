@@ -2579,7 +2579,18 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
             if (std.mem.eql(u8, field_name, "id")) {
                 if (type_info == .optional) {
                     if (value) |v| {
-                        return v <= 0;
+                        const inner_type = @typeInfo(@TypeOf(v));
+                        if (inner_type == .int or inner_type == .comptime_int) {
+                            return v <= 0;
+                        }
+                        // 如果是字符串类型，检查长度
+                        if (inner_type == .pointer) {
+                            // Zig 0.15: 检查是否是切片类型
+                            if (@TypeOf(v) == []const u8 or @TypeOf(v) == []u8) {
+                                return v.len == 0;
+                            }
+                        }
+                        return false;
                     }
                     return true;
                 }

@@ -10,9 +10,9 @@ const sql = @import("../../application/services/sql/orm.zig");
 
 // 导入领域层定义
 const Feedback = @import("../../domain/entities/feedback.model.zig").Feedback;
-const FeedbackType = @import("../../domain/entities/feedback.model.zig").FeedbackType;
-const Severity = @import("../../domain/entities/feedback.model.zig").Severity;
-const FeedbackStatus = @import("../../domain/entities/feedback.model.zig").FeedbackStatus;
+const FeedbackType = Feedback.FeedbackType;
+const Severity = Feedback.Severity;
+const FeedbackStatus = Feedback.FeedbackStatus;
 const FeedbackRepository = @import("../../domain/repositories/feedback_repository.zig").FeedbackRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
@@ -83,9 +83,9 @@ pub const MysqlFeedbackRepository = struct {
         defer q.deinit();
 
         // 按创建时间倒序排列（最新的在前）
-        _ = q.orderBy("created_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+        _ = q.orderBy("created_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -113,7 +113,7 @@ pub const MysqlFeedbackRepository = struct {
     }
 
     /// 保存反馈（创建或更新）
-    pub fn save(self: *Self, feedback: *Feedback) !void {
+    pub fn save(_: *Self, feedback: *Feedback) !void {
         if (feedback.id) |id| {
             // 更新现有记录
             _ = try OrmFeedback.UpdateWith(id, .{
@@ -151,8 +151,10 @@ pub const MysqlFeedbackRepository = struct {
 
     /// 删除反馈
     pub fn delete(self: *Self, id: i32) !void {
-        _ = self;
-        try OrmFeedback.Delete(id);
+        var q = OrmFeedback.query(self.db);
+        defer q.deinit();
+        _ = q.where("id", "=", id);
+        _ = try q.delete();
     }
 
     /// 添加跟进记录
@@ -162,15 +164,15 @@ pub const MysqlFeedbackRepository = struct {
         defer self.freeFeedback(feedback);
 
         // 2. 解析现有跟进记录
-        var follow_ups = std.ArrayList(u8).init(self.allocator);
-        defer follow_ups.deinit();
+        var follow_ups = std.ArrayListUnmanaged(u8){};
+        defer follow_ups.deinit(self.allocator);
 
         // 如果已有跟进记录，先复制
         if (feedback.follow_ups.len > 2) { // 不是空数组 "[]"
-            try follow_ups.appendSlice(feedback.follow_ups[0 .. feedback.follow_ups.len - 1]); // 去掉最后的 ']'
-            try follow_ups.appendSlice(",");
+            try follow_ups.appendSlice(self.allocator, feedback.follow_ups[0 .. feedback.follow_ups.len - 1]); // 去掉最后的 ']'
+            try follow_ups.appendSlice(self.allocator, ",");
         } else {
-            try follow_ups.appendSlice("[");
+            try follow_ups.appendSlice(self.allocator, "[");
         }
 
         // 3. 添加新的跟进记录（JSON 格式）
@@ -183,7 +185,7 @@ pub const MysqlFeedbackRepository = struct {
         );
         defer self.allocator.free(follow_up_json);
 
-        try follow_ups.appendSlice(follow_up_json);
+        try follow_ups.appendSlice(self.allocator, follow_up_json);
 
         // 4. 更新反馈
         _ = try OrmFeedback.UpdateWith(feedback_id, .{
@@ -204,7 +206,7 @@ pub const MysqlFeedbackRepository = struct {
         defer q.deinit();
 
         _ = q.whereIn("id", ids);
-        try q.update(.{
+        _ = try q.update(.{
             .assignee = assignee,
             .updated_at = std.time.timestamp(),
         });
@@ -220,7 +222,7 @@ pub const MysqlFeedbackRepository = struct {
         defer q.deinit();
 
         _ = q.whereIn("id", ids);
-        try q.update(.{
+        _ = try q.update(.{
             .status = status.toString(),
             .updated_at = std.time.timestamp(),
         });

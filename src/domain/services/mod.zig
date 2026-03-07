@@ -170,3 +170,7 @@ pub const DomainServices = struct {
     pub const Content = ContentDomainService;
     pub const Permission = PermissionDomainService;
 };
+
+// 导出接口
+pub const notifier_interface = @import("notifier_interface.zig");
+pub const ai_generator_interface = @import("ai_generator_interface.zig");

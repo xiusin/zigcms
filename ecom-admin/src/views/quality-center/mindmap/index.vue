@@ -30,6 +30,8 @@
               <a-doption value="svg">导出 SVG</a-doption>
               <a-doption value="png">导出 PNG</a-doption>
               <a-doption value="png-watermark">导出 PNG（含水印）</a-doption>
+              <a-doption value="pdf">导出 PDF</a-doption>
+              <a-doption value="pdf-watermark">导出 PDF（含水印）</a-doption>
             </template>
           </a-dropdown>
         </a-space>
@@ -152,6 +154,7 @@ import {
   buildFeedbackMindMap,
   exportMindMapSVG,
   exportMindMapPNG,
+  exportMindMapPDF,
 } from '@/utils/export';
 
 const store = useQualityCenterStore();
@@ -403,9 +406,24 @@ async function handleExport(value: string | number | Record<string, unknown> | u
     } else if (value === 'png-watermark') {
       await exportMindMapPNG(tree, `${filename}_水印.png`, watermarkEnabled.value ? undefined : false);
       Message.success('PNG(含水印)导出成功');
+    } else if (value === 'pdf') {
+      await exportMindMapPDF(tree, `${filename}.pdf`, {
+        title: modeLabel.value,
+        orientation: 'landscape',
+        watermark: false,
+      });
+      Message.success('PDF导出成功');
+    } else if (value === 'pdf-watermark') {
+      await exportMindMapPDF(tree, `${filename}_水印.pdf`, {
+        title: modeLabel.value,
+        orientation: 'landscape',
+        watermark: watermarkEnabled.value ? undefined : false,
+      });
+      Message.success('PDF(含水印)导出成功');
     }
     console.log(`[质量中心][脑图导出][${value}][${filename}]`);
-  } catch {
+  } catch (error) {
+    console.error('[质量中心][脑图导出][失败]', error);
     Message.error('导出失败');
   }
 }

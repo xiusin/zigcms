@@ -23,7 +23,7 @@ const Severity = @import("../../domain/entities/feedback.model.zig").Severity;
 const FeedbackRepository = @import("../../domain/repositories/feedback_repository.zig").FeedbackRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
-const CacheInterface = @import("../../infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("cache/contract.zig").CacheInterface;
 
 const Allocator = std.mem.Allocator;
 

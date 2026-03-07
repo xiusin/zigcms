@@ -9,7 +9,7 @@ const sql = @import("../../application/services/sql/orm.zig");
 
 // 导入领域层定义
 const TestExecution = @import("../../domain/entities/test_execution.model.zig").TestExecution;
-const ExecutionStatus = @import("../../domain/entities/test_execution.model.zig").ExecutionStatus;
+const ExecutionStatus = TestExecution.ExecutionStatus;
 const TestExecutionRepository = @import("../../domain/repositories/test_execution_repository.zig").TestExecutionRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
@@ -76,9 +76,9 @@ pub const MysqlTestExecutionRepository = struct {
 
         // 参数化查询，按执行时间倒序排列（最新的在前）
         _ = q.where("test_case_id", "=", test_case_id)
-            .orderBy("executed_at", "DESC")
-            .limit(query.page_size)
-            .offset((query.page - 1) * query.page_size);
+            .orderBy("executed_at", sql.OrderDir.desc)
+            .limit(@intCast(query.page_size))
+            .offset(@intCast((query.page - 1) * query.page_size));
 
         // 执行查询
         const rows = try q.get();
@@ -107,7 +107,7 @@ pub const MysqlTestExecutionRepository = struct {
     }
 
     /// 保存测试执行记录（创建或更新）
-    pub fn save(self: *Self, execution: *TestExecution) !void {
+    pub fn save(_: *Self, execution: *TestExecution) !void {
         if (execution.id) |id| {
             // 更新现有记录
             _ = try OrmTestExecution.UpdateWith(id, .{
@@ -136,8 +136,11 @@ pub const MysqlTestExecutionRepository = struct {
 
     /// 删除测试执行记录
     pub fn delete(self: *Self, id: i32) !void {
-        _ = self;
-        try OrmTestExecution.Delete(id);
+        var q = OrmTestExecution.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        _ = try q.delete();
     }
 
     // ========================================================================

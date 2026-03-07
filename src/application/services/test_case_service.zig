@@ -65,7 +65,7 @@ const TestExecutionRepository = @import("../../domain/repositories/test_executio
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const SearchQuery = @import("../../domain/repositories/test_case_repository.zig").SearchQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;
-const CacheInterface = @import("../../infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("cache/contract.zig").CacheInterface;
 const qc_cache = @import("../../infrastructure/cache/quality_center_cache.zig");
 
 const Allocator = std.mem.Allocator;
@@ -260,7 +260,7 @@ pub const TestCaseService = struct {
         }
 
         var module_it = module_ids.keyIterator();
-        while (module_it.next()) |module_id| {
+        while (module_it.next()) |_| {
             // 注意：这里无法获取 project_id，需要清除所有模块缓存
             // 实际实现中可以优化为清除特定模块的缓存
             try self.cache.delByPrefix(qc_cache.PREFIX.MODULE);

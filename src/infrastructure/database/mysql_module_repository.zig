@@ -79,7 +79,7 @@ pub const MysqlModuleRepository = struct {
 
         // 参数化查询，按 sort_order 排序
         _ = q.where("project_id", "=", project_id)
-            .orderBy("sort_order", "ASC");
+            .orderBy("sort_order", sql.OrderDir.asc);
 
         // 执行查询
         const rows = try q.get();
@@ -109,14 +109,14 @@ pub const MysqlModuleRepository = struct {
 
         // 2. 构建树形结构
         // 先找出所有根节点（parent_id 为 null）
-        var root_modules = std.ArrayList(Module).init(self.allocator);
-        defer root_modules.deinit();
+        var root_modules = std.ArrayListUnmanaged(Module){};
+        defer root_modules.deinit(self.allocator);
 
         for (all_modules) |module| {
             if (module.parent_id == null) {
                 // 深拷贝根节点
                 const root = try self.deepCopyModule(module);
-                try root_modules.append(root);
+                try root_modules.append(self.allocator, root);
             }
         }
 
@@ -125,11 +125,11 @@ pub const MysqlModuleRepository = struct {
             try self.buildSubTree(root, all_modules);
         }
 
-        return try root_modules.toOwnedSlice();
+        return try root_modules.toOwnedSlice(self.allocator);
     }
 
     /// 保存模块（创建或更新）
-    pub fn save(self: *Self, module: *Module) !void {
+    pub fn save(_: *Self, module: *Module) !void {
         if (module.id) |id| {
             // 更新现有记录
             _ = try OrmModule.UpdateWith(id, .{
@@ -160,10 +160,13 @@ pub const MysqlModuleRepository = struct {
 
     /// 删除模块
     pub fn delete(self: *Self, id: i32) !void {
-        _ = self;
         // 注意：删除模块会级联删除子模块和关联的测试用例
         // 实际应用中可能需要先检查是否有子模块或测试用例
-        try OrmModule.Delete(id);
+        var q = OrmModule.query(self.db);
+        defer q.deinit();
+        
+        _ = q.where("id", "=", id);
+        _ = try q.delete();
     }
 
     /// 移动模块（拖拽调整层级和顺序）
@@ -240,8 +243,8 @@ pub const MysqlModuleRepository = struct {
 
     /// 递归构建子树
     fn buildSubTree(self: *Self, parent: *Module, all_modules: []const Module) !void {
-        var children = std.ArrayList(Module).init(self.allocator);
-        defer children.deinit();
+        var children = std.ArrayListUnmanaged(Module){};
+        defer children.deinit(self.allocator);
 
         // 找出所有子模块
         for (all_modules) |module| {
@@ -249,14 +252,14 @@ pub const MysqlModuleRepository = struct {
                 if (pid == parent.id.?) {
                     // 深拷贝子模块
                     const child = try self.deepCopyModule(module);
-                    try children.append(child);
+                    try children.append(self.allocator, child);
                 }
             }
         }
 
         // 如果有子模块，递归构建子树
         if (children.items.len > 0) {
-            parent.children = try children.toOwnedSlice();
+            parent.children = try children.toOwnedSlice(self.allocator);
 
             for (parent.children.?) |*child| {
                 try self.buildSubTree(child, all_modules);

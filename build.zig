@@ -331,7 +331,8 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
     // Code Generation Tool (from commands/)
     // ========================================================================
-    _ = createCommandTool(b, "codegen", "cmd/codegen/main.zig", "Run the code generation tool (model, controller, DTO)", target, optimize);
+    // TODO: 创建 cmd/codegen/main.zig 后取消注释
+    // _ = createCommandTool(b, "codegen", "cmd/codegen/main.zig", "Run the code generation tool (model, controller, DTO)", target, optimize);
 
     // ========================================================================
     // Database Migration Tool (from commands/)

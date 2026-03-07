@@ -1,6 +1,6 @@
 const std = @import("std");
 const TestCase = @import("../entities/test_case.model.zig").TestCase;
-const TestCaseStatus = @import("../entities/test_case.model.zig").TestCaseStatus;
+const TestCaseStatus = TestCase.TestCaseStatus;
 
 /// 分页查询参数
 pub const PageQuery = struct {

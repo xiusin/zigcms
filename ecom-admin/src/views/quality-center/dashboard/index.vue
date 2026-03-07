@@ -1,913 +1,496 @@
-/**
- * 质量中心 Dashboard - 融合自动化测试+反馈系统的统一数据总览
- * 【高级特性】响应式栅格布局、Pinia状态驱动、多图表联动、骨架屏优化
- */
 <template>
   <div class="quality-dashboard">
-    <!-- 加载骨架屏 -->
-    <DashboardSkeleton v-if="isInitialLoading" />
+    <!-- 页面头部 -->
+    <div class="dashboard-header">
+      <h2 class="dashboard-title">质量中心数据看板</h2>
+      <div class="dashboard-actions">
+        <!-- 时间范围筛选 -->
+        <a-radio-group v-model="timeRange" type="button" @change="handleTimeRangeChange">
+          <a-radio value="7">最近 7 天</a-radio>
+          <a-radio value="30">最近 30 天</a-radio>
+          <a-radio value="90">最近 90 天</a-radio>
+          <a-radio value="custom">自定义</a-radio>
+        </a-radio-group>
 
-    <!-- 主内容 -->
-    <div v-else ref="dashboardContentRef">
-    <!-- 顶部操作栏 -->
-    <div class="dashboard-toolbar">
-      <div class="toolbar-left">
-        <a-space>
-          <icon-shield-check :style="{ fontSize: '20px', color: '#165DFF' }" />
-          <span class="toolbar-title">质量中心</span>
-          <a-tag color="arcoblue" size="small">Dashboard</a-tag>
-        </a-space>
-      </div>
-      <div class="toolbar-right">
-        <a-space>
-          <!-- WebSocket状态指示器 -->
-          <a-tooltip :content="store.wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'">
-            <a-badge :count="store.wsNotifications.length" :max-count="99" :dot="false">
-              <a-button size="small" :status="store.wsConnected ? 'success' : 'normal'" @click="showWsNotifications = true">
-                <template #icon><icon-notification /></template>
-              </a-button>
-            </a-badge>
-          </a-tooltip>
-          <!-- AI分析入口 -->
-          <AIAnalysisPanel default-type="quality_overview" module="dashboard" />
-          <a-button size="small" @click="handleRefresh" :loading="isRefreshing">
-            <template #icon><icon-refresh /></template>
-            刷新
-          </a-button>
-          <ExportToolbar
-            :dashboard-ref="dashboardContentRef"
-            :module-quality="store.moduleQuality"
-            :overview="store.overview as unknown as Record<string, unknown>"
-            :bug-distribution="store.bugDistribution as unknown as Record<string, unknown>[]"
-            :feedback-distribution="store.feedbackDistribution as unknown as Record<string, unknown>[]"
-          />
-          <a-dropdown @select="handleNavDropdown">
-            <a-button size="small">
-              <template #icon><icon-apps /></template>
-              更多功能
-              <icon-down />
-            </a-button>
-            <template #content>
-              <a-doption value="scheduled-reports"><icon-calendar /> 定时报表</a-doption>
-              <a-doption value="report-templates"><icon-file /> 报表模板</a-doption>
-              <a-doption value="email-templates"><icon-email /> 邮件模板</a-doption>
-              <a-doption value="mindmap"><icon-mind-mapping /> 脑图分析</a-doption>
-            </template>
-          </a-dropdown>
-          <a-button size="small" @click="showLayoutConfig = true">
-            <template #icon><icon-settings /></template>
-            自定义布局
-          </a-button>
-        </a-space>
+        <!-- 自定义时间范围 -->
+        <a-range-picker
+          v-if="timeRange === 'custom'"
+          v-model="customDateRange"
+          class="ml-3"
+          @change="handleCustomDateChange"
+        />
+
+        <!-- 导出按钮 -->
+        <a-button type="primary" class="ml-3" @click="handleExport">
+          <template #icon>
+            <icon-download />
+          </template>
+          导出报告
+        </a-button>
       </div>
     </div>
 
-    <!-- WebSocket实时报表状态通知 -->
-    <a-alert v-if="store.wsReportStatus" type="info" closable class="ws-report-alert" @close="store.wsReportStatus = null as any">
-      <template #title>报表执行状态更新</template>
-      报表「{{ store.wsReportStatus.report_name }}」{{ wsStatusText(store.wsReportStatus.status) }}
-      <span v-if="store.wsReportStatus.progress !== undefined"> — 进度 {{ store.wsReportStatus.progress }}%</span>
-    </a-alert>
-
-    <!-- WebSocket通知抽屉 -->
-    <a-drawer v-model:visible="showWsNotifications" title="实时通知" :width="400" unmount-on-close>
-      <div v-if="!store.wsNotifications.length" style="text-align:center;padding:40px">
-        <a-empty description="暂无通知" />
-      </div>
-      <a-list v-else :data="store.wsNotifications" size="small">
-        <template #item="{ item }">
-          <a-list-item>
-            <a-list-item-meta :title="item.title" :description="item.content" />
-            <template #actions>
-              <a-tag :color="item.level === 'error' ? 'red' : item.level === 'warning' ? 'orange' : 'blue'" size="small">{{ item.level }}</a-tag>
-            </template>
-          </a-list-item>
-        </template>
-      </a-list>
-      <template #footer>
-        <a-button long @click="store.clearNotifications(); showWsNotifications = false">清除所有通知</a-button>
-      </template>
-    </a-drawer>
-
-    <!-- 顶部统计卡片区域 -->
-    <a-row :gutter="[16, 16]" class="stat-cards">
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="测试通过率"
-            :value="store.overview?.pass_rate ?? 0"
-            :precision="1"
-            suffix="%"
-            :value-style="{ color: passRateColor }"
-          >
-            <template #prefix>
-              <icon-check-circle-fill />
-            </template>
-          </a-statistic>
-        </a-card>
+    <!-- 数据卡片 -->
+    <a-row :gutter="16" class="dashboard-stats">
+      <a-col :span="6">
+        <a-statistic
+          title="测试用例总数"
+          :value="stats.totalCases"
+          :value-style="{ color: '#165DFF' }"
+        >
+          <template #prefix>
+            <icon-file />
+          </template>
+        </a-statistic>
       </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="总测试任务"
-            :value="store.overview?.total_tasks ?? 0"
-            :value-style="{ color: '#165DFF' }"
-          >
-            <template #prefix>
-              <icon-file />
-            </template>
-          </a-statistic>
-        </a-card>
+      <a-col :span="6">
+        <a-statistic
+          title="执行次数"
+          :value="stats.executionCount"
+          :value-style="{ color: '#00B42A' }"
+        >
+          <template #prefix>
+            <icon-play-arrow />
+          </template>
+        </a-statistic>
       </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="活跃Bug"
-            :value="store.overview?.active_bugs ?? 0"
-            :value-style="{ color: '#F53F3F' }"
-          >
-            <template #prefix>
-              <icon-bug />
-            </template>
-          </a-statistic>
-        </a-card>
+      <a-col :span="6">
+        <a-statistic
+          title="通过率"
+          :value="stats.passRate"
+          suffix="%"
+          :precision="2"
+          :value-style="{ color: '#F77234' }"
+        >
+          <template #prefix>
+            <icon-check-circle />
+          </template>
+        </a-statistic>
       </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="待处理反馈"
-            :value="store.overview?.pending_feedbacks ?? 0"
-            :value-style="{ color: '#FF7D00' }"
-          >
-            <template #prefix>
-              <icon-message />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="AI修复率"
-            :value="store.overview?.ai_fix_rate ?? 0"
-            :precision="1"
-            suffix="%"
-            :value-style="{ color: '#722ED1' }"
-          >
-            <template #prefix>
-              <icon-robot />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="本周执行"
-            :value="store.overview?.weekly_executions ?? 0"
-            :value-style="{ color: '#0FC6C2' }"
-          >
-            <template #prefix>
-              <icon-play-circle />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="反馈转任务"
-            :value="store.overview?.feedback_to_task_count ?? 0"
-            :value-style="{ color: '#F7BA1E' }"
-          >
-            <template #prefix>
-              <icon-swap />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :xs="12" :sm="6" :md="6" :lg="3">
-        <a-card class="stat-card" :loading="store.loading.overview">
-          <a-statistic
-            title="平均修复时长"
-            :value="store.overview?.avg_bug_fix_hours ?? 0"
-            :precision="1"
-            suffix="h"
-            :value-style="{ color: '#86909C' }"
-          >
-            <template #prefix>
-              <icon-clock-circle />
-            </template>
-          </a-statistic>
-        </a-card>
+      <a-col :span="6">
+        <a-statistic
+          title="Bug 数量"
+          :value="stats.bugCount"
+          :value-style="{ color: '#F53F3F' }"
+        >
+          <template #prefix>
+            <icon-bug />
+          </template>
+        </a-statistic>
       </a-col>
     </a-row>
 
-    <!-- 第二行：AI洞察 + 质量趋势 -->
-    <a-row :gutter="[16, 16]" style="margin-top: 16px">
-      <!-- AI质量洞察 -->
-      <a-col :xs="24" :lg="8">
-        <a-card title="AI质量洞察" :loading="store.loading.aiInsights" class="insight-card chart-card">
-          <template #extra>
-            <a-tag color="arcoblue" size="small">
-              <icon-robot /> AI分析
-            </a-tag>
-          </template>
-          <div v-if="store.aiInsights.length === 0" class="empty-state">
-            <a-empty description="暂无洞察数据" />
-          </div>
-          <div v-else class="insight-list">
-            <div
-              v-for="insight in store.aiInsights"
-              :key="insight.id"
-              class="insight-item"
-              :class="`insight-${insight.severity}`"
-            >
-              <div class="insight-header">
-                <a-tag
-                  :color="insightSeverityColor(insight.severity)"
-                  size="small"
-                >
-                  {{ insightSeverityText(insight.severity) }}
-                </a-tag>
-                <a-tag size="small" :color="insightTypeColor(insight.type)">
-                  {{ insightTypeText(insight.type) }}
-                </a-tag>
-                <span v-if="insight.module" class="insight-module">
-                  {{ insight.module }}
-                </span>
-              </div>
-              <div class="insight-title">{{ insight.title }}</div>
-              <div class="insight-desc">{{ insight.description }}</div>
-              <div v-if="insight.action_url" class="insight-action">
-                <a-link @click="handleInsightAction(insight)">
-                  {{ insight.action_text || '查看详情' }}
-                  <icon-right />
-                </a-link>
-              </div>
-            </div>
-          </div>
-        </a-card>
-      </a-col>
+    <!-- 质量分析面板 -->
+    <QualityAnalysisPanel
+      v-if="qualityMetrics"
+      :metrics="qualityMetrics"
+      :auto-refresh="true"
+      :refresh-interval="60000"
+      @refresh="loadStatistics"
+    />
 
-      <!-- 质量趋势图 - ECharts折线图 -->
-      <a-col :xs="24" :lg="16">
-        <a-card title="质量趋势" :loading="store.loading.trend" class="trend-card chart-card">
-          <template #extra>
-            <a-radio-group
-              v-model="trendPeriod"
-              type="button"
-              size="small"
-              @change="handleTrendPeriodChange"
-            >
-              <a-radio value="week">近7天</a-radio>
-              <a-radio value="month">近30天</a-radio>
-              <a-radio value="quarter">近90天</a-radio>
-            </a-radio-group>
-          </template>
-          <div class="trend-chart-container">
-            <div v-if="!store.trend?.trend_data?.length" class="empty-state">
-              <a-empty description="暂无趋势数据" />
-            </div>
-            <QualityTrendChart
-              v-else
-              :data="store.trend.trend_data"
-              :loading="store.loading.trend"
-              @date-click="handleTrendDateClick"
-            />
-          </div>
-        </a-card>
-      </a-col>
-    </a-row>
-
-    <!-- 第三行：模块质量 + Bug分布 + 反馈分布 -->
-    <a-row :gutter="[16, 16]" style="margin-top: 16px">
-      <!-- 模块质量分布 -->
-      <a-col :xs="24" :lg="10">
-        <a-card title="模块质量分布" :loading="store.loading.moduleQuality" class="chart-card">
-          <template #extra>
-            <a-link @click="$router.push('/auto-test/report')">查看报告</a-link>
-          </template>
-          <a-table
-            :columns="moduleColumns"
-            :data="store.moduleQuality"
-            :pagination="false"
-            size="small"
-            stripe
-          >
-            <template #pass_rate="{ record }">
-              <a-progress
-                :percent="record.pass_rate / 100"
-                :status="record.pass_rate >= 90 ? 'success' : record.pass_rate >= 70 ? 'warning' : 'danger'"
-                size="small"
-                style="width: 100px"
-              />
-              <span style="margin-left: 8px; font-size: 12px">{{ record.pass_rate }}%</span>
-            </template>
-            <template #bug_count="{ record }">
-              <a-tag :color="record.bug_count > 5 ? 'red' : record.bug_count > 2 ? 'orange' : 'green'" size="small">
-                {{ record.bug_count }}
-              </a-tag>
-            </template>
-          </a-table>
-        </a-card>
-      </a-col>
-
-      <!-- Bug类型分布 - ECharts饼图 -->
-      <a-col :xs="24" :sm="12" :lg="7">
-        <a-card title="Bug类型分布" :loading="store.loading.bugDistribution" class="chart-card">
-          <template #extra>
-            <a-link @click="$router.push('/auto-test/bug')">查看全部</a-link>
-          </template>
-          <div v-if="store.bugDistribution.length === 0" class="empty-state">
-            <a-empty description="暂无数据" />
-          </div>
-          <BugDistributionChart
-            v-else
-            :data="store.bugDistribution"
-            :loading="store.loading.bugDistribution"
-            @type-click="handleBugTypeClick"
+    <!-- 图表区域 -->
+    <a-row :gutter="16" class="dashboard-charts">
+      <!-- 模块质量分布（使用交互式图表） -->
+      <a-col :span="12">
+        <a-card title="模块质量分布" :bordered="false">
+          <InteractiveChart
+            :config="moduleChartConfig"
+            :export-formats="['png', 'csv']"
+            height="350px"
+            @click="handleModuleClick"
           />
         </a-card>
       </a-col>
 
-      <!-- 反馈状态分布 - ECharts环形图 -->
-      <a-col :xs="24" :sm="12" :lg="7">
-        <a-card title="反馈状态分布" :loading="store.loading.feedbackDistribution" class="chart-card">
-          <template #extra>
-            <a-link @click="$router.push('/feedback/list')">查看全部</a-link>
-          </template>
-          <div v-if="store.feedbackDistribution.length === 0" class="empty-state">
-            <a-empty description="暂无数据" />
-          </div>
-          <FeedbackDistributionChart
-            v-else
-            :data="store.feedbackDistribution"
-            :loading="store.loading.feedbackDistribution"
-            @status-click="handleFeedbackStatusClick"
+      <!-- Bug 类型分布（使用交互式图表） -->
+      <a-col :span="12">
+        <a-card title="Bug 类型分布" :bordered="false">
+          <InteractiveChart
+            :config="bugChartConfig"
+            :export-formats="['png', 'csv']"
+            height="350px"
           />
         </a-card>
       </a-col>
     </a-row>
 
-    <!-- 第四行：活动流 + 关联记录 -->
-    <a-row :gutter="[16, 16]" style="margin-top: 16px">
-      <!-- 最近活动 -->
-      <a-col :xs="24" :lg="14">
-        <a-card title="最近活动" :loading="store.loading.activities" class="chart-card">
-          <template #extra>
-            <a-space>
-              <a-select
-                v-model="activityFilter"
-                placeholder="筛选类型"
-                allow-clear
-                size="small"
-                style="width: 120px"
-                @change="handleActivityFilter"
-              >
-                <a-option value="test_pass">测试通过</a-option>
-                <a-option value="test_fail">测试失败</a-option>
-                <a-option value="bug_found">发现Bug</a-option>
-                <a-option value="bug_fixed">Bug修复</a-option>
-                <a-option value="feedback_created">新反馈</a-option>
-                <a-option value="feedback_resolved">反馈解决</a-option>
-                <a-option value="ai_analysis">AI分析</a-option>
-                <a-option value="ai_fix">AI修复</a-option>
-              </a-select>
-            </a-space>
-          </template>
-          <a-timeline v-if="store.activities.length > 0" class="activity-timeline">
-            <a-timeline-item
-              v-for="activity in store.activities"
-              :key="activity.id"
-              :dot-color="activityColor(activity.type)"
-            >
-              <div class="activity-item">
-                <div class="activity-header">
-                  <a-tag :color="activityColor(activity.type)" size="small">
-                    {{ activity.title }}
-                  </a-tag>
-                  <span class="activity-module">{{ activity.module }}</span>
-                  <span class="activity-time">{{ activity.created_at }}</span>
-                </div>
-                <div class="activity-desc">{{ activity.description }}</div>
-                <div class="activity-user">
-                  <a-avatar :size="20" :style="{ marginRight: '4px' }">
-                    {{ activity.user_name?.[0] }}
-                  </a-avatar>
-                  <span>{{ activity.user_name }}</span>
-                </div>
-              </div>
-            </a-timeline-item>
-          </a-timeline>
-          <a-empty v-else description="暂无活动记录" />
+    <a-row :gutter="16" class="dashboard-charts">
+      <!-- 反馈状态分布 -->
+      <a-col :span="12">
+        <a-card title="反馈状态分布" :bordered="false">
+          <InteractiveChart
+            :config="feedbackChartConfig"
+            :export-formats="['png', 'csv']"
+            height="350px"
+          />
         </a-card>
       </a-col>
 
-      <!-- 关联记录 -->
-      <a-col :xs="24" :lg="10">
-        <a-card title="关联记录" :loading="store.loading.linkRecords" class="chart-card">
-          <template #extra>
-            <a-button type="primary" size="small" @click="showFeedbackToTaskModal = true">
-              <icon-swap /> 反馈转任务
-            </a-button>
-          </template>
-          <a-table
-            :columns="linkColumns"
-            :data="store.linkRecords"
-            :pagination="{ pageSize: 5, simple: true }"
-            size="small"
-          >
-            <template #source="{ record }">
-              <a-tag :color="linkTypeColor(record.source_type)" size="small">
-                {{ linkTypeText(record.source_type) }}
-              </a-tag>
-              <a-tooltip :content="record.source_title">
-                <span class="link-title">{{ truncate(record.source_title, 12) }}</span>
-              </a-tooltip>
-            </template>
-            <template #target="{ record }">
-              <a-tag :color="linkTypeColor(record.target_type)" size="small">
-                {{ linkTypeText(record.target_type) }}
-              </a-tag>
-              <a-tooltip :content="record.target_title">
-                <span class="link-title">{{ truncate(record.target_title, 12) }}</span>
-              </a-tooltip>
-            </template>
-            <template #created_at="{ record }">
-              <span class="link-time">{{ record.created_at }}</span>
-            </template>
-          </a-table>
+      <!-- 质量趋势（支持钻取） -->
+      <a-col :span="12">
+        <a-card title="质量趋势" :bordered="false">
+          <InteractiveChart
+            :config="trendChartConfig"
+            :drill-down="trendDrillDown"
+            :export-formats="['png', 'csv']"
+            :realtime="true"
+            :realtime-interval="30000"
+            height="350px"
+            @drill-down="handleTrendDrillDown"
+            @data-update="loadTrendData"
+          />
         </a-card>
       </a-col>
     </a-row>
 
-    <!-- 反馈转测试任务弹窗 -->
-    <FeedbackToTaskModal
-      v-model:visible="showFeedbackToTaskModal"
-      @success="handleFeedbackToTaskSuccess"
+    <!-- 对比分析面板 -->
+    <ComparisonPanel
+      :modules="modules"
+      :projects="projects"
+      @compare="handleCompare"
     />
-
-    <!-- 布局配置抽屉 -->
-    <LayoutConfig
-      v-model:visible="showLayoutConfig"
-      @save="handleLayoutSave"
-    />
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted } from 'vue';
 import { Message } from '@arco-design/web-vue';
-import { useQualityCenterStore } from '@/store/modules/quality-center';
-import FeedbackToTaskModal from '../components/FeedbackToTaskModal.vue';
-import QualityTrendChart from '../components/QualityTrendChart.vue';
-import BugDistributionChart from '../components/BugDistributionChart.vue';
-import FeedbackDistributionChart from '../components/FeedbackDistributionChart.vue';
-import DashboardSkeleton from '../components/DashboardSkeleton.vue';
-import ExportToolbar from '../components/ExportToolbar.vue';
-import LayoutConfig from '../components/LayoutConfig.vue';
-import AIAnalysisPanel from '../components/AIAnalysisPanel.vue';
-import type { DashboardCardConfig } from '../components/LayoutConfig.vue';
-import type { AIQualityInsight } from '@/types/quality-center';
-import type { ReportStatusPayload } from '@/utils/websocket';
+import {
+  IconDownload,
+  IconFile,
+  IconPlayArrow,
+  IconCheckCircle,
+  IconBug,
+} from '@arco-design/web-vue/es/icon';
+import InteractiveChart from '@/components/chart/InteractiveChart.vue';
+import QualityAnalysisPanel from '@/components/quality/QualityAnalysisPanel.vue';
+import ComparisonPanel from '@/components/quality/ComparisonPanel.vue';
+import { getStatistics, exportChart } from '@/api/quality-center';
+import type { ChartConfig } from '@/composables/useInteractiveChart';
+import type { QualityMetrics } from '@/composables/useQualityAnalysis';
 
-const router = useRouter();
-const store = useQualityCenterStore();
+// 时间范围
+const timeRange = ref<string>('7');
+const customDateRange = ref<[string, string]>();
 
-// ========== 状态 ==========
-const isInitialLoading = ref(true);
-const isRefreshing = ref(false);
-const trendPeriod = ref<'week' | 'month' | 'quarter'>('week');
-const activityFilter = ref<string | undefined>(undefined);
-const showFeedbackToTaskModal = ref(false);
-const showLayoutConfig = ref(false);
-const showWsNotifications = ref(false);
-const dashboardContentRef = ref<HTMLElement | null>(null);
-
-// ========== 计算属性 ==========
-const passRateColor = computed(() => {
-  const rate = store.overview?.pass_rate ?? 0;
-  if (rate >= 90) return '#00B42A';
-  if (rate >= 70) return '#FF7D00';
-  return '#F53F3F';
+// 统计数据
+const stats = ref({
+  totalCases: 0,
+  executionCount: 0,
+  passRate: 0,
+  bugCount: 0,
 });
 
-// 模块质量表格列
-const moduleColumns = [
-  { title: '模块', dataIndex: 'module_name', width: 100 },
-  { title: '通过率', slotName: 'pass_rate', width: 160 },
-  { title: 'Bug数', slotName: 'bug_count', width: 70 },
-  { title: '用例数', dataIndex: 'case_count', width: 70 },
-  { title: '反馈数', dataIndex: 'feedback_count', width: 70 },
-];
-
-// 关联记录表格列
-const linkColumns = [
-  { title: '来源', slotName: 'source', width: 160 },
-  { title: '目标', slotName: 'target', width: 160 },
-  { title: '时间', slotName: 'created_at', width: 100 },
-];
-
-// ========== 方法 ==========
-
-/** 洞察严重程度颜色 */
-function insightSeverityColor(severity: string): string {
-  const map: Record<string, string> = { high: 'red', medium: 'orange', low: 'green' };
-  return map[severity] || 'blue';
-}
-
-/** 洞察严重程度文本 */
-function insightSeverityText(severity: string): string {
-  const map: Record<string, string> = { high: '高风险', medium: '中等', low: '低' };
-  return map[severity] || severity;
-}
-
-/** 洞察类型颜色 */
-function insightTypeColor(type: string): string {
-  const map: Record<string, string> = { risk: 'red', suggestion: 'blue', anomaly: 'orange', trend: 'green' };
-  return map[type] || 'gray';
-}
-
-/** 洞察类型文本 */
-function insightTypeText(type: string): string {
-  const map: Record<string, string> = { risk: '风险', suggestion: '建议', anomaly: '异常', trend: '趋势' };
-  return map[type] || type;
-}
-
-/** 活动类型颜色 */
-function activityColor(type: string): string {
-  const map: Record<string, string> = {
-    test_pass: '#00B42A', test_fail: '#F53F3F', bug_found: '#FF7D00',
-    bug_fixed: '#00B42A', feedback_created: '#165DFF', feedback_resolved: '#0FC6C2',
-    ai_analysis: '#722ED1', ai_fix: '#722ED1',
-  };
-  return map[type] || '#86909C';
-}
-
-/** 关联类型颜色 */
-function linkTypeColor(type: string): string {
-  const map: Record<string, string> = {
-    feedback: 'blue', bug: 'red', task: 'green', case: 'purple',
-  };
-  return map[type] || 'gray';
-}
-
-/** 关联类型文本 */
-function linkTypeText(type: string): string {
-  const map: Record<string, string> = {
-    feedback: '反馈', bug: 'Bug', task: '任务', case: '用例',
-  };
-  return map[type] || type;
-}
-
-/** 文本截断 */
-function truncate(text: string, maxLen: number): string {
-  return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;
-}
-
-/** 趋势周期切换 */
-function handleTrendPeriodChange(val: string | number | boolean) {
-  store.fetchTrend(val as 'week' | 'month' | 'quarter');
-}
-
-/** 趋势图日期点击 - 数据钻取 */
-function handleTrendDateClick(date: string) {
-  console.log('[质量中心][趋势图点击]', date);
-  Message.info(`查看 ${date} 的详细数据`);
-  // 可以跳转到详细页面或打开弹窗展示该日期的详细数据
-  router.push(`/auto-test/execution?date=${date}`);
-}
-
-/** Bug类型点击 - 跳转到Bug列表并筛选 */
-function handleBugTypeClick(type: string) {
-  console.log('[质量中心][Bug类型点击]', type);
-  Message.info(`查看${type}类型的Bug列表`);
-  router.push(`/auto-test/bug?type=${type}`);
-}
-
-/** 反馈状态点击 - 跳转到反馈列表并筛选 */
-function handleFeedbackStatusClick(status: number) {
-  console.log('[质量中心][反馈状态点击]', status);
-  const statusMap: Record<number, string> = {
-    0: '待处理', 1: '处理中', 2: '已解决', 3: '已关闭', 4: '已拒绝',
-  };
-  Message.info(`查看${statusMap[status]}的反馈列表`);
-  router.push(`/feedback/list?status=${status}`);
-}
-
-/** 活动筛选 */
-function handleActivityFilter(val: string | number | boolean | Record<string, unknown> | (string | number | boolean | Record<string, unknown>)[]) {
-  store.fetchActivities({ limit: 10, type: val as string });
-}
-
-/** 洞察操作 */
-function handleInsightAction(insight: AIQualityInsight) {
-  if (insight.action_url) {
-    router.push(insight.action_url);
-  }
-}
-
-/** 反馈转任务成功回调 */
-function handleFeedbackToTaskSuccess() {
-  Message.success('反馈已成功转为测试任务');
-  store.fetchLinkRecords();
-  store.fetchOverview();
-  store.fetchActivities({ limit: 10 });
-}
-
-/** 刷新Dashboard数据 */
-async function handleRefresh() {
-  isRefreshing.value = true;
-  try {
-    await store.fetchDashboardAll();
-    Message.success('数据已刷新');
-    console.log('[质量中心][Dashboard刷新][成功]');
-  } catch (error) {
-    console.error('[质量中心][Dashboard刷新][失败]', error);
-    Message.error('刷新失败，请重试');
-  } finally {
-    isRefreshing.value = false;
-  }
-}
-
-/** 布局配置保存回调 */
-function handleLayoutSave(config: { cards: DashboardCardConfig[]; statCards: string[] }) {
-  console.log('[质量中心][布局配置][已保存]', config);
-  Message.success('布局已更新，刷新页面后生效');
-}
-
-/** 更多功能导航 */
-function handleNavDropdown(value: string | number | Record<string, unknown> | undefined) {
-  const routes: Record<string, string> = {
-    'scheduled-reports': '/quality-center/scheduled-reports',
-    'report-templates': '/quality-center/report-templates',
-    'email-templates': '/quality-center/email-templates',
-    'mindmap': '/quality-center/mindmap',
-  };
-  const route = routes[String(value)];
-  if (route) router.push(route);
-}
-
-/** WebSocket报表状态文本 */
-function wsStatusText(status: string): string {
-  const map: Record<string, string> = {
-    running: '正在执行中',
-    success: '已完成',
-    completed: '已完成',
-    failed: '执行失败',
-    pending: '等待执行',
-  };
-  return map[status] || status;
-}
-
-// ========== 生命周期 ==========
-onMounted(async () => {
-  try {
-    await store.fetchDashboardAll();
-    store.initWebSocket();
-  } catch (error) {
-    console.error('[质量中心][Dashboard加载失败]', error);
-    Message.error('Dashboard数据加载失败，请刷新重试');
-  } finally {
-    setTimeout(() => {
-      isInitialLoading.value = false;
-    }, 300);
-  }
+// 质量指标
+const qualityMetrics = ref<QualityMetrics>({
+  testCoverage: 85,
+  passRate: 92,
+  bugDensity: 2.5,
+  avgResponseTime: 150,
+  codeQuality: 88,
+  documentationScore: 75,
 });
 
-onBeforeUnmount(() => {
-  store.disconnectWebSocket();
+// 模块和项目列表
+const modules = ref([
+  { id: 1, name: '用户模块' },
+  { id: 2, name: '订单模块' },
+  { id: 3, name: '支付模块' },
+  { id: 4, name: '商品模块' },
+]);
+
+const projects = ref([
+  { id: 1, name: '电商平台' },
+  { id: 2, name: '管理后台' },
+  { id: 3, name: '移动端' },
+]);
+
+const loading = ref(false);
+
+// 计算当前时间范围
+const currentTimeRange = computed(() => {
+  if (timeRange.value === 'custom' && customDateRange.value) {
+    return {
+      start: customDateRange.value[0],
+      end: customDateRange.value[1],
+    };
+  }
+
+  const days = parseInt(timeRange.value);
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+
+  return {
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0],
+  };
+});
+
+// 模块质量分布图表配置
+const moduleChartConfig = computed<ChartConfig>(() => ({
+  type: 'bar',
+  title: '模块质量分布',
+  xAxis: {
+    type: 'category',
+    data: ['用户模块', '订单模块', '支付模块', '商品模块', '库存模块'],
+  },
+  yAxis: {
+    type: 'value',
+    name: '质量分',
+  },
+  series: [
+    {
+      name: '质量分',
+      type: 'bar',
+      data: [85, 92, 78, 88, 90],
+      itemStyle: {
+        color: '#165DFF',
+      },
+    },
+  ],
+}));
+
+// Bug类型分布图表配置
+const bugChartConfig = computed<ChartConfig>(() => ({
+  type: 'pie',
+  title: 'Bug类型分布',
+  series: [
+    {
+      name: 'Bug类型',
+      type: 'pie',
+      radius: '50%',
+      data: [
+        { value: 35, name: '功能Bug' },
+        { value: 25, name: '性能Bug' },
+        { value: 20, name: 'UI Bug' },
+        { value: 15, name: '兼容性Bug' },
+        { value: 5, name: '其他' },
+      ],
+    },
+  ],
+}));
+
+// 反馈状态分布图表配置
+const feedbackChartConfig = computed<ChartConfig>(() => ({
+  type: 'pie',
+  title: '反馈状态分布',
+  series: [
+    {
+      name: '反馈状态',
+      type: 'pie',
+      radius: ['40%', '70%'],
+      data: [
+        { value: 40, name: '待处理' },
+        { value: 30, name: '处理中' },
+        { value: 20, name: '已解决' },
+        { value: 10, name: '已关闭' },
+      ],
+    },
+  ],
+}));
+
+// 质量趋势图表配置
+const trendChartConfig = ref<ChartConfig>({
+  type: 'line',
+  title: '质量趋势',
+  xAxis: {
+    type: 'category',
+    data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+  },
+  yAxis: {
+    type: 'value',
+    name: '质量分',
+  },
+  series: [
+    {
+      name: '质量分',
+      type: 'line',
+      data: [85, 88, 87, 90, 92, 89, 91],
+      smooth: true,
+      areaStyle: {
+        opacity: 0.3,
+      },
+    },
+  ],
+});
+
+// 趋势钻取配置
+const trendDrillDown = {
+  enabled: true,
+  levels: ['week', 'day', 'hour'],
+  currentLevel: 0,
+};
+
+// 加载统计数据
+const loadStatistics = async () => {
+  loading.value = true;
+  try {
+    const response = await getStatistics(currentTimeRange.value);
+    stats.value = response.data;
+    
+    // 更新质量指标
+    qualityMetrics.value = {
+      testCoverage: response.data.testCoverage || 85,
+      passRate: response.data.passRate || 92,
+      bugDensity: response.data.bugDensity || 2.5,
+      avgResponseTime: response.data.avgResponseTime || 150,
+      codeQuality: response.data.codeQuality || 88,
+      documentationScore: response.data.documentationScore || 75,
+    };
+  } catch (error) {
+    Message.error('加载统计数据失败');
+    console.error(error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 加载趋势数据
+const loadTrendData = async () => {
+  try {
+    // TODO: 调用API获取最新趋势数据
+    console.log('加载趋势数据...');
+  } catch (error) {
+    console.error('加载趋势数据失败:', error);
+  }
+};
+
+// 时间范围变更
+const handleTimeRangeChange = () => {
+  if (timeRange.value !== 'custom') {
+    loadStatistics();
+  }
+};
+
+// 自定义时间范围变更
+const handleCustomDateChange = () => {
+  if (customDateRange.value && customDateRange.value.length === 2) {
+    loadStatistics();
+  }
+};
+
+// 导出报告
+const handleExport = async () => {
+  try {
+    Message.loading('正在生成报告...');
+    await exportChart({
+      timeRange: currentTimeRange.value,
+      format: 'pdf',
+    });
+    Message.success('报告导出成功');
+  } catch (error) {
+    Message.error('报告导出失败');
+    console.error(error);
+  }
+};
+
+// 模块点击事件
+const handleModuleClick = (params: any) => {
+  console.log('模块点击:', params);
+  Message.info(`查看 ${params.name} 详情`);
+};
+
+// 趋势钻取事件
+const handleTrendDrillDown = (params: any) => {
+  console.log('趋势钻取:', params);
+  
+  // 根据钻取层级更新图表数据
+  if (trendDrillDown.currentLevel === 0) {
+    // 钻取到天
+    trendChartConfig.value = {
+      ...trendChartConfig.value,
+      xAxis: {
+        type: 'category',
+        data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+      },
+      series: [
+        {
+          name: '质量分',
+          type: 'line',
+          data: [88, 85, 87, 90, 92, 89, 88],
+          smooth: true,
+          areaStyle: {
+            opacity: 0.3,
+          },
+        },
+      ],
+    };
+  }
+};
+
+// 对比分析事件
+const handleCompare = (type: string, items: any) => {
+  console.log('对比分析:', type, items);
+  Message.success('对比分析完成');
+};
+
+onMounted(() => {
+  loadStatistics();
 });
 </script>
 
-<style lang="less" scoped>
+<style scoped lang="less">
 .quality-dashboard {
-  padding: 16px;
-  background: var(--color-bg-1);
-  min-height: 100%;
-}
+  padding: 20px;
 
-// 顶部操作栏
-.dashboard-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: var(--color-bg-2);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  .toolbar-left {
-    .toolbar-title {
-      font-size: 16px;
+  .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+
+    .dashboard-title {
+      font-size: 20px;
       font-weight: 600;
-      color: var(--color-text-1);
-    }
-  }
-}
-
-.stat-cards {
-  margin-bottom: 0;
-  .stat-card {
-    border-radius: 8px;
-    transition: box-shadow 0.3s;
-    &:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    }
-    :deep(.arco-card-body) {
-      padding: 16px;
-    }
-    :deep(.arco-statistic-title) {
-      font-size: 12px;
-      color: var(--color-text-3);
-    }
-    :deep(.arco-statistic-value) {
-      font-size: 24px;
-    }
-  }
-}
-
-// 统一图表卡片样式
-.chart-card {
-  border-radius: 8px;
-  :deep(.arco-card-header) {
-    height: 56px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--color-border-2);
-  }
-  :deep(.arco-card-header-title) {
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 56px;
-  }
-  :deep(.arco-card-header-extra) {
-    display: flex;
-    align-items: center;
-  }
-}
-
-// 洞察卡片
-.insight-card {
-  height: 420px;
-  :deep(.arco-card-body) {
-    overflow-y: auto;
-    max-height: 360px;
-  }
-}
-
-.insight-list {
-  .insight-item {
-    padding: 12px;
-    margin-bottom: 8px;
-    border-radius: 6px;
-    border-left: 3px solid transparent;
-    background: var(--color-fill-1);
-    transition: all 0.2s;
-
-    &:hover {
-      background: var(--color-fill-2);
+      margin: 0;
     }
 
-    &.insight-high {
-      border-left-color: #F53F3F;
-    }
-    &.insight-medium {
-      border-left-color: #FF7D00;
-    }
-    &.insight-low {
-      border-left-color: #00B42A;
-    }
-
-    .insight-header {
+    .dashboard-actions {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 6px;
-      .insight-module {
-        font-size: 11px;
-        color: var(--color-text-3);
-        margin-left: auto;
-      }
-    }
 
-    .insight-title {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--color-text-1);
-      margin-bottom: 4px;
-    }
-
-    .insight-desc {
-      font-size: 12px;
-      color: var(--color-text-2);
-      line-height: 1.5;
-    }
-
-    .insight-action {
-      margin-top: 8px;
-      text-align: right;
-    }
-  }
-}
-
-// 趋势卡片
-.trend-card {
-  height: 420px;
-  .trend-chart-container {
-    height: 320px;
-  }
-  .trend-table-wrapper {
-    height: 300px;
-    overflow: hidden;
-  }
-}
-
-// 分布列表
-.distribution-list {
-  .distribution-item {
-    margin-bottom: 14px;
-    &:last-child {
-      margin-bottom: 0;
-    }
-    .distribution-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-      .distribution-label {
-        font-size: 13px;
-        color: var(--color-text-1);
-      }
-      .distribution-value {
-        font-size: 12px;
-        color: var(--color-text-3);
+      .ml-3 {
+        margin-left: 12px;
       }
     }
   }
-}
 
-// 活动时间线
-.activity-timeline {
-  max-height: 500px;
-  overflow-y: auto;
-  padding-right: 8px;
+  .dashboard-stats {
+    margin-bottom: 24px;
 
-  .activity-item {
-    .activity-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
-      .activity-module {
-        font-size: 11px;
-        color: var(--color-text-3);
-        background: var(--color-fill-2);
-        padding: 1px 6px;
-        border-radius: 3px;
+    :deep(.arco-statistic) {
+      padding: 20px;
+      background: var(--color-bg-2);
+      border-radius: 4px;
+
+      .arco-statistic-title {
+        color: var(--color-text-2);
+        font-size: 14px;
       }
-      .activity-time {
-        font-size: 11px;
-        color: var(--color-text-4);
-        margin-left: auto;
+
+      .arco-statistic-content {
+        margin-top: 8px;
+
+        .arco-statistic-value {
+          font-size: 28px;
+          font-weight: 600;
+        }
       }
     }
-    .activity-desc {
-      font-size: 13px;
-      color: var(--color-text-2);
-      margin-bottom: 4px;
-    }
-    .activity-user {
-      display: flex;
-      align-items: center;
-      font-size: 12px;
-      color: var(--color-text-3);
+  }
+
+  .dashboard-charts {
+    margin-bottom: 16px;
+
+    :deep(.arco-card) {
+      height: 400px;
+
+      .arco-card-body {
+        height: calc(100% - 56px);
+      }
     }
   }
-}
-
-// 关联记录
-.link-title {
-  font-size: 12px;
-  color: var(--color-text-1);
-  cursor: pointer;
-  &:hover {
-    color: rgb(var(--primary-6));
-  }
-}
-
-.link-time {
-  font-size: 11px;
-  color: var(--color-text-3);
-}
-
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 120px;
 }
 </style>

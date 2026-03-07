@@ -15,10 +15,11 @@
 //! - **缓存策略**: 统计数据使用缓存优化性能
 
 const std = @import("std");
+const Module = @import("../../domain/entities/module.model.zig").Module;
 const ModuleRepository = @import("../../domain/repositories/module_repository.zig").ModuleRepository;
 const TestCaseRepository = @import("../../domain/repositories/test_case_repository.zig").TestCaseRepository;
 const FeedbackRepository = @import("../../domain/repositories/feedback_repository.zig").FeedbackRepository;
-const CacheInterface = @import("../../infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("cache/contract.zig").CacheInterface;
 const qc_cache = @import("../../infrastructure/cache/quality_center_cache.zig");
 
 const Allocator = std.mem.Allocator;
@@ -321,7 +322,7 @@ pub const StatisticsService = struct {
     // 内存管理
     // ========================================
 
-    fn freeModuleList(self: *Self, modules: []anytype) void {
+    fn freeModuleList(self: *Self, modules: []Module) void {
         _ = self;
         _ = modules;
         // TODO: 实现模块列表释放逻辑

@@ -80,7 +80,14 @@ const AIGeneratorInterface = @import("src/domain/services/ai_generator_interface
 const OpenAIGenerator = @import("src/infrastructure/ai/openai_generator.zig").OpenAIGenerator;
 
 // 缓存接口导入
-const CacheInterface = @import("src/infrastructure/cache/contract.zig").CacheInterface;
+const CacheInterface = @import("src/application/services/cache/contract.zig").CacheInterface;
+
+// 安全服务导入
+const CsrfProtection = @import("src/api/middleware/csrf_protection.zig").CsrfProtection;
+const RateLimiter = @import("src/api/middleware/rate_limiter.zig").RateLimiter;
+const RbacMiddleware = @import("src/api/middleware/rbac.zig").RbacMiddleware;
+const SecurityMonitor = @import("src/infrastructure/security/security_monitor.zig").SecurityMonitor;
+const AuditLogService = @import("src/infrastructure/security/audit_log.zig").AuditLogService;
 
 // ============================================================================
 // 编译选项
@@ -421,8 +428,11 @@ fn registerApplicationServices(allocator: std.mem.Allocator, db: *sql_orm.Databa
         // 3. 注册认证服务
         try registerAuthServices(container);
 
-        // 4. 注册基础设施服务
+        // 4. 注册基础设施服务（必须在安全服务之前）
         try container.registerInstance(sql_orm.Database, db, null);
+
+        // 5. 注册安全服务
+        try registerSecurityServices(container, allocator);
 
         logger.info("应用服务注册到DI容器完成", .{});
     } else {
@@ -474,6 +484,179 @@ fn registerAuthServices(container: *core.di.DIContainer) !void {
             return auth_service;
         }
     }.factory, null);
+}
+
+/// 注册安全服务到DI容器
+///
+/// 注册所有安全相关的中间件和服务，包括CSRF防护、速率限制、RBAC权限控制、
+/// 安全监控和审计日志。
+///
+/// ## 参数
+/// - `container`: DI容器
+/// - `allocator`: 内存分配器
+///
+/// ## 错误
+/// 如果服务注册失败，返回相应的错误。
+fn registerSecurityServices(container: *core.di.DIContainer, allocator: std.mem.Allocator) !void {
+    
+    // 1. 注册 CSRF 防护
+    try container.registerSingleton(CsrfProtection, CsrfProtection, struct {
+        fn factory(di: *core.di.DIContainer, alloc: std.mem.Allocator) anyerror!*CsrfProtection {
+            const cache_ptr = try di.resolve(CacheInterface);
+            const csrf = try alloc.create(CsrfProtection);
+            errdefer alloc.destroy(csrf);
+            csrf.* = CsrfProtection.init(alloc, .{
+                .enabled = true,
+                .header_name = "X-CSRF-Token",
+                .cookie_name = "csrf_token",
+                .safe_methods = &.{ "GET", "HEAD", "OPTIONS" },
+                .whitelist_paths = &.{
+                    "/api/auth/login",
+                    "/api/auth/register",
+                    "/api/health",
+                },
+            }, cache_ptr);
+            return csrf;
+        }
+    }.factory, null);
+    
+    // 2. 注册速率限制器
+    try container.registerSingleton(RateLimiter, RateLimiter, struct {
+        fn factory(di: *core.di.DIContainer, alloc: std.mem.Allocator) anyerror!*RateLimiter {
+            const cache_ptr = try di.resolve(CacheInterface);
+            const limiter = try alloc.create(RateLimiter);
+            errdefer alloc.destroy(limiter);
+            
+            const endpoint_limits = [_]RateLimiter.EndpointLimit{
+                .{ .path = "/api/auth/login", .limit = 5, .window = 60 },
+                .{ .path = "/api/quality/ai/generate", .limit = 10, .window = 60 },
+            };
+            const whitelist_ips = [_][]const u8{ "127.0.0.1", "::1" };
+            const blacklist_ips = [_][]const u8{};
+            
+            limiter.* = RateLimiter.init(alloc, cache_ptr, .{
+                .global_limit = 1000,
+                .global_window = 60,
+                .ip_limit = 100,
+                .ip_window = 60,
+                .user_limit = 200,
+                .user_window = 60,
+                .endpoint_limits = @as([]RateLimiter.EndpointLimit, @constCast(&endpoint_limits)),
+                .whitelist_ips = @as([][]const u8, @constCast(&whitelist_ips)),
+                .blacklist_ips = @as([][]const u8, @constCast(&blacklist_ips)),
+            });
+            return limiter;
+        }
+    }.factory, null);
+    
+    // 3. 注册 RBAC 中间件
+    try container.registerSingleton(RbacMiddleware, RbacMiddleware, struct {
+        fn factory(di: *core.di.DIContainer, alloc: std.mem.Allocator) anyerror!*RbacMiddleware {
+            const cache_ptr = try di.resolve(CacheInterface);
+            const rbac = try alloc.create(RbacMiddleware);
+            errdefer alloc.destroy(rbac);
+            rbac.* = RbacMiddleware.init(alloc, .{
+                .enabled = true,
+                .super_admin_role = "super_admin",
+                .public_paths = &.{
+                    "/api/auth/login",
+                    "/api/auth/register",
+                    "/api/health",
+                },
+            }, cache_ptr);
+            return rbac;
+        }
+    }.factory, null);
+    
+    // 4. 注册安全监控
+    try container.registerSingleton(SecurityMonitor, SecurityMonitor, struct {
+        fn factory(di: *core.di.DIContainer, alloc: std.mem.Allocator) anyerror!*SecurityMonitor {
+            const cache_ptr = try di.resolve(CacheInterface);
+            const db_ptr = try di.resolve(sql_orm.Database);
+            const monitor = try alloc.create(SecurityMonitor);
+            errdefer alloc.destroy(monitor);
+            monitor.* = SecurityMonitor.init(alloc, .{
+                .enabled = true,
+                .log_enabled = true,
+                .alert_enabled = true,
+                .alert_threshold = 10,
+                .alert_window = 60,
+                .auto_ban_enabled = true,
+                .auto_ban_threshold = 20,
+                .ban_duration = 3600, // 1小时
+            }, cache_ptr);
+            // 设置数据库连接
+            monitor.setDatabase(db_ptr);
+            
+            // 设置钉钉通知器（如果已注册）
+            const DingTalkNotifier = @import("src/infrastructure/notification/dingtalk_notifier.zig").DingTalkNotifier;
+            if (di.isRegistered(DingTalkNotifier)) {
+                const notifier = di.resolve(DingTalkNotifier) catch null;
+                if (notifier) |n| {
+                    monitor.setNotifier(n);
+                }
+            }
+            
+            return monitor;
+        }
+    }.factory, null);
+    
+    // 5. 注册钉钉通知器（可选，从环境变量读取配置）
+    const DingTalkNotifier = @import("src/infrastructure/notification/dingtalk_notifier.zig").DingTalkNotifier;
+    const DingTalkConfig = @import("src/infrastructure/notification/dingtalk_notifier.zig").DingTalkConfig;
+    
+    if (std.process.getEnvVarOwned(allocator, "DINGTALK_WEBHOOK")) |webhook| {
+        defer allocator.free(webhook);
+        
+        const secret = std.process.getEnvVarOwned(allocator, "DINGTALK_SECRET") catch null;
+        defer if (secret) |s| allocator.free(s);
+        
+        const dingtalk_config = DingTalkConfig{
+            .webhook_url = try allocator.dupe(u8, webhook),
+            .secret = if (secret) |s| try allocator.dupe(u8, s) else null,
+        };
+        
+        const dingtalk_notifier = try allocator.create(DingTalkNotifier);
+        errdefer allocator.destroy(dingtalk_notifier);
+        dingtalk_notifier.* = DingTalkNotifier.init(allocator, dingtalk_config);
+        
+        try container.registerInstance(DingTalkNotifier, dingtalk_notifier, null);
+        logger.info("✅ 钉钉通知器已注册", .{});
+    } else |_| {
+        logger.info("⚠️  未配置钉钉通知器（缺少 DINGTALK_WEBHOOK 环境变量）", .{});
+    }
+    
+    // 6. 注册审计日志仓储
+    const MysqlAuditLogRepository = @import("src/infrastructure/database/mysql_audit_log_repository.zig").MysqlAuditLogRepository;
+    const AuditLogRepository = @import("src/infrastructure/security/audit_log.zig").AuditLogRepository;
+    
+    const mysql_audit_repo = try container.allocator.create(MysqlAuditLogRepository);
+    errdefer container.allocator.destroy(mysql_audit_repo);
+    const db_ptr = try container.resolve(sql_orm.Database);
+    mysql_audit_repo.* = MysqlAuditLogRepository.init(container.allocator, db_ptr);
+    
+    const audit_repo = try container.allocator.create(AuditLogRepository);
+    errdefer container.allocator.destroy(audit_repo);
+    audit_repo.* = .{
+        .ptr = mysql_audit_repo,
+        .vtable = &MysqlAuditLogRepository.vtable(),
+    };
+    
+    try container.registerInstance(MysqlAuditLogRepository, mysql_audit_repo, null);
+    try container.registerInstance(AuditLogRepository, audit_repo, null);
+    
+    // 7. 注册审计日志服务
+    try container.registerSingleton(AuditLogService, AuditLogService, struct {
+        fn factory(di: *core.di.DIContainer, alloc: std.mem.Allocator) anyerror!*AuditLogService {
+            const repo_ptr = try di.resolve(AuditLogRepository);
+            const service = try alloc.create(AuditLogService);
+            errdefer alloc.destroy(service);
+            service.* = AuditLogService.init(alloc, repo_ptr);
+            return service;
+        }
+    }.factory, null);
+    
+    logger.info("安全服务注册到DI容器完成", .{});
 }
 
 /// 注册质量中心服务到DI容器
@@ -593,10 +776,16 @@ fn registerQualityCenterServices(container: *core.di.DIContainer, func_allocator
     // 6.1 创建 OpenAI 生成器实例（从环境变量读取配置）
     const api_key = std.process.getEnvVarOwned(container.allocator, "OPENAI_API_KEY") catch "";
     const base_url = std.process.getEnvVarOwned(container.allocator, "OPENAI_BASE_URL") catch "https://api.openai.com";
+    const model = std.process.getEnvVarOwned(container.allocator, "OPENAI_MODEL") catch "gpt-4";
 
-    const openai_generator = try container.allocator.create(OpenAIGenerator);
-    errdefer container.allocator.destroy(openai_generator);
-    openai_generator.* = OpenAIGenerator.init(container.allocator, api_key, base_url);
+    const openai_generator = try OpenAIGenerator.init(
+        container.allocator,
+        api_key,
+        base_url,
+        model,
+        30000, // timeout_ms
+        3,     // max_retries
+    );
 
     const ai_generator = try container.allocator.create(AIGeneratorInterface);
     errdefer container.allocator.destroy(ai_generator);
