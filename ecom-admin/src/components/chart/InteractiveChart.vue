@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   IconArrowLeft,
   IconDownload,
@@ -134,36 +134,71 @@ const chartHeight = computed(() => {
   return isFullscreen.value ? '100vh' : props.height;
 });
 
-// 初始化交互式图表
-const {
-  canDrillUp,
-  currentDrillLevel,
-  updateChart,
-  drillUp,
-  exportChart,
-  showLoading,
-  hideLoading,
-  startRealtime,
-  stopRealtime,
-} = useInteractiveChart({
-  container: chartContainer.value,
-  config: props.config,
-  drillDown: props.drillDown,
-  export: {
-    formats: props.exportFormats,
-  },
-  realtime: props.realtime,
-  realtimeInterval: props.realtimeInterval,
-  onClick: (params) => {
-    emit('click', params);
-    if (props.drillDown?.enabled) {
-      emit('drillDown', params);
-    }
-  },
-  onDataUpdate: (data) => {
-    emit('dataUpdate', data);
-  },
-});
+// 图表实例引用（延迟初始化）
+let chartInstance: ReturnType<typeof useInteractiveChart> | null = null;
+
+// 初始化图表
+const initChart = () => {
+  if (!chartContainer.value) {
+    console.warn('[InteractiveChart] Container not ready');
+    return;
+  }
+
+  chartInstance = useInteractiveChart({
+    container: chartContainer.value,
+    config: props.config,
+    drillDown: props.drillDown,
+    export: {
+      formats: props.exportFormats,
+    },
+    realtime: props.realtime,
+    realtimeInterval: props.realtimeInterval,
+    onClick: (params) => {
+      emit('click', params);
+      if (props.drillDown?.enabled) {
+        emit('drillDown', params);
+      }
+    },
+    onDataUpdate: (data) => {
+      emit('dataUpdate', data);
+    },
+  });
+  
+  // 调用 init 方法初始化图表
+  chartInstance.init();
+};
+
+// 导出图表方法（安全包装）
+const canDrillUp = computed(() => chartInstance?.canDrillUp.value || false);
+const currentDrillLevel = computed(() => chartInstance?.currentDrillLevel.value || 0);
+
+const updateChart = (config: ChartConfig) => {
+  chartInstance?.updateChart(config);
+};
+
+const drillUp = () => {
+  chartInstance?.drillUp();
+};
+
+const exportChart = async (format: any) => {
+  await chartInstance?.exportChart(format);
+};
+
+const showLoading = () => {
+  chartInstance?.showLoading();
+};
+
+const hideLoading = () => {
+  chartInstance?.hideLoading();
+};
+
+const startRealtime = () => {
+  chartInstance?.startRealtime();
+};
+
+const stopRealtime = () => {
+  chartInstance?.stopRealtime();
+};
 
 // 监听配置变化
 watch(
@@ -216,13 +251,21 @@ const handleFullscreenChange = () => {
   isFullscreen.value = !!document.fullscreenElement;
 };
 
-onMounted(() => {
+onMounted(async () => {
+  // 等待 DOM 挂载完成
+  await nextTick();
+  
+  // 初始化图表
+  initChart();
+  
+  // 监听全屏变化
   document.addEventListener('fullscreenchange', handleFullscreenChange);
 });
 
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', handleFullscreenChange);
   stopRealtime();
+  chartInstance?.dispose();
 });
 </script>
 

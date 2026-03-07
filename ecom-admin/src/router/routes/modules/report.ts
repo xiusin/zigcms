@@ -38,30 +38,4 @@ const RouterConfig: AppRouteRecordRaw = {
   ],
 };
 
-// 运营分析模块路由
-const ReportAnalysisConfig: AppRouteRecordRaw = {
-  path: '/report-analysis',
-  name: 'report-analysis',
-  component: DEFAULT_LAYOUT,
-  meta: {
-    locale: '运营分析',
-    requiresAuth: true,
-    icon: 'icon-chart',
-    order: 20,
-  },
-  children: [
-    {
-      path: 'statistics',
-      name: 'report-statistics',
-      component: () => import('@/views/report/statistics/statistics.vue'),
-      meta: {
-        locale: '报表统计',
-        requiresAuth: true,
-        icon: 'icon-bar-chart',
-        roles: ['*'],
-      },
-    },
-  ],
-};
-
-export default [RouterConfig, ReportAnalysisConfig];
+export default [RouterConfig];

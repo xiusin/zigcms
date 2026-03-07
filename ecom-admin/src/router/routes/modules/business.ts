@@ -97,6 +97,18 @@ const RouterConfig: AppRouteRecordRaw = {
         roles: ['*'],
       },
     },
+    // 8. 报表统计（从运营分析合并）
+    {
+      path: 'statistics',
+      name: 'business-statistics',
+      component: () => import('@/views/report/statistics/statistics.vue'),
+      meta: {
+        locale: '报表统计',
+        requiresAuth: true,
+        icon: 'icon-bar-chart',
+        roles: ['*'],
+      },
+    },
   ],
 };
 
@@ -139,43 +151,4 @@ const OperationConfig: AppRouteRecordRaw = {
   ],
 };
 
-// 安全运维模块路由
-const SecurityConfig: AppRouteRecordRaw = {
-  path: '/security',
-  name: 'security',
-  component: DEFAULT_LAYOUT,
-  meta: {
-    locale: '安全运维',
-    requiresAuth: true,
-    icon: 'icon-safe',
-    order: 95,
-  },
-  children: [
-    // 日志管理
-    {
-      path: 'log',
-      name: 'security-log',
-      component: () => import('@/views/security/log/log.vue'),
-      meta: {
-        locale: '日志管理',
-        requiresAuth: true,
-        icon: 'icon-file',
-        roles: ['*'],
-      },
-    },
-    // 黑名单
-    {
-      path: 'blacklist',
-      name: 'security-blacklist',
-      component: () => import('@/views/security/blacklist/blacklist.vue'),
-      meta: {
-        locale: '黑名单',
-        requiresAuth: true,
-        icon: 'icon-close-circle',
-        roles: ['*'],
-      },
-    },
-  ],
-};
-
-export default [RouterConfig, OperationConfig, SecurityConfig];
+export default [RouterConfig, OperationConfig];

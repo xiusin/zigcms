@@ -702,84 +702,70 @@ export default qualityCenterApi;
 // ==================== 导出便捷函数 ====================
 
 // 测试用例
-export const {
-  createTestCase,
-  getTestCase,
-  updateTestCase,
-  deleteTestCase,
-  searchTestCases,
-  batchDeleteTestCases,
-  batchUpdateTestCaseStatus,
-  batchUpdateTestCaseAssignee,
-  executeTestCase,
-  getTestCaseExecutions,
-} = qualityCenterApi;
+export const createTestCase = qualityCenterApi.createTestCase.bind(qualityCenterApi);
+export const getTestCase = qualityCenterApi.getTestCase.bind(qualityCenterApi);
+export const updateTestCase = qualityCenterApi.updateTestCase.bind(qualityCenterApi);
+export const deleteTestCase = qualityCenterApi.deleteTestCase.bind(qualityCenterApi);
+export const searchTestCases = qualityCenterApi.searchTestCases.bind(qualityCenterApi);
+export const batchDeleteTestCases = qualityCenterApi.batchDeleteTestCases.bind(qualityCenterApi);
+export const batchUpdateTestCaseStatus = qualityCenterApi.batchUpdateTestCaseStatus.bind(qualityCenterApi);
+export const batchUpdateTestCaseAssignee = qualityCenterApi.batchUpdateTestCaseAssignee.bind(qualityCenterApi);
+export const executeTestCase = qualityCenterApi.executeTestCase.bind(qualityCenterApi);
+export const getTestCaseExecutions = qualityCenterApi.getTestCaseExecutions.bind(qualityCenterApi);
 
 // AI 生成
-export const {
-  generateTestCases,
-  generateRequirement,
-  analyzeFeedback,
-} = qualityCenterApi;
+export const generateTestCases = qualityCenterApi.generateTestCases.bind(qualityCenterApi);
+export const generateRequirement = qualityCenterApi.generateRequirement.bind(qualityCenterApi);
+export const analyzeFeedback = qualityCenterApi.analyzeFeedback.bind(qualityCenterApi);
 
 // 项目管理
-export const {
-  createProject,
-  getProject,
-  updateProject,
-  deleteProject,
-  getProjects,
-  archiveProject,
-  restoreProject,
-  getProjectStatistics,
-} = qualityCenterApi;
+export const createProject = qualityCenterApi.createProject.bind(qualityCenterApi);
+export const getProject = qualityCenterApi.getProject.bind(qualityCenterApi);
+export const updateProject = qualityCenterApi.updateProject.bind(qualityCenterApi);
+export const deleteProject = qualityCenterApi.deleteProject.bind(qualityCenterApi);
+export const getProjects = qualityCenterApi.getProjects.bind(qualityCenterApi);
+export const archiveProject = qualityCenterApi.archiveProject.bind(qualityCenterApi);
+export const restoreProject = qualityCenterApi.restoreProject.bind(qualityCenterApi);
+export const getProjectStatistics = qualityCenterApi.getProjectStatistics.bind(qualityCenterApi);
 
 // 模块管理
-export const {
-  createModule,
-  getModule,
-  updateModule,
-  deleteModule,
-  getModuleTree,
-  moveModule,
-  getModuleStatistics,
-} = qualityCenterApi;
+export const createModule = qualityCenterApi.createModule.bind(qualityCenterApi);
+export const getModule = qualityCenterApi.getModule.bind(qualityCenterApi);
+export const updateModule = qualityCenterApi.updateModule.bind(qualityCenterApi);
+export const deleteModule = qualityCenterApi.deleteModule.bind(qualityCenterApi);
+export const getModuleTree = qualityCenterApi.getModuleTree.bind(qualityCenterApi);
+export const moveModule = qualityCenterApi.moveModule.bind(qualityCenterApi);
+export const getModuleStatistics = qualityCenterApi.getModuleStatistics.bind(qualityCenterApi);
 
 // 需求管理
-export const {
-  createRequirement,
-  getRequirement,
-  updateRequirement,
-  deleteRequirement,
-  searchRequirements,
-  linkTestCase,
-  unlinkTestCase,
-  importRequirements,
-  exportRequirements,
-} = qualityCenterApi;
+export const createRequirement = qualityCenterApi.createRequirement.bind(qualityCenterApi);
+export const getRequirement = qualityCenterApi.getRequirement.bind(qualityCenterApi);
+export const updateRequirement = qualityCenterApi.updateRequirement.bind(qualityCenterApi);
+export const deleteRequirement = qualityCenterApi.deleteRequirement.bind(qualityCenterApi);
+export const searchRequirements = qualityCenterApi.searchRequirements.bind(qualityCenterApi);
+export const linkTestCase = qualityCenterApi.linkTestCase.bind(qualityCenterApi);
+export const unlinkTestCase = qualityCenterApi.unlinkTestCase.bind(qualityCenterApi);
+export const importRequirements = qualityCenterApi.importRequirements.bind(qualityCenterApi);
+export const exportRequirements = qualityCenterApi.exportRequirements.bind(qualityCenterApi);
 
 // 反馈管理
-export const {
-  createFeedback,
-  getFeedback: getFeedbackById,
-  updateFeedback,
-  deleteFeedback,
-  searchFeedbacks,
-  addFollowUp: addFeedbackFollowUp,
-  batchAssignFeedbacks,
-  batchUpdateFeedbackStatus,
-  exportFeedbacks,
-} = qualityCenterApi;
+export const createFeedback = qualityCenterApi.createFeedback.bind(qualityCenterApi);
+export const getFeedbackById = qualityCenterApi.getFeedback.bind(qualityCenterApi);
+export const updateFeedback = qualityCenterApi.updateFeedback.bind(qualityCenterApi);
+export const deleteFeedback = qualityCenterApi.deleteFeedback.bind(qualityCenterApi);
+export const searchFeedbacks = qualityCenterApi.searchFeedbacks.bind(qualityCenterApi);
+export const addFeedbackFollowUp = qualityCenterApi.addFollowUp.bind(qualityCenterApi);
+export const batchAssignFeedbacks = qualityCenterApi.batchAssignFeedbacks.bind(qualityCenterApi);
+export const batchUpdateFeedbackStatus = qualityCenterApi.batchUpdateFeedbackStatus.bind(qualityCenterApi);
+export const exportFeedbacks = qualityCenterApi.exportFeedbacks.bind(qualityCenterApi);
 
 // 数据可视化
-export const {
-  getStatistics,
-  getModuleDistribution,
-  getBugDistribution,
-  getFeedbackDistribution,
-  getQualityTrend,
-  exportChart,
-} = qualityCenterApi;
+export const getStatistics = qualityCenterApi.getStatistics.bind(qualityCenterApi);
+export const getModuleDistribution = qualityCenterApi.getModuleDistribution.bind(qualityCenterApi);
+export const getBugDistribution = qualityCenterApi.getBugDistribution.bind(qualityCenterApi);
+export const getFeedbackDistribution = qualityCenterApi.getFeedbackDistribution.bind(qualityCenterApi);
+export const getQualityTrend = qualityCenterApi.getQualityTrend.bind(qualityCenterApi);
+export const exportChart = qualityCenterApi.exportChart.bind(qualityCenterApi);
 
 // ==================== 额外的便捷函数（别名和扩展） ====================
 

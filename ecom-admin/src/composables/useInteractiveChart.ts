@@ -3,7 +3,7 @@
  * 支持图表点击钻取、数据导出、自定义配置等功能
  */
 
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import * as echarts from 'echarts';
 import { Message } from '@arco-design/web-vue';
 
@@ -104,27 +104,44 @@ export function useInteractiveChart(options: UseInteractiveChartOptions) {
    * 初始化图表
    */
   const init = () => {
+    // 检查容器是否存在
     if (!container) {
-      console.error('[InteractiveChart] Container is null');
+      console.warn('[InteractiveChart] Container is null, skipping initialization');
       return;
     }
     
-    // 创建图表实例
-    chartInstance = echarts.init(container);
-    
-    // 设置初始配置
-    updateChart(currentConfig.value);
-    
-    // 绑定事件
-    bindEvents();
-    
-    // 启动实时更新
-    if (realtime) {
-      startRealtime();
+    // 检查容器是否已挂载到 DOM
+    if (!document.body.contains(container)) {
+      console.warn('[InteractiveChart] Container not mounted to DOM yet, delaying initialization');
+      // 延迟初始化，等待 DOM 挂载
+      setTimeout(() => {
+        if (container && document.body.contains(container)) {
+          init();
+        }
+      }, 100);
+      return;
     }
     
-    // 监听窗口大小变化
-    window.addEventListener('resize', handleResize);
+    try {
+      // 创建图表实例
+      chartInstance = echarts.init(container);
+      
+      // 设置初始配置
+      updateChart(currentConfig.value);
+      
+      // 绑定事件
+      bindEvents();
+      
+      // 启动实时更新
+      if (realtime) {
+        startRealtime();
+      }
+      
+      // 监听窗口大小变化
+      window.addEventListener('resize', handleResize);
+    } catch (error) {
+      console.error('[InteractiveChart] Initialization failed:', error);
+    }
   };
   
   /**
@@ -526,13 +543,7 @@ export function useInteractiveChart(options: UseInteractiveChartOptions) {
   };
   
   // 生命周期
-  onMounted(() => {
-    init();
-  });
-  
-  onUnmounted(() => {
-    dispose();
-  });
+  // 注意：不在这里自动初始化，由组件在 onMounted 后手动调用 init()
   
   return {
     // 状态
@@ -541,6 +552,7 @@ export function useInteractiveChart(options: UseInteractiveChartOptions) {
     currentDrillLevel: computed(() => currentDrillLevel.value),
     
     // 方法
+    init,  // 暴露 init 方法供外部调用
     updateChart,
     drillUp,
     exportChart,

@@ -39,9 +39,11 @@ autoTestMock.forEach((item: any) => {
 });
 
 // 注册质量中心 Mock
-qualityCenterMock.forEach((item: any) => {
-  Mock.mock(new RegExp(item.url), item.method, item.response);
-});
+if (qualityCenterMock && Array.isArray(qualityCenterMock)) {
+  qualityCenterMock.forEach((item: any) => {
+    Mock.mock(new RegExp(item.url), item.method, item.response);
+  });
+}
 
 // 设置 Mock 随机数的全局种子，保证数据一致性
 Mock.Random.extend({
