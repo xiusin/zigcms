@@ -195,7 +195,7 @@
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSecurityStore } from '@/store/modules/security';
-import { EventLevelLabels } from '@/types/security';
+import { EventLevelLabels } from '@/types/security.ts';
 import type { SecurityEvent, SearchEventsQuery } from '@/types/security';
 import {
   IconSearch,

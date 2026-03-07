@@ -1,7 +1,3 @@
-/**
- * 自动化测试系统 - Bug分析列表页
- * 核心功能：AI自动分析Bug、识别类型、自动修复
- */
 <template>
   <div class="content-box">
     <a-card class="table-card">
@@ -90,6 +86,16 @@
             :color="record.confidence_score >= 0.8 ? 'green' : record.confidence_score >= 0.6 ? 'orange' : 'red'"
           />
           <span v-else>-</span>
+        </template>
+
+        <template #auto_fix_attempted="{ record }">
+          <a-tag v-if="record.auto_fix_attempted && record.auto_fix_result?.success" color="green">
+            已修复
+          </a-tag>
+          <a-tag v-else-if="record.auto_fix_attempted" color="red">
+            修复失败
+          </a-tag>
+          <a-tag v-else>未修复</a-tag>
         </template>
 
         <template #action="{ record }">
@@ -271,17 +277,8 @@
     {
       title: '修复状态',
       dataIndex: 'auto_fix_attempted',
+      slotName: 'auto_fix_attempted',
       width: 100,
-      render: ({ record }: any) => {
-        if (record.auto_fix_attempted) {
-          return record.auto_fix_result?.success ? (
-            <a-tag color="green">已修复</a-tag>
-          ) : (
-            <a-tag color="red">修复失败</a-tag>
-          );
-        }
-        return <a-tag>未修复</a-tag>;
-      },
     },
     {
       title: '创建时间',

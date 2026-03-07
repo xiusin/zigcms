@@ -13,18 +13,19 @@ const RouterConfig: AppRouteRecordRaw = {
     hideInMenu: true,
   },
   children: [
-    {
-      path: 'shelveDetailsManage',
-      name: 'shelveDetailsManage',
-      component: () =>
-        import('@/views/leader/shelve-details-manage/table-manage.vue'),
-      meta: {
-        locale: '上架商品管理',
-        requiresAuth: true,
-        icon: 'icon-bookmark',
-        roles: ['*'],
-      },
-    },
+    // ❌ 文件不存在，已注释
+    // {
+    //   path: 'shelveDetailsManage',
+    //   name: 'shelveDetailsManage',
+    //   component: () =>
+    //     import('@/views/leader/shelve-details-manage/table-manage.vue'),
+    //   meta: {
+    //     locale: '上架商品管理',
+    //     requiresAuth: true,
+    //     icon: 'icon-bookmark',
+    //     roles: ['*'],
+    //   },
+    // },
     {
       path: 'todoManage',
       name: 'todoManage',

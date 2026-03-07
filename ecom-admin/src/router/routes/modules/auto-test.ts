@@ -72,19 +72,19 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'auto:test:bug:list',
       },
     },
-    // 5. Bug详情
-    {
-      path: 'bug/detail/:id',
-      name: 'auto-test-bug-detail',
-      component: () => import('@/views/auto-test/bug/detail/index.vue'),
-      meta: {
-        locale: 'Bug详情',
-        requiresAuth: true,
-        hideInMenu: true,
-        roles: ['super_admin', 'admin', 'tester'],
-        permission: 'auto:test:bug:detail',
-      },
-    },
+    // 5. Bug详情 - ❌ 文件不存在，已注释
+    // {
+    //   path: 'bug/detail/:id',
+    //   name: 'auto-test-bug-detail',
+    //   component: () => import('@/views/auto-test/bug/detail/index.vue'),
+    //   meta: {
+    //     locale: 'Bug详情',
+    //     requiresAuth: true,
+    //     hideInMenu: true,
+    //     roles: ['super_admin', 'admin', 'tester'],
+    //     permission: 'auto:test:bug:detail',
+    //   },
+    // },
     // 6. 测试执行记录
     {
       path: 'execution',

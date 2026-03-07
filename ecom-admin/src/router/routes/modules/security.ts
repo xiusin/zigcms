@@ -57,6 +57,20 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'security:alerts:view',
       },
     },
+    // 4. 日志管理（兼容旧路由名称）
+    {
+      path: 'log',
+      name: 'security-log',
+      component: () => import('@/views/security/audit-log/index.vue'),
+      meta: {
+        locale: '日志管理',
+        requiresAuth: true,
+        icon: 'icon-file',
+        roles: ['super_admin', 'admin'],
+        permission: 'security:audit-log:view',
+        hideInMenu: true, // 隐藏在菜单中，避免重复
+      },
+    },
   ],
 };
 

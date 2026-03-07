@@ -44,18 +44,19 @@ const RouterConfig: AppRouteRecordRaw = {
         permission: 'quality:center:test-case',
       },
     },
-    {
-      path: 'test-case/:id',
-      name: 'quality-center-test-case-detail',
-      component: () => import('@/views/quality-center/test-case/detail.vue'),
-      meta: {
-        locale: '测试用例详情',
-        requiresAuth: true,
-        hideInMenu: true,
-        roles: ['*'],
-        permission: 'quality:center:test-case',
-      },
-    },
+    // ❌ 文件不存在，已注释
+    // {
+    //   path: 'test-case/:id',
+    //   name: 'quality-center-test-case-detail',
+    //   component: () => import('@/views/quality-center/test-case/detail.vue'),
+    //   meta: {
+    //     locale: '测试用例详情',
+    //     requiresAuth: true,
+    //     hideInMenu: true,
+    //     roles: ['*'],
+    //     permission: 'quality:center:test-case',
+    //   },
+    // },
     // 3. 项目管理
     {
       path: 'project',

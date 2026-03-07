@@ -219,44 +219,15 @@ export interface AlertTypeDistribution {
 // ==================== 枚举类型 ====================
 
 /**
- * 告警级别
+ * 告警级别类型
  */
-export enum AlertLevel {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  CRITICAL = 'critical',
-}
+export type AlertLevel = 'low' | 'medium' | 'high' | 'critical';
 
 /**
- * 告警级别标签
+ * 告警状态类型
  */
-export const AlertLevelLabels: Record<AlertLevel, string> = {
-  [AlertLevel.LOW]: '低',
-  [AlertLevel.MEDIUM]: '中',
-  [AlertLevel.HIGH]: '高',
-  [AlertLevel.CRITICAL]: '严重',
-};
+export type AlertStatus = 'pending' | 'handling' | 'resolved' | 'ignored';
 
-/**
- * 告警级别颜色
- */
-export const AlertLevelColors: Record<AlertLevel, string> = {
-  [AlertLevel.LOW]: '#52c41a',
-  [AlertLevel.MEDIUM]: '#faad14',
-  [AlertLevel.HIGH]: '#ff7a45',
-  [AlertLevel.CRITICAL]: '#f5222d',
-};
-
-/**
- * 告警状态
- */
-export enum AlertStatus {
-  PENDING = 'pending',
-  HANDLING = 'handling',
-  RESOLVED = 'resolved',
-  IGNORED = 'ignored',
-}
 
 /**
  * 告警状态标签

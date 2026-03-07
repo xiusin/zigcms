@@ -229,7 +229,7 @@ import {
 } from '@arco-design/web-vue/es/icon';
 import { useSecurityStore } from '@/store/modules/security';
 import type { Alert } from '@/types/security';
-import { ALERT_LEVEL_LABELS, ALERT_LEVEL_COLORS, ALERT_TYPE_LABELS, ALERT_STATUS_LABELS, ALERT_STATUS_COLORS } from '@/types/security';
+import { ALERT_LEVEL_LABELS, ALERT_LEVEL_COLORS, ALERT_TYPE_LABELS, ALERT_STATUS_LABELS, ALERT_STATUS_COLORS } from '@/types/security.ts';
 import BatchOperationBar from './components/BatchOperationBar.vue';
 import AlertDetailDrawer from './components/AlertDetailDrawer.vue';
 import HandleAlertDialog from './components/HandleAlertDialog.vue';

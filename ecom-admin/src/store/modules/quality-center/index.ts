@@ -61,7 +61,22 @@ import type {
   AIAnalysisResponse,
 } from '@/types/quality-center';
 import { cachedFetch, dataCache, STALE_TIMES } from '@/utils/data-cache';
-import { useWebSocket, type ReportStatusPayload, type NotificationPayload } from '@/utils/websocket';
+import { getGlobalWebSocketClient, type WebSocketMessage } from '@/utils/websocket';
+
+// WebSocket 消息类型定义
+export interface ReportStatusPayload {
+  report_id: number;
+  status: 'running' | 'completed' | 'failed';
+  progress?: number;
+  message?: string;
+}
+
+export interface NotificationPayload {
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  timestamp: number;
+}
 
 /** 质量中心Dashboard Store */
 export const useQualityCenterStore = defineStore('qualityCenter', {
@@ -648,30 +663,42 @@ export const useQualityCenterStore = defineStore('qualityCenter', {
 
     // ==================== WebSocket ====================
 
-    /** 初始WebSocket连接 */
+    /** 初始化WebSocket连接 */
     initWebSocket() {
-      const ws = useWebSocket({ mock: true });
-      ws.on<ReportStatusPayload>('report_status', (msg) => {
-        this.wsReportStatus = msg.payload as ReportStatusPayload;
-        console.log('[质量中心][WS][报表状态]', msg.payload);
+      const ws = getGlobalWebSocketClient();
+      if (!ws) {
+        console.warn('[质量中心][WS][未初始化全局客户端]');
+        return;
+      }
+
+      // 监听报表状态更新
+      ws.on('report_status', (msg: WebSocketMessage) => {
+        this.wsReportStatus = msg.data as ReportStatusPayload;
+        console.log('[质量中心][WS][报表状态]', msg.data);
       });
-      ws.on<NotificationPayload>('notification', (msg) => {
-        const payload = msg.payload as NotificationPayload;
+
+      // 监听通知
+      ws.on('notification', (msg: WebSocketMessage) => {
+        const payload = msg.data as NotificationPayload;
         this.wsNotifications.unshift(payload);
         if (this.wsNotifications.length > 50) this.wsNotifications.pop();
         console.log('[质量中心][WS][通知]', payload.title);
       });
-      ws.connect();
-      this.wsConnected = ws.connected;
-      console.log('[质量中心][WS][已初始化]');
+
+      this.wsConnected = ws.isConnected();
+      console.log('[质量中心][WS][已初始化]', { connected: this.wsConnected });
     },
 
     /** 断开WebSocket */
     disconnectWebSocket() {
-      const ws = useWebSocket();
-      ws.disconnect();
-      this.wsConnected = false;
-      console.log('[质量中心][WS][已断开]');
+      const ws = getGlobalWebSocketClient();
+      if (ws) {
+        // 移除监听器
+        ws.off('report_status', () => {});
+        ws.off('notification', () => {});
+        this.wsConnected = false;
+        console.log('[质量中心][WS][已断开]');
+      }
     },
 
     /** 清除实时通知 */

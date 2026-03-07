@@ -177,7 +177,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSecurityStore } from '@/store/modules/security';
-import { AlertLevelLabels, AlertLevelColors } from '@/types/security';
+import { AlertLevelLabels, AlertLevelColors } from '@/types/security.ts';
 import type { AlertNotificationItem, AlertNotificationConfig } from '@/types/security';
 import {
   IconNotification,

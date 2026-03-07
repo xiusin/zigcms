@@ -105,7 +105,7 @@ import { ref, watch, computed } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { IconExclamationCircle } from '@arco-design/web-vue/es/icon';
 import type { Alert, SecurityEvent } from '@/types/security';
-import { ALERT_LEVEL_LABELS, ALERT_LEVEL_COLORS, ALERT_TYPE_LABELS, ALERT_STATUS_LABELS, ALERT_STATUS_COLORS } from '@/types/security';
+import { ALERT_LEVEL_LABELS, ALERT_LEVEL_COLORS, ALERT_TYPE_LABELS, ALERT_STATUS_LABELS, ALERT_STATUS_COLORS } from '@/types/security.ts';
 
 const props = defineProps<{
   modelValue: boolean;
