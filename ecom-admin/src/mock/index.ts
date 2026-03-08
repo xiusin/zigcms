@@ -7,24 +7,12 @@
 import Mock from 'mockjs';
 import { complexSchema } from './complex-schema';
 import cmsMock from './cms';
-import feedbackMock from './feedback';
-import feedbackNotificationMock from './feedback-notification';
 import oauthMock from './oauth';
 import autoTestMock from './auto-test';
 import qualityCenterMock from './quality-center';
 
 // 注册 CMS Mock
 cmsMock.forEach((item) => {
-  Mock.mock(new RegExp(item.url), item.method, item.response);
-});
-
-// 注册反馈系统 Mock
-feedbackMock.forEach((item: any) => {
-  Mock.mock(new RegExp(item.url), item.method, item.response);
-});
-
-// 注册反馈通知 Mock
-feedbackNotificationMock.forEach((item: any) => {
   Mock.mock(new RegExp(item.url), item.method, item.response);
 });
 

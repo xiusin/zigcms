@@ -82,20 +82,6 @@
           <p>登录您的账户以继续</p>
         </div>
         <LoginForm />
-        <div class="login-footer">
-          <a-divider>或使用以下方式登录</a-divider>
-          <div class="social-login">
-            <a-button class="social-btn" shape="circle" size="large">
-              <icon-wechat-pay />
-            </a-button>
-            <a-button class="social-btn" shape="circle" size="large">
-              <icon-alipay-circle />
-            </a-button>
-            <a-button class="social-btn" shape="circle" size="large">
-              <icon-qq-circle />
-            </a-button>
-          </div>
-        </div>
       </div>
       <Footer />
     </div>

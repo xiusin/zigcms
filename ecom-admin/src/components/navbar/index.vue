@@ -73,11 +73,6 @@
         <NotificationCenter />
       </li>
 
-      <!--反馈通知-->
-      <li>
-        <FeedbackNotificationCenter />
-      </li>
-
       <!--安全告警通知-->
       <li>
         <AlertNotification />
@@ -121,7 +116,6 @@ import VipButton from './vip-button.vue';
 import UserGuide from './user-guide.vue';
 import RelationGuide from './relation-guide.vue';
 import NotificationCenter from '@/components/notification-center/index.vue';
-import FeedbackNotificationCenter from '@/views/feedback/components/NotificationCenter.vue';
 import AlertNotification from '@/components/security/AlertNotification.vue';
 
   const router = useRouter();

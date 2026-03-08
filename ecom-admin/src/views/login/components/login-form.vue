@@ -108,11 +108,12 @@
           </a-button>
         </a-tooltip>
       </div>
-
+    <!--
       <div class="register-tip">
         还没有账户？
         <a-link class="register-link">立即注册</a-link>
       </div>
+    -->
     </a-form>
   </div>
 </template>

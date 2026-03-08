@@ -305,32 +305,24 @@ export default securityApi;
 // ==================== 导出便捷函数 ====================
 
 // 安全告警
-export const {
-  getAlerts,
-  getAlert,
-  handleAlert,
-  batchHandleAlerts,
-  deleteAlert,
-} = securityApi;
+export const getAlerts = securityApi.getAlerts.bind(securityApi);
+export const getAlert = securityApi.getAlert.bind(securityApi);
+export const handleAlert = securityApi.handleAlert.bind(securityApi);
+export const batchHandleAlerts = securityApi.batchHandleAlerts.bind(securityApi);
+export const deleteAlert = securityApi.deleteAlert.bind(securityApi);
 
 // 安全事件
-export const {
-  getEvents,
-  getEvent,
-  exportEvents,
-} = securityApi;
+export const getEvents = securityApi.getEvents.bind(securityApi);
+export const getEvent = securityApi.getEvent.bind(securityApi);
+export const exportEvents = securityApi.exportEvents.bind(securityApi);
 
 // 审计日志
-export const {
-  getAuditLogs,
-  getAuditLog,
-  exportAuditLogs,
-} = securityApi;
+export const getAuditLogs = securityApi.getAuditLogs.bind(securityApi);
+export const getAuditLog = securityApi.getAuditLog.bind(securityApi);
+export const exportAuditLogs = securityApi.exportAuditLogs.bind(securityApi);
 
 // 安全统计
-export const {
-  getStatistics,
-  getAlertTrend,
-  getEventDistribution,
-  getRealtimeAlerts,
-} = securityApi;
+export const getStatistics = securityApi.getStatistics.bind(securityApi);
+export const getAlertTrend = securityApi.getAlertTrend.bind(securityApi);
+export const getEventDistribution = securityApi.getEventDistribution.bind(securityApi);
+export const getRealtimeAlerts = securityApi.getRealtimeAlerts.bind(securityApi);

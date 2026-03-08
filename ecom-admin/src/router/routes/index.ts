@@ -4,7 +4,6 @@ import type { RouteRecordNormalized } from 'vue-router';
 import business from './modules/business';
 import cms from './modules/cms';
 import exception from './modules/exception';
-import feedback from './modules/feedback';
 import leader from './modules/leader';
 import oauth from './modules/oauth';
 import purchase from './modules/purchase';
@@ -20,7 +19,6 @@ const allModules = [
   business,
   cms,
   exception,
-  feedback,
   leader,
   oauth,
   purchase,
