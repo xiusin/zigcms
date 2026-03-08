@@ -38,13 +38,20 @@ ZigCMS 开发环境启动脚本
   --clean             清理后重新构建
   --watch             启用文件监视热重载 (需要 fswatch)
   --no-color          禁用彩色输出
+  --print-routes      启动时打印路由列表
+  --no-print-routes   启动时不打印路由列表 (默认)
 
 示例:
-  ./dev.sh                        # 正常启动开发环境
+  ./dev.sh                        # 正常启动开发环境 (默认不打印路由)
   ./dev.sh --port 3000            # 指定端口启动
   ./dev.sh --watch                # 启用文件监视热重载
   ./dev.sh --clean                # 清理后构建并启动
   ./dev.sh --no-build             # 跳过构建直接启动
+  ./dev.sh --print-routes         # 启动时打印路由列表
+
+环境变量:
+  PRINT_ROUTES=1                  设置为1时打印路由列表
+  PRINT_ROUTES=0                  设置为0时不打印路由列表 (默认)
 
 文件监视说明:
   --watch 选项需要安装 fswatch 工具:
@@ -130,9 +137,10 @@ start_file_watcher() {
         
         # 重新构建
         if zig build 2>&1; then
-            # 启动新服务器
+            # 启动新服务器，确保环境变量传递
             kill_running_zigcms "$exe_path"
-            "$exe_path" &
+            # 确保环境变量在子进程中可用
+            env PRINT_ROUTES="$PRINT_ROUTES" ZIGCMS_HOST="$ZIGCMS_HOST" ZIGCMS_API_PORT="$ZIGCMS_API_PORT" ZIGCMS_ENV="$ZIGCMS_ENV" "$exe_path" &
             server_pid=$!
             printf "${GREEN}${CHECK_MARK} 服务器重启成功 (PID: %s)${NC}\n" "$server_pid"
         else
@@ -150,6 +158,7 @@ main() {
     local no_build="false"
     local clean_build="false"
     local watch_mode="false"
+    local print_routes=""
     
     # 解析参数
     while [ $# -gt 0 ]; do
@@ -184,6 +193,14 @@ main() {
             --no-color)
                 NO_COLOR="1"
                 RED='' GREEN='' YELLOW='' BLUE='' PURPLE='' CYAN='' WHITE='' BOLD='' NC=''
+                shift
+                ;;
+            --print-routes)
+                print_routes="1"
+                shift
+                ;;
+            --no-print-routes)
+                print_routes="0"
                 shift
                 ;;
             *)
@@ -237,8 +254,17 @@ main() {
     export ZIGCMS_API_PORT="$port"
     export ZIGCMS_ENV="development"
     
+    # 设置 PRINT_ROUTES 环境变量
+    if [ -n "$print_routes" ]; then
+        export PRINT_ROUTES="$print_routes"
+    elif [ -z "$PRINT_ROUTES" ]; then
+        # 如果命令行参数和环境变量都没有设置，使用默认值 0（不打印）
+        export PRINT_ROUTES="0"
+    fi
+    
     debug "服务器配置: $host:$port"
     debug "环境: development"
+    debug "打印路由: $PRINT_ROUTES"
     
     # 启动服务器
     if [ "$watch_mode" = "true" ]; then

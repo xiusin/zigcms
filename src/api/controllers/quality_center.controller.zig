@@ -236,14 +236,15 @@ pub fn init(allocator: Allocator) Self {
     if (!OrmBugAnalysis.hasDb()) OrmBugAnalysis.use(db);
 
     // 自动建表（仅质量中心新增表，已有表不受影响）
-    OrmScheduledReport.createTable(db) catch {};
-    OrmReportHistory.createTable(db) catch {};
-    OrmReportTemplate.createTable(db) catch {};
-    OrmEmailTemplate.createTable(db) catch {};
-    OrmLinkRecord.createTable(db) catch {};
-    OrmActivity.createTable(db) catch {};
-    OrmAiInsight.createTable(db) catch {};
-    OrmAiAnalysis.createTable(db) catch {};
+    // TODO: 暂时注释掉自动建表，改为手动执行迁移
+    // OrmScheduledReport.createTable(db) catch {};
+    // OrmReportHistory.createTable(db) catch {};
+    // OrmReportTemplate.createTable(db) catch {};
+    // OrmEmailTemplate.createTable(db) catch {};
+    // OrmLinkRecord.createTable(db) catch {};
+    // OrmActivity.createTable(db) catch {};
+    // OrmAiInsight.createTable(db) catch {};
+    // OrmAiAnalysis.createTable(db) catch {};
 
     return .{ .allocator = allocator };
 }

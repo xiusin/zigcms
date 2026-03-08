@@ -18,7 +18,7 @@ pub const Application = struct {
     system_initialized: bool,
     app_context: ?*AppContext,
 
-    pub fn create(allocator: std.mem.Allocator) !*Self {
+    pub fn create(allocator: std.mem.Allocator, print_routes: bool) !*Self {
         const app_ptr = try allocator.create(Self);
         errdefer allocator.destroy(app_ptr);
 
@@ -59,7 +59,7 @@ pub const Application = struct {
             .app_context = app_context,
         };
 
-        app_ptr.bootstrap = try Bootstrap.init(allocator, &app_ptr.app, global_logger, container, app_context);
+        app_ptr.bootstrap = try Bootstrap.init(allocator, &app_ptr.app, global_logger, container, app_context, print_routes);
 
         try app_ptr.bootstrap.registerRoutes();
 
@@ -69,7 +69,7 @@ pub const Application = struct {
     pub fn destroy(self: *Self) void {
         // 清理 Bootstrap 资源
         self.bootstrap.deinit();
-        
+
         self.app.deinit();
 
         // 注意：AppContext 中的资源是从 global 借用的，不要重复释放
@@ -96,10 +96,10 @@ pub const Application = struct {
     pub fn run(self: *Self) !void {
         // 初始化 Listener（在注册路由之后）
         try self.app.initListener();
-        
+
         // 注册 MCP Endpoint（必须在 Listener 初始化之后）
         try self.bootstrap.registerMcpRoutes();
-        
+
         self.bootstrap.printStartupSummary();
         logger.info("🚀 启动 ZigCMS 服务器", .{});
         self.app.listen() catch |err| switch (err) {

@@ -48,9 +48,10 @@ pub const Bootstrap = struct {
     route_count: usize,
     crud_count: usize,
     mcp_controller: ?*McpEndpoint = null, // 跟踪 MCP Endpoint
+    print_routes: bool, // 是否打印路由信息
 
     /// 初始化 Bootstrap 模块
-    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext) !Self {
+    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext, print_routes: bool) !Self {
         // 注册日志服务实例
         if (!container.isRegistered(logger.Logger)) {
             try container.registerInstance(logger.Logger, global_logger, null);
@@ -65,6 +66,7 @@ pub const Bootstrap = struct {
             .route_count = 0,
             .crud_count = 0,
             .mcp_controller = null,
+            .print_routes = print_routes,
         };
     }
 
@@ -99,8 +101,10 @@ pub const Bootstrap = struct {
         // 注册自定义控制器路由
         try self.registerCustomRoutes();
 
-        // 打印所有已注册的路由
-        self.app.printRoutes();
+        // 根据启动参数决定是否打印路由
+        if (self.print_routes) {
+            self.app.printRoutes();
+        }
     }
 
     /// 注册 CRUD 模块
