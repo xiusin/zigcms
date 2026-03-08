@@ -179,10 +179,12 @@ fn initOrmDatabase() !void {
     orm_models.init(db);
 
     // 执行模型迁移，创建数据表
+    // TODO: 暂时注释掉自动迁移，改为手动执行
     orm_models.migrate(db) catch |e| {
         logger.err("[global] 模型迁移失败: {}", .{e});
         return e;
     };
+    logger.info("[global] 迁移成功", .{});
 
     // 所有初始化成功后，保存数据库连接，并标记为 owned
     _db = db;
@@ -255,28 +257,6 @@ pub fn initWithDb(allocator: Allocator, db: *sql.Database) void {
     logger.info("[global] 全局模块初始化完成（使用外部数据库连接）", .{});
 }
 
-/// 初始化全局模块（旧版本，创建自己的数据库连接）
-/// @deprecated 请使用 initWithDb 代替
-///
-/// 设置全局分配器并触发一次性初始化。
-/// 初始化顺序：日志器 → 数据库 → 服务管理器
-/// 数据库所有权为 owned，会在 deinit 中清理。
-///
-/// 参数：
-/// - allocator: 全局使用的内存分配器
-///
-/// 线程安全：使用mutex保护
-pub fn init(allocator: Allocator) void {
-    mu.lock();
-    defer mu.unlock();
-
-    if (is_initialized) return;
-
-    // 注意：allocator 不再存储，从 ServiceManager 获取
-    _ = allocator;
-    init_some();
-}
-
 /// 获取全局分配器
 ///
 /// 返回：全局内存分配器
@@ -319,16 +299,6 @@ pub fn getServiceManager() ?*services.ServiceManager {
     return _service_manager;
 }
 
-/// 获取插件系统服务
-///
-/// 返回：插件系统服务指针
-/// 注意：如果服务管理器未初始化会 panic
-pub fn getPluginSystem() *services.PluginSystemService {
-    return getServiceManager().?.getPluginSystemService();
-}
-
-// get_container 已弃用，使用 getServiceManager() 代替
-
 /// 获取配置项（直接返回 config 中存储的值或默认值）
 ///
 /// 线程安全：使用 mutex 保护
@@ -344,15 +314,6 @@ pub fn get_setting(key: []const u8, def_value: []const u8) []const u8 {
 
     // 直接返回 config 中的值，无需拷贝（config 生命周期与程序一致）
     return config.get(key) orelse def_value;
-}
-
-/// 检查值是否为 false
-pub fn is_false(comptime T: type, val: T) bool {
-    if (T == bool) { // 可以直接判断类型是否满足
-        return !val;
-    }
-
-    return false;
 }
 
 pub fn restore_setting() !void {
@@ -373,37 +334,4 @@ pub fn restore_setting() !void {
     //         item.value,
     //     );
     // }
-}
-
-/// 动态将结构体转换为对应字段数量的元组
-pub inline fn struct_2_tuple(T: type) type {
-    const Type = std.builtin.Type;
-
-    const fields: [std.meta.fields(T).len - 1]Type.StructField = blk: {
-        var res: [std.meta.fields(T).len - 1]Type.StructField = undefined;
-
-        var i: usize = 0;
-        inline for (std.meta.fields(T)) |field| {
-            if (!std.mem.eql(u8, field.name, "id")) {
-                res[i] = Type.StructField{
-                    .type = field.type,
-                    .alignment = @alignOf(field.type),
-                    .default_value = field.default_value,
-                    .is_comptime = false,
-                    .name = std.fmt.comptimePrint("{}", .{i}),
-                };
-                i += 1;
-            }
-        }
-        break :blk res;
-    };
-
-    return @Type(.{
-        .Struct = std.builtin.Type.Struct{
-            .layout = .auto,
-            .is_tuple = true,
-            .decls = &.{},
-            .fields = &fields,
-        },
-    });
 }
