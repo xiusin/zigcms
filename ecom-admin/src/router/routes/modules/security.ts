@@ -43,7 +43,7 @@ const RouterConfig: AppRouteRecordRaw = {
       component: () => import('@/views/security/audit-log/index.vue'),
       meta: {
         locale: '审计日志',
-        icon: 'icon-file-text',
+        icon: 'icon-file',
       },
     },
     // 4. 日志管理（显示在菜单中）

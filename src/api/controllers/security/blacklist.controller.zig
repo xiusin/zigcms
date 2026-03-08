@@ -63,6 +63,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
 
     if (req.getParamSlice("page")) |v| page = std.fmt.parseInt(i32, v, 10) catch 1;
     if (req.getParamSlice("pageSize")) |v| page_size = std.fmt.parseInt(i32, v, 10) catch 10;
+    if (req.getParamSlice("page_size")) |v| page_size = std.fmt.parseInt(i32, v, 10) catch page_size;
     if (req.getParamSlice("limit")) |v| page_size = std.fmt.parseInt(i32, v, 10) catch page_size;
     if (req.getParamSlice("username")) |v| username = v;
     if (req.getParamSlice("block_type")) |v| block_type = std.fmt.parseInt(i32, v, 10) catch null;
@@ -78,6 +79,9 @@ fn listImpl(self: *Self, req: zap.Request) !void {
                     if (v == .integer) page = @intCast(v.integer);
                 }
                 if (obj.get("pageSize")) |v| {
+                    if (v == .integer) page_size = @intCast(v.integer);
+                }
+                if (obj.get("page_size")) |v| {
                     if (v == .integer) page_size = @intCast(v.integer);
                 }
                 if (obj.get("limit")) |v| {
@@ -124,6 +128,7 @@ fn listImpl(self: *Self, req: zap.Request) !void {
         .total = total,
         .page = page,
         .pageSize = page_size,
+        .page_size = page_size,
     });
 }
 

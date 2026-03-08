@@ -121,7 +121,7 @@
             上传配置
           </a-radio>
           <a-radio value="payment">
-            <template #icon><icon-wallet /></template>
+            <template #icon><icon-settings /></template>
             支付配置
           </a-radio>
           <a-radio value="sms">

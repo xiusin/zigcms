@@ -10,7 +10,7 @@
             :value-style="{ color: '#3370ff' }"
           >
             <template #prefix>
-              <icon-operation />
+              <icon-file />
             </template>
           </a-statistic>
         </a-card>

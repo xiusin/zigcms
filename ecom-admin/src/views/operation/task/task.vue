@@ -52,16 +52,16 @@
 
       <a-tabs v-model="activeTab" @change="fetchData">
         <a-tab-pane key="schedule" title="定时任务">
-          <template #icon><icon-clock /></template>
+          <template #icon><icon-clock-circle /></template>
         </a-tab-pane>
         <a-tab-pane key="delay" title="延迟任务">
-          <template #icon><icon-timer /></template>
+          <template #icon><icon-history /></template>
         </a-tab-pane>
         <a-tab-pane key="loop" title="循环任务">
-          <template #icon><icon-rotate-right /></template>
+          <template #icon><icon-refresh /></template>
         </a-tab-pane>
         <a-tab-pane key="manual" title="手动任务">
-          <template #icon><icon-hand /></template>
+          <template #icon><icon-user /></template>
         </a-tab-pane>
       </a-tabs>
       <base-table
@@ -83,7 +83,7 @@
         <template #action="{ record }">
           <div class="action-btns">
             <a-button type="text" size="small" @click="runTask(record)">
-              <template #icon><icon-play /></template>
+              <template #icon><icon-refresh /></template>
               执行
             </a-button>
             <a-button type="text" size="small" @click="openTaskModal(record)">
@@ -99,8 +99,8 @@
             >
               <a-button type="text" size="small">
                 <template #icon>
-                  <icon-pause v-if="record.status === 1" />
-                  <icon-play v-else />
+                  <icon-lock v-if="record.status === 1" />
+                  <icon-check-circle v-else />
                 </template>
                 {{ record.status === 1 ? '停用' : '启用' }}
               </a-button>

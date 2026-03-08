@@ -354,7 +354,22 @@ fn resolveRoleInfo(self: *Self, admin_id: i32) !struct {
     var role_text: []const u8 = "超级管理员";
     var role_text_owner: ?[]u8 = null;
 
-    const role_opt = OrmSysRole.Find(primary) catch null;
+    var role_q = OrmSysRole.Query();
+    defer role_q.deinit();
+    _ = role_q.select(&.{
+        "id",
+        "role_name",
+        "role_key",
+        "sort",
+        "status",
+        "remark",
+        "data_scope",
+        "created_at",
+        "updated_at",
+    });
+    _ = role_q.whereEq("id", primary);
+
+    const role_opt = role_q.first() catch null;
     if (role_opt) |role| {
         var role_mut = role;
         defer OrmSysRole.freeModel(&role_mut);

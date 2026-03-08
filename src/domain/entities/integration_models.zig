@@ -90,6 +90,8 @@ pub const SysPosition = struct {
 
 /// 系统角色模型
 pub const SysRole = struct {
+    pub const ignore_fields = [_][]const u8{"menus"};
+
     id: ?i32 = null,
     role_name: []const u8 = "",
     role_key: []const u8 = "",

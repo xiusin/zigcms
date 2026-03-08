@@ -14,7 +14,7 @@ const RouterConfig: AppRouteRecordRaw = {
   meta: {
     locale: '质量中心',
     requiresAuth: true,
-    icon: 'icon-shield-check',
+    icon: 'icon-safe',
     order: 20,
   },
   children: [
@@ -39,7 +39,7 @@ const RouterConfig: AppRouteRecordRaw = {
       meta: {
         locale: '测试用例',
         requiresAuth: true,
-        icon: 'icon-file-text',
+        icon: 'icon-file',
         roles: ['*'],
         permission: 'quality:center:test-case',
       },

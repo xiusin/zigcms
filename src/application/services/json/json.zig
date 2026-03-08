@@ -566,7 +566,7 @@ pub fn TypedParser(comptime T: type) type {
                     // 处理默认值
                     if (field.default_value_ptr) |default_ptr| {
                         const default = @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
-                        @field(result, field.name) = default;
+                        @field(result, field.name) = try cloneDefaultValue(field.type, self.allocator, default);
                     } else if (@typeInfo(field.type) == .optional) {
                         @field(result, field.name) = null;
                     } else {
@@ -594,6 +594,36 @@ pub fn TypedParser(comptime T: type) type {
             return JSON.valueToType(F, allocator, value);
         }
     };
+}
+
+fn cloneDefaultValue(comptime T: type, allocator: Allocator, value: T) !T {
+    const info = @typeInfo(T);
+    switch (info) {
+        .pointer => |ptr| {
+            if (ptr.size == .slice and ptr.child == u8) {
+                return try allocator.dupe(u8, value);
+            }
+            return value;
+        },
+        .optional => |opt| {
+            if (value) |inner| {
+                const cloned = try cloneDefaultValue(opt.child, allocator, inner);
+                return cloned;
+            }
+            return null;
+        },
+        .@"struct" => {
+            if (T == RawMessage or T == Number) {
+                return value;
+            }
+            var result = value;
+            inline for (std.meta.fields(T)) |field| {
+                @field(result, field.name) = try cloneDefaultValue(field.type, allocator, @field(value, field.name));
+            }
+            return result;
+        },
+        else => return value,
+    }
 }
 
 /// 生成编译时优化的序列化器
@@ -1606,7 +1636,7 @@ pub const JSON = struct {
                 // 检查是否有默认值
                 if (field.default_value_ptr) |default_ptr| {
                     const default = @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
-                    @field(result, field.name) = default;
+                    @field(result, field.name) = try cloneDefaultValue(field.type, allocator, default);
                 } else {
                     // 检查是否为可选类型
                     const field_info = @typeInfo(field.type);

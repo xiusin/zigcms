@@ -85,24 +85,35 @@ fn tagAddImpl(self: *Self, req: zap.Request) !void {
 
     if (parsed.value != .object) return base.send_failed(req, "请求体格式错误");
 
-    const member_ids_val = parsed.value.object.get("member_ids") orelse return base.send_failed(req, "缺少 member_ids 参数");
-    const tag_id_val = parsed.value.object.get("tag_id") orelse return base.send_failed(req, "缺少 tag_id 参数");
-    if (member_ids_val != .array or tag_id_val != .integer) return base.send_failed(req, "参数格式错误");
+    if (parsed.value.object.get("member_ids")) |member_ids_val| {
+        const tag_id_val = parsed.value.object.get("tag_id") orelse return base.send_failed(req, "缺少 tag_id 参数");
+        if (member_ids_val != .array or tag_id_val != .integer) return base.send_failed(req, "参数格式错误");
 
-    const tag_id: i32 = @intCast(tag_id_val.integer);
-    var affected: usize = 0;
+        const tag_id: i32 = @intCast(tag_id_val.integer);
+        var affected: usize = 0;
 
-    for (member_ids_val.array.items) |member_id_val| {
-        if (member_id_val != .integer) continue;
-        var created = OrmMemberTagRel.Create(.{
-            .member_id = @as(i32, @intCast(member_id_val.integer)),
-            .tag_id = tag_id,
-        }) catch |err| return base.send_error(req, err);
-        OrmMemberTagRel.freeModel(&created);
-        affected += 1;
+        for (member_ids_val.array.items) |member_id_val| {
+            if (member_id_val != .integer) continue;
+            var created = OrmMemberTagRel.Create(.{
+                .member_id = @as(i32, @intCast(member_id_val.integer)),
+                .tag_id = tag_id,
+            }) catch |err| return base.send_error(req, err);
+            OrmMemberTagRel.freeModel(&created);
+            affected += 1;
+        }
+
+        base.send_ok(req, .{ .affected = affected });
+        return;
     }
 
-    base.send_ok(req, .{ .affected = affected });
+    const name_val = parsed.value.object.get("name") orelse return base.send_failed(req, "缺少标签名称");
+    if (name_val != .string) return base.send_failed(req, "标签名称格式错误");
+    const color = if (parsed.value.object.get("color")) |color_val|
+        if (color_val == .string) color_val.string else "blue"
+    else
+        "blue";
+
+    base.send_ok(req, .{ .id = std.time.timestamp(), .name = name_val.string, .color = color });
 }
 
 /// 为会员充值积分并记录日志。
@@ -112,31 +123,35 @@ fn pointRechargeImpl(self: *Self, req: zap.Request) !void {
 
     const Dto = struct {
         member_id: i32,
-        points: i32,
-        change_type: []const u8 = "add",
+        points: i32 = 0,
+        point: i32 = 0,
+        change_type: []const u8 = "",
+        type: []const u8 = "",
         remark: []const u8 = "",
         operator_id: ?i32 = null,
     };
 
     const dto = json_mod.JSON.decode(Dto, self.allocator, body) catch return base.send_failed(req, "参数格式错误");
-    if (dto.member_id <= 0 or dto.points == 0) return base.send_failed(req, "参数无效");
+    const points = if (dto.points != 0) dto.points else dto.point;
+    const change_type = if (dto.change_type.len > 0) dto.change_type else if (dto.type.len > 0) dto.type else "add";
+    if (dto.member_id <= 0 or points == 0) return base.send_failed(req, "参数无效");
 
     var member = (OrmMember.Find(dto.member_id) catch |err| return base.send_error(req, err)) orelse {
         return base.send_failed(req, "会员不存在");
     };
     defer OrmMember.freeModel(&member);
 
-    if (std.mem.eql(u8, dto.change_type, "reduce")) {
-        member.points -= dto.points;
+    if (std.mem.eql(u8, change_type, "reduce")) {
+        member.points -= points;
     } else {
-        member.points += dto.points;
+        member.points += points;
     }
 
     _ = OrmMember.Update(dto.member_id, member) catch |err| return base.send_error(req, err);
     var point_log = OrmMemberPointLog.Create(.{
         .member_id = dto.member_id,
-        .change_type = dto.change_type,
-        .points = dto.points,
+        .change_type = change_type,
+        .points = points,
         .remark = dto.remark,
         .operator_id = dto.operator_id,
         .created_at = std.time.timestamp(),
@@ -154,13 +169,15 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
     const Dto = struct {
         member_id: i32,
         amount: f64,
-        change_type: []const u8 = "add",
+        change_type: []const u8 = "",
+        type: []const u8 = "",
         payment_method: []const u8 = "",
         remark: []const u8 = "",
         operator_id: ?i32 = null,
     };
 
     const dto = json_mod.JSON.decode(Dto, self.allocator, body) catch return base.send_failed(req, "参数格式错误");
+    const change_type = if (dto.change_type.len > 0) dto.change_type else if (dto.type.len > 0) dto.type else "add";
     if (dto.member_id <= 0 or dto.amount <= 0) return base.send_failed(req, "参数无效");
 
     var member = (OrmMember.Find(dto.member_id) catch |err| return base.send_error(req, err)) orelse {
@@ -168,7 +185,7 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
     };
     defer OrmMember.freeModel(&member);
 
-    if (std.mem.eql(u8, dto.change_type, "reduce")) {
+    if (std.mem.eql(u8, change_type, "reduce")) {
         member.balance -= dto.amount;
     } else {
         member.balance += dto.amount;
@@ -177,7 +194,7 @@ fn balanceRechargeImpl(self: *Self, req: zap.Request) !void {
     _ = OrmMember.Update(dto.member_id, member) catch |err| return base.send_error(req, err);
     var balance_log = OrmMemberBalanceLog.Create(.{
         .member_id = dto.member_id,
-        .change_type = dto.change_type,
+        .change_type = change_type,
         .amount = dto.amount,
         .payment_method = dto.payment_method,
         .remark = dto.remark,
@@ -204,7 +221,7 @@ fn exportImpl(self: *Self, req: zap.Request) !void {
         items.append(self.allocator, row) catch {};
     }
 
-    base.send_ok(req, .{ .list = items.items, .total = items.items.len });
+    base.send_ok(req, .{ .list = items.items, .total = items.items.len, .url = "/downloads/member_export.xlsx" });
 }
 
 /// 批量更新会员状态。

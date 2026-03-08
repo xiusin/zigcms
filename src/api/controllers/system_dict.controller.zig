@@ -55,8 +55,11 @@ pub const Dict = struct {
         if (req.getParamSlice("page")) |page_str| {
             page = std.fmt.parseInt(i32, page_str, 10) catch 1;
         }
-        if (req.getParamSlice("page_size")) |page_size_str| {
+        if (req.getParamSlice("pageSize")) |page_size_str| {
             page_size = std.fmt.parseInt(i32, page_size_str, 10) catch 10;
+        }
+        if (req.getParamSlice("page_size")) |page_size_str| {
+            page_size = std.fmt.parseInt(i32, page_size_str, 10) catch page_size;
         }
         if (req.getParamSlice("keyword")) |kw| {
             if (kw.len > 0) keyword = kw;
@@ -129,6 +132,7 @@ pub const Dict = struct {
             .total = total,
             .page = page,
             .page_size = page_size,
+            .pageSize = page_size,
         });
     }
 

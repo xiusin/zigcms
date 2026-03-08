@@ -7,10 +7,10 @@
             <template #avatar>
               <div class="config-icon" :class="`type-${item.config_type}`">
                 <icon-settings v-if="item.config_type === 'text'" />
-                <icon-number v-else-if="item.config_type === 'number'" />
+                <icon-code-block v-else-if="item.config_type === 'number'" />
                 <icon-file v-else-if="item.config_type === 'textarea'" />
-                <icon-toggle v-else-if="item.config_type === 'switch'" />
-                <icon-select v-else-if="item.config_type === 'select'" />
+                <icon-check-circle v-else-if="item.config_type === 'switch'" />
+                <icon-list v-else-if="item.config_type === 'select'" />
                 <icon-check-circle v-else-if="item.config_type === 'radio'" />
                 <icon-check-square
                   v-else-if="item.config_type === 'checkbox'"

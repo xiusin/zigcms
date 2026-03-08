@@ -120,7 +120,7 @@ const OperationConfig: AppRouteRecordRaw = {
   meta: {
     locale: '运营管理',
     requiresAuth: true,
-    icon: 'icon-operation',
+    icon: 'icon-settings',
     order: 15,
   },
   children: [
