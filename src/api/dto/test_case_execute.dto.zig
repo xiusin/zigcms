@@ -7,8 +7,8 @@ const TestExecution = @import("../../domain/entities/test_execution.model.zig").
 
 /// 测试用例执行 DTO
 pub const TestCaseExecuteDto = struct {
-    /// 测试用例 ID（必填）
-    test_case_id: i32,
+    /// 测试用例 ID（可由路径参数传入）
+    test_case_id: i32 = 0,
     /// 执行人（必填）
     executor: []const u8,
     /// 执行状态（passed/failed/blocked）
@@ -22,14 +22,13 @@ pub const TestCaseExecuteDto = struct {
 
     /// 验证执行数据有效性
     pub fn validate(self: @This()) !void {
-        if (self.test_case_id == 0) return error.TestCaseIdRequired;
         if (self.executor.len == 0) return error.ExecutorRequired;
     }
 
     /// 转换为领域实体
-    pub fn toEntity(self: @This()) TestExecution {
+    pub fn toEntity(self: @This(), test_case_id: i32) TestExecution {
         return TestExecution{
-            .test_case_id = self.test_case_id,
+            .test_case_id = test_case_id,
             .executor = self.executor,
             .status = self.status,
             .actual_result = self.actual_result,

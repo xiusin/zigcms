@@ -36,7 +36,7 @@ const FeedbackService = @import("../../application/services/feedback_service.zig
 
 // 导入 AI 生成器接口
 const AIGeneratorInterface = @import("../../domain/services/ai_generator_interface.zig").AIGeneratorInterface;
-const GenerateOptions = @import("../../domain/services/ai_generator_interface.zig").GenerateOptions;
+const GenerateOptions = @import("../../domain/services/ai_generator_interface.zig").AIGeneratorInterface.GenerateOptions;
 
 // 导入实体
 const Requirement = @import("../../domain/entities/requirement.model.zig").Requirement;
@@ -105,13 +105,12 @@ pub fn generateTestCases(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const requirement_service = container.resolve(RequirementService) catch |err| {
+    const requirement_service = di.resolveService(RequirementService) catch |err| {
         base.send_error(req, err);
         return;
     };
 
-    const ai_generator = container.resolve(AIGeneratorInterface) catch |err| {
+    const ai_generator = di.resolveService(AIGeneratorInterface) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -128,10 +127,10 @@ pub fn generateTestCases(req: zap.Request) void {
 
     // 5. 构建生成选项
     const options = GenerateOptions{
-        .max_cases = dto.max_cases orelse 10,
-        .include_edge_cases = dto.include_edge_cases orelse true,
-        .include_performance = dto.include_performance orelse false,
-        .language = dto.language orelse "zh-CN",
+        .max_cases = dto.max_cases,
+        .include_edge_cases = dto.include_edge_cases,
+        .include_performance = dto.include_performance,
+        .language = dto.language,
     };
 
     // 6. 调用 AI 生成器生成测试用例
@@ -139,7 +138,17 @@ pub fn generateTestCases(req: zap.Request) void {
         base.send_error(req, err);
         return;
     };
-    defer ai_generator.freeGeneratedTestCases(generated_cases);
+    defer {
+        for (generated_cases) |item| {
+            allocator.free(item.title);
+            allocator.free(item.precondition);
+            allocator.free(item.steps);
+            allocator.free(item.expected_result);
+            for (item.tags) |tag| allocator.free(tag);
+            allocator.free(item.tags);
+        }
+        allocator.free(generated_cases);
+    }
 
     // 7. 返回成功响应
     const response = .{
@@ -150,7 +159,7 @@ pub fn generateTestCases(req: zap.Request) void {
         },
     };
 
-    const json = json_mod.JSON.encode(allocator, response) catch |err| {
+    const json = std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(response, .{})}) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -211,15 +220,14 @@ pub fn generateRequirement(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const ai_generator = container.resolve(AIGeneratorInterface) catch |err| {
+    const ai_generator = di.resolveService(AIGeneratorInterface) catch |err| {
         base.send_error(req, err);
         return;
     };
 
     // 4. 构建生成选项
     const options = GenerateOptions{
-        .language = dto.language orelse "zh-CN",
+        .language = dto.language,
     };
 
     // 5. 调用 AI 生成器生成需求
@@ -227,7 +235,10 @@ pub fn generateRequirement(req: zap.Request) void {
         base.send_error(req, err);
         return;
     };
-    defer ai_generator.freeGeneratedRequirement(generated_requirement);
+    defer {
+        allocator.free(generated_requirement.title);
+        allocator.free(generated_requirement.description);
+    }
 
     // 6. 返回成功响应
     const response = .{
@@ -236,7 +247,7 @@ pub fn generateRequirement(req: zap.Request) void {
         .data = generated_requirement,
     };
 
-    const json = json_mod.JSON.encode(allocator, response) catch |err| {
+    const json = std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(response, .{})}) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -295,33 +306,23 @@ pub fn analyzeFeedback(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const feedback_service = container.resolve(FeedbackService) catch |err| {
+    const ai_generator = di.resolveService(AIGeneratorInterface) catch |err| {
         base.send_error(req, err);
         return;
     };
 
-    const ai_generator = container.resolve(AIGeneratorInterface) catch |err| {
+    // 4. 调用 AI 生成器分析反馈
+    const analysis = ai_generator.analyzeFeedback(dto.content) catch |err| {
         base.send_error(req, err);
         return;
     };
-
-    // 4. 查询反馈
-    const feedback = feedback_service.findById(dto.feedback_id) catch |err| {
-        base.send_error(req, err);
-        return;
-    } orelse {
-        base.send_failed(req, "反馈不存在");
-        return;
-    };
-    defer feedback_service.freeFeedback(feedback);
-
-    // 5. 调用 AI 生成器分析反馈
-    const analysis = ai_generator.analyzeFeedback(feedback.content) catch |err| {
-        base.send_error(req, err);
-        return;
-    };
-    defer ai_generator.freeFeedbackAnalysis(analysis);
+    defer {
+        allocator.free(analysis.bug_type);
+        for (analysis.affected_modules) |item| allocator.free(item);
+        allocator.free(analysis.affected_modules);
+        for (analysis.suggested_actions) |item| allocator.free(item);
+        allocator.free(analysis.suggested_actions);
+    }
 
     // 6. 返回成功响应
     const response = .{
@@ -330,7 +331,7 @@ pub fn analyzeFeedback(req: zap.Request) void {
         .data = analysis,
     };
 
-    const json = json_mod.JSON.encode(allocator, response) catch |err| {
+    const json = std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(response, .{})}) catch |err| {
         base.send_error(req, err);
         return;
     };

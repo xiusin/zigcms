@@ -133,14 +133,13 @@ fn parseListQueryParams(allocator: Allocator, req: zap.Request) !ListQueryParams
 
     // 解析 query 参数
     req.parseQuery();
-    var query_params = req.parametersToOwnedStrList(allocator) catch |err| {
-        return err;
-    };
-    defer query_params.deinit();
-
-    for (query_params.items) |param| {
-        try applyQueryParam(&params, param.key, param.value);
-    }
+    if (req.getParamSlice("page")) |value| try applyQueryParam(&params, "page", value);
+    if (req.getParamSlice("limit")) |value| try applyQueryParam(&params, "limit", value);
+    if (req.getParamSlice("pageSize")) |value| try applyQueryParam(&params, "pageSize", value);
+    if (req.getParamSlice("keyword")) |value| try applyQueryParam(&params, "keyword", value);
+    if (req.getParamSlice("status")) |value| try applyQueryParam(&params, "status", value);
+    if (req.getParamSlice("dept_id")) |value| try applyQueryParam(&params, "dept_id", value);
+    if (req.getParamSlice("role_id")) |value| try applyQueryParam(&params, "role_id", value);
 
     // 解析 JSON body 参数（覆盖 query 参数）
     req.parseBody() catch {};

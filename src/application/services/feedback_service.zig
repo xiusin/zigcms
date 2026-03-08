@@ -17,9 +17,9 @@
 
 const std = @import("std");
 const Feedback = @import("../../domain/entities/feedback.model.zig").Feedback;
-const FeedbackStatus = @import("../../domain/entities/feedback.model.zig").FeedbackStatus;
-const FeedbackType = @import("../../domain/entities/feedback.model.zig").FeedbackType;
-const Severity = @import("../../domain/entities/feedback.model.zig").Severity;
+const FeedbackStatus = Feedback.FeedbackStatus;
+const FeedbackType = Feedback.FeedbackType;
+const Severity = Feedback.Severity;
 const FeedbackRepository = @import("../../domain/repositories/feedback_repository.zig").FeedbackRepository;
 const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 const PageResult = @import("../../domain/repositories/test_case_repository.zig").PageResult;

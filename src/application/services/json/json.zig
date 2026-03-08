@@ -657,7 +657,7 @@ pub fn TypedStringify(comptime T: type) type {
             return field_name;
         }
 
-        fn writeString(self: *Self, str: []const u8) !void {
+        fn writeString(self: *Self, str: []const u8) anyerror!void {
             try self.buffer.append(self.allocator, '"');
             for (str) |c| {
                 switch (c) {
@@ -1209,12 +1209,12 @@ pub const Stringify = struct {
     }
 
     /// 序列化值为 JSON 字符串
-    pub fn stringify(self: *Self, value: anytype) ![]const u8 {
+    pub fn stringify(self: *Self, value: anytype) anyerror![]const u8 {
         try self.writeValue(value);
         return self.buffer.toOwnedSlice(self.allocator);
     }
 
-    fn writeValue(self: *Self, value: anytype) !void {
+    fn writeValue(self: *Self, value: anytype) anyerror!void {
         const T = @TypeOf(value);
         const info = @typeInfo(T);
 
@@ -1337,7 +1337,7 @@ pub const Stringify = struct {
         try self.buffer.append(self.allocator, '"');
     }
 
-    fn writeArray(self: *Self, arr: anytype) !void {
+    fn writeArray(self: *Self, arr: anytype) anyerror!void {
         try self.buffer.append(self.allocator, '[');
         self.depth += 1;
 
@@ -1364,7 +1364,7 @@ pub const Stringify = struct {
         try self.buffer.append(self.allocator, ']');
     }
 
-    fn writeStruct(self: *Self, value: anytype) !void {
+    fn writeStruct(self: *Self, value: anytype) anyerror!void {
         const T = @TypeOf(value);
         const fields = std.meta.fields(T);
 
@@ -1412,7 +1412,7 @@ pub const Stringify = struct {
         try self.buffer.append(self.allocator, '}');
     }
 
-    fn writeTuple(self: *Self, value: anytype) !void {
+    fn writeTuple(self: *Self, value: anytype) anyerror!void {
         const T = @TypeOf(value);
         const fields = std.meta.fields(T);
 
@@ -1442,7 +1442,7 @@ pub const Stringify = struct {
         try self.buffer.append(self.allocator, ']');
     }
 
-    fn writeIndent(self: *Self) !void {
+    fn writeIndent(self: *Self) anyerror!void {
         for (0..self.depth) |_| {
             try self.buffer.appendSlice(self.allocator, self.options.indent);
         }

@@ -136,8 +136,9 @@ pub const Bootstrap = struct {
 
         // Phase 3: 配置/会员
         try registerCrudWithAlias(self.app, "system/config", models.SysConfig);
+        try registerCrudWithAlias(self.app, "member", models.BizMember);
         try registerCrudWithAlias(self.app, "business/member", models.BizMember);
-        self.crud_count += 2;
+        self.crud_count += 3;
 
         // Phase 4: 任务
         try registerCrudWithAlias(self.app, "operation/task", models.OpTask);
@@ -566,6 +567,39 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/quality/statistics/bug-distribution", ctrl, Auth.requireAuth(&QC.bug_distribution));
         try registerWithAlias(self.app, "/quality/statistics/feedback-distribution", ctrl, Auth.requireAuth(&QC.feedback_distribution));
 
+        // 质量中心主资源 REST 路由（匹配前端 /api/quality/*）
+        try registerWithAlias(self.app, "/quality/test-cases", ctrl, Auth.requireAuth(&QC.rest_test_cases));
+        try registerWithAlias(self.app, "/quality/test-cases/:id", ctrl, Auth.requireAuth(&QC.rest_test_case_item));
+        try registerWithAlias(self.app, "/quality/test-cases/:id/execute", ctrl, Auth.requireAuth(&QC.rest_test_case_execute));
+        try registerWithAlias(self.app, "/quality/test-cases/:id/executions", ctrl, Auth.requireAuth(&QC.rest_test_case_executions));
+        try registerWithAlias(self.app, "/quality/ai/generate-test-cases", ctrl, Auth.requireAuth(&QC.rest_ai_generate_test_cases));
+        try registerWithAlias(self.app, "/quality/ai/generate-requirement", ctrl, Auth.requireAuth(&QC.rest_ai_generate_requirement));
+        try registerWithAlias(self.app, "/quality/ai/analyze-feedback", ctrl, Auth.requireAuth(&QC.rest_ai_analyze_feedback));
+        try registerWithAlias(self.app, "/quality/projects", ctrl, Auth.requireAuth(&QC.rest_projects));
+        try registerWithAlias(self.app, "/quality/projects/:id", ctrl, Auth.requireAuth(&QC.rest_project_item));
+        try registerWithAlias(self.app, "/quality/projects/:id/archive", ctrl, Auth.requireAuth(&QC.rest_project_archive));
+        try registerWithAlias(self.app, "/quality/projects/:id/restore", ctrl, Auth.requireAuth(&QC.rest_project_restore));
+        try registerWithAlias(self.app, "/quality/projects/:id/statistics", ctrl, Auth.requireAuth(&QC.rest_project_statistics));
+        try registerWithAlias(self.app, "/quality/modules", ctrl, Auth.requireAuth(&QC.rest_modules));
+        try registerWithAlias(self.app, "/quality/modules/:id", ctrl, Auth.requireAuth(&QC.rest_module_item));
+        try registerWithAlias(self.app, "/quality/modules/tree", ctrl, Auth.requireAuth(&QC.rest_module_tree));
+        try registerWithAlias(self.app, "/quality/modules/:id/move", ctrl, Auth.requireAuth(&QC.rest_module_move));
+        try registerWithAlias(self.app, "/quality/modules/:id/statistics", ctrl, Auth.requireAuth(&QC.rest_module_statistics));
+        try registerWithAlias(self.app, "/quality/requirements", ctrl, Auth.requireAuth(&QC.rest_requirements));
+        try registerWithAlias(self.app, "/quality/requirements/:id", ctrl, Auth.requireAuth(&QC.rest_requirement_item));
+        try registerWithAlias(self.app, "/quality/requirements/:id/link-test-case", ctrl, Auth.requireAuth(&QC.rest_requirement_link_test_case));
+        try registerWithAlias(self.app, "/quality/requirements/:id/unlink-test-case/:caseId", ctrl, Auth.requireAuth(&QC.rest_requirement_unlink_test_case));
+        try registerWithAlias(self.app, "/quality/requirements/import", ctrl, Auth.requireAuth(&QC.rest_requirement_import));
+        try registerWithAlias(self.app, "/quality/requirements/export", ctrl, Auth.requireAuth(&QC.rest_requirement_export));
+        try registerWithAlias(self.app, "/quality/feedbacks", ctrl, Auth.requireAuth(&QC.rest_feedbacks));
+        try registerWithAlias(self.app, "/quality/feedbacks/:id", ctrl, Auth.requireAuth(&QC.rest_feedback_item));
+        try registerWithAlias(self.app, "/quality/feedbacks/:id/follow-up", ctrl, Auth.requireAuth(&QC.rest_feedback_follow_up));
+        try registerWithAlias(self.app, "/quality/feedbacks/batch-assign", ctrl, Auth.requireAuth(&QC.rest_feedback_batch_assign));
+        try registerWithAlias(self.app, "/quality/feedbacks/batch-update-status", ctrl, Auth.requireAuth(&QC.rest_feedback_batch_update_status));
+        try registerWithAlias(self.app, "/quality/feedbacks/batch-delete", ctrl, Auth.requireAuth(&QC.rest_feedback_batch_delete));
+        try registerWithAlias(self.app, "/quality/feedbacks/export", ctrl, Auth.requireAuth(&QC.rest_feedback_export));
+        try registerWithAlias(self.app, "/quality/feedbacks/:id/status", ctrl, Auth.requireAuth(&QC.rest_feedback_status));
+
         // 反馈与测试联动（匹配前端 /api/quality/feedbacks/... 和 /api/quality/bugs/...）
         try registerWithAlias(self.app, "/quality/feedbacks/to-task", ctrl, Auth.requireAuth(&QC.feedback_to_task));
         try registerWithAlias(self.app, "/quality/bugs/to-feedback", ctrl, Auth.requireAuth(&QC.bug_to_feedback));
@@ -607,7 +641,7 @@ pub const Bootstrap = struct {
         try registerWithAlias(self.app, "/quality/ai/analysis", ctrl, Auth.requireAuth(&QC.ai_analysis));
         try registerWithAlias(self.app, "/quality/ai/analysis/history", ctrl, Auth.requireAuth(&QC.ai_analysis_history));
 
-        self.route_count += 30;
+        self.route_count += 60;
     }
 
     /// 注册安全管理路由
@@ -615,6 +649,7 @@ pub const Bootstrap = struct {
         const SecurityEvent = controllers.security.SecurityEvent;
         const AuditLog = controllers.security.AuditLog;
         const Alert = controllers.security.Alert;
+        const Blacklist = controllers.security.Blacklist;
 
         // 注册安全事件控制器
         if (!self.container.isRegistered(SecurityEvent)) {
@@ -649,9 +684,20 @@ pub const Bootstrap = struct {
             }.factory, null);
         }
 
+        if (!self.container.isRegistered(Blacklist)) {
+            try self.container.registerSingleton(Blacklist, Blacklist, struct {
+                fn factory(_: *DIContainer, allocator: std.mem.Allocator) anyerror!*Blacklist {
+                    const ctrl = try allocator.create(Blacklist);
+                    ctrl.* = Blacklist.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
         const security_event = try self.container.resolve(SecurityEvent);
         const audit_log = try self.container.resolve(AuditLog);
         const alert = try self.container.resolve(Alert);
+        const blacklist = try self.container.resolve(Blacklist);
 
         // 安全事件路由
         try self.app.route("/api/security/events", security_event, &SecurityEvent.list);
@@ -682,9 +728,18 @@ pub const Bootstrap = struct {
         try self.app.route("/api/security/alert-history/:id/resolve", alert, &Alert.resolveAlert);
         try self.app.route("/api/security/alert-history/:id/ignore", alert, &Alert.ignoreAlert);
         try self.app.route("/api/security/alert-history/stats", alert, &Alert.getStats);
+        try self.app.route("/api/security/alerts/realtime", alert, &Alert.getRealtimeAlerts);
 
-        self.route_count += 23;
-        logger.info("✅ 安全管理路由已注册: 23 个路由", .{});
+        try self.app.route("/api/security/blacklist/list", blacklist, &Blacklist.list);
+        try self.app.route("/api/security/blacklist/save", blacklist, &Blacklist.save);
+        try self.app.route("/api/security/blacklist/set", blacklist, &Blacklist.set);
+        try self.app.route("/api/security/blacklist/delete", blacklist, &Blacklist.delete);
+        try self.app.route("/api/security/blacklist/add", blacklist, &Blacklist.add);
+        try self.app.route("/api/security/blacklist/import", blacklist, &Blacklist.import_data);
+        try self.app.route("/api/security/blacklist/export", blacklist, &Blacklist.export_data);
+
+        self.route_count += 31;
+        logger.info("✅ 安全管理路由已注册: 31 个路由", .{});
     }
 
     /// 注册 MCP 路由（AI 辅助开发）

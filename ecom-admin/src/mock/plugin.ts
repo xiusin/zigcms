@@ -20,6 +20,13 @@ export function viteMockPlugin(config: MockConfig = {}): Plugin {
     '/api/system/captcha',    // 验证码
     '/api/system/dict',       // 字典管理走真实后端
     '/api/dict',              // 历史字典接口走真实后端
+    '/api/system/config',
+    '/api/business/member',
+    '/api/member/',
+    '/api/security/blacklist',
+    '/api/operation/task',
+    '/api/system/log',
+    '/api/quality/',
   ];
 
   return {

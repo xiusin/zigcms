@@ -33,15 +33,17 @@
 //! ```
 
 const std = @import("std");
-const CacheInterface = @import("contract.zig").CacheInterface;
+const CacheInterface = @import("../../application/services/cache/contract.zig").CacheInterface;
 
 /// 缓存 TTL 配置（秒）
 pub const TTL = struct {
     /// 测试用例缓存 TTL（5 分钟）
     pub const TEST_CASE: u64 = 5 * 60;
+    pub const PROJECT: u64 = TEST_CASE;
 
     /// 项目统计缓存 TTL（10 分钟）
     pub const PROJECT_STATS: u64 = 10 * 60;
+    pub const PROJECT_STATISTICS: u64 = PROJECT_STATS;
 
     /// 模块树缓存 TTL（15 分钟）
     pub const MODULE_TREE: u64 = 15 * 60;
@@ -101,6 +103,14 @@ pub fn testCaseKey(allocator: std.mem.Allocator, id: i32) ![]const u8 {
 /// - 缓存键（调用者拥有所有权，必须释放）
 pub fn projectStatsKey(allocator: std.mem.Allocator, project_id: i32) ![]const u8 {
     return try std.fmt.allocPrint(allocator, "quality:project:{d}:stats", .{project_id});
+}
+
+pub fn projectKey(allocator: std.mem.Allocator, id: i32) ![]const u8 {
+    return try std.fmt.allocPrint(allocator, "quality:project:{d}", .{id});
+}
+
+pub fn projectStatisticsKey(allocator: std.mem.Allocator, project_id: i32) ![]const u8 {
+    return try projectStatsKey(allocator, project_id);
 }
 
 /// 生成模块树缓存键

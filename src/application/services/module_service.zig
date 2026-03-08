@@ -415,7 +415,7 @@ pub const ModuleService = struct {
 
     /// 序列化模块列表为 JSON
     fn serializeModuleList(self: *Self, modules: []Module) ![]const u8 {
-        return try std.json.stringifyAlloc(self.allocator, modules, .{});
+        return try std.fmt.allocPrint(self.allocator, "{f}", .{std.json.fmt(modules, .{})});
     }
 
     /// 反序列化 JSON 为模块列表

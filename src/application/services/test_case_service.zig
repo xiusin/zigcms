@@ -521,9 +521,7 @@ pub const TestCaseService = struct {
 
     /// 序列化测试用例为 JSON
     fn serializeTestCase(self: *Self, test_case: TestCase) ![]const u8 {
-        // 简化实现：使用 std.json.stringify
-        // 实际项目中应该使用更完善的序列化方案
-        return try std.json.stringifyAlloc(self.allocator, test_case, .{});
+        return try std.fmt.allocPrint(self.allocator, "{f}", .{std.json.fmt(test_case, .{})});
     }
 
     /// 反序列化 JSON 为测试用例
@@ -537,7 +535,7 @@ pub const TestCaseService = struct {
 
     /// 序列化分页结果为 JSON
     fn serializePageResult(self: *Self, result: PageResult(TestCase)) ![]const u8 {
-        return try std.json.stringifyAlloc(self.allocator, result, .{});
+        return try std.fmt.allocPrint(self.allocator, "{f}", .{std.json.fmt(result, .{})});
     }
 
     /// 反序列化 JSON 为分页结果

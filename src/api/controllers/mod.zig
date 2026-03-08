@@ -70,6 +70,12 @@ pub const auto_test = struct {
 // 质量中心控制器
 pub const quality_center = struct {
     pub const QualityCenter = @import("quality_center.controller.zig");
+    pub const TestCase = @import("test_case.controller.zig");
+    pub const Project = @import("project.controller.zig");
+    pub const Module = @import("module.controller.zig");
+    pub const Requirement = @import("requirement.controller.zig");
+    pub const Feedback = @import("feedback.controller.zig");
+    pub const AI = @import("ai.controller.zig");
 };
 
 // 安全管理控制器

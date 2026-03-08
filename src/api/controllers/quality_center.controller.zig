@@ -5,6 +5,12 @@ const zap = @import("zap");
 const Allocator = std.mem.Allocator;
 
 const base = @import("base.fn.zig");
+const TestCaseController = @import("test_case.controller.zig");
+const ProjectController = @import("project.controller.zig");
+const ModuleController = @import("module.controller.zig");
+const RequirementController = @import("requirement.controller.zig");
+const FeedbackController = @import("feedback.controller.zig");
+const AIController = @import("ai.controller.zig");
 const sql = @import("../../application/services/sql/orm.zig");
 const global = @import("../../core/primitives/global.zig");
 const datetime = @import("../../application/services/datetime/datetime.zig");
@@ -281,6 +287,253 @@ pub const email_template_delete = emailTemplateDeleteImpl;
 pub const email_template_preview = emailTemplatePreviewImpl;
 pub const ai_analysis = aiAnalysisImpl;
 pub const ai_analysis_history = aiAnalysisHistoryImpl;
+pub const rest_test_cases = restTestCasesImpl;
+pub const rest_test_case_item = restTestCaseItemImpl;
+pub const rest_test_case_execute = restTestCaseExecuteImpl;
+pub const rest_test_case_executions = restTestCaseExecutionsImpl;
+pub const rest_ai_generate_test_cases = restAiGenerateTestCasesImpl;
+pub const rest_ai_generate_requirement = restAiGenerateRequirementImpl;
+pub const rest_ai_analyze_feedback = restAiAnalyzeFeedbackImpl;
+pub const rest_projects = restProjectsImpl;
+pub const rest_project_item = restProjectItemImpl;
+pub const rest_project_archive = restProjectArchiveImpl;
+pub const rest_project_restore = restProjectRestoreImpl;
+pub const rest_project_statistics = restProjectStatisticsImpl;
+pub const rest_modules = restModulesImpl;
+pub const rest_module_item = restModuleItemImpl;
+pub const rest_module_tree = restModuleTreeImpl;
+pub const rest_module_move = restModuleMoveImpl;
+pub const rest_module_statistics = restModuleStatisticsImpl;
+pub const rest_requirements = restRequirementsImpl;
+pub const rest_requirement_item = restRequirementItemImpl;
+pub const rest_requirement_link_test_case = restRequirementLinkTestCaseImpl;
+pub const rest_requirement_unlink_test_case = restRequirementUnlinkTestCaseImpl;
+pub const rest_requirement_import = restRequirementImportImpl;
+pub const rest_requirement_export = restRequirementExportImpl;
+pub const rest_feedbacks = restFeedbacksImpl;
+pub const rest_feedback_item = restFeedbackItemImpl;
+pub const rest_feedback_follow_up = restFeedbackFollowUpImpl;
+pub const rest_feedback_batch_assign = restFeedbackBatchAssignImpl;
+pub const rest_feedback_batch_update_status = restFeedbackBatchUpdateStatusImpl;
+pub const rest_feedback_batch_delete = restFeedbackBatchDeleteImpl;
+pub const rest_feedback_export = restFeedbackExportImpl;
+pub const rest_feedback_status = restFeedbackStatusImpl;
+
+fn requireMethod(req: zap.Request, expected: []const u8) bool {
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, expected)) return true;
+    base.send_failed(req, "不支持的请求方式");
+    return false;
+}
+
+fn restTestCasesImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return TestCaseController.search(req);
+    if (std.mem.eql(u8, method, "POST")) return TestCaseController.create(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restTestCaseItemImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return TestCaseController.get(req);
+    if (std.mem.eql(u8, method, "PUT")) return TestCaseController.update(req);
+    if (std.mem.eql(u8, method, "DELETE")) return TestCaseController.delete(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restTestCaseExecuteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return TestCaseController.execute(req);
+}
+
+fn restTestCaseExecutionsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return TestCaseController.getExecutions(req);
+}
+
+fn restAiGenerateTestCasesImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return AIController.generateTestCases(req);
+}
+
+fn restAiGenerateRequirementImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return AIController.generateRequirement(req);
+}
+
+fn restAiAnalyzeFeedbackImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return AIController.analyzeFeedback(req);
+}
+
+fn restProjectsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return ProjectController.list(req);
+    if (std.mem.eql(u8, method, "POST")) return ProjectController.create(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restProjectItemImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return ProjectController.get(req);
+    if (std.mem.eql(u8, method, "PUT")) return ProjectController.update(req);
+    if (std.mem.eql(u8, method, "DELETE")) return ProjectController.delete(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restProjectArchiveImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return ProjectController.archive(req);
+}
+
+fn restProjectRestoreImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return ProjectController.restore(req);
+}
+
+fn restProjectStatisticsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return ProjectController.getStatistics(req);
+}
+
+fn restModulesImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return ModuleController.create(req);
+}
+
+fn restModuleItemImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return ModuleController.get(req);
+    if (std.mem.eql(u8, method, "PUT")) return ModuleController.update(req);
+    if (std.mem.eql(u8, method, "DELETE")) return ModuleController.delete(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restModuleTreeImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return ModuleController.getTree(req);
+}
+
+fn restModuleMoveImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return ModuleController.move(req);
+}
+
+fn restModuleStatisticsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return ModuleController.getStatistics(req);
+}
+
+fn restRequirementsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return RequirementController.list(req);
+    if (std.mem.eql(u8, method, "POST")) return RequirementController.create(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restRequirementItemImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return RequirementController.get(req);
+    if (std.mem.eql(u8, method, "PUT")) return RequirementController.update(req);
+    if (std.mem.eql(u8, method, "DELETE")) return RequirementController.delete(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restRequirementLinkTestCaseImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return RequirementController.linkTestCase(req);
+}
+
+fn restRequirementUnlinkTestCaseImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "DELETE")) return;
+    return RequirementController.unlinkTestCase(req);
+}
+
+fn restRequirementImportImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return RequirementController.importFromExcel(req);
+}
+
+fn restRequirementExportImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return RequirementController.exportToExcel(req);
+}
+
+fn restFeedbacksImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return FeedbackController.list(req);
+    if (std.mem.eql(u8, method, "POST")) return FeedbackController.create(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restFeedbackItemImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    const method = req.method orelse "";
+    if (std.mem.eql(u8, method, "GET")) return FeedbackController.get(req);
+    if (std.mem.eql(u8, method, "PUT")) return FeedbackController.update(req);
+    if (std.mem.eql(u8, method, "DELETE")) return FeedbackController.delete(req);
+    return base.send_failed(req, "不支持的请求方式");
+}
+
+fn restFeedbackFollowUpImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return FeedbackController.addFollowUp(req);
+}
+
+fn restFeedbackBatchAssignImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return FeedbackController.batchAssign(req);
+}
+
+fn restFeedbackBatchUpdateStatusImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return FeedbackController.batchUpdateStatus(req);
+}
+
+fn restFeedbackBatchDeleteImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "POST")) return;
+    return FeedbackController.batchDelete(req);
+}
+
+fn restFeedbackExportImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "GET")) return;
+    return FeedbackController.exportToExcel(req);
+}
+
+fn restFeedbackStatusImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
+    if (!requireMethod(req, "PUT")) return;
+    return FeedbackController.updateStatus(req);
+}
 
 // ==================== Dashboard 统计 ====================
 
@@ -585,24 +838,23 @@ fn bugToFeedbackImpl(self: *Self, req: zap.Request) !void {
 
 /// 关联记录列表
 fn linkRecordsImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
 
     var page: i32 = 1;
     var limit: i32 = 20;
-
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| return base.send_error(req, err);
-    defer params.deinit();
-
     var filter_source_type: ?[]const u8 = null;
 
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 1);
-        } else if (std.mem.eql(u8, param.key, "pageSize")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 20);
-        } else if (std.mem.eql(u8, param.key, "source_type") and param.value.len > 0) {
-            filter_source_type = param.value;
-        }
+    if (req.getParamSlice("page")) |page_str| {
+        page = @intCast(std.fmt.parseInt(i32, page_str, 10) catch 1);
+    }
+    if (req.getParamSlice("pageSize")) |page_size_str| {
+        limit = @intCast(std.fmt.parseInt(i32, page_size_str, 10) catch 20);
+    } else if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 20);
+    }
+    if (req.getParamSlice("source_type")) |source_type| {
+        if (source_type.len > 0) filter_source_type = source_type;
     }
 
     var q = OrmLinkRecord.Query();
@@ -626,20 +878,17 @@ fn linkRecordsImpl(self: *Self, req: zap.Request) !void {
 
 /// 最近活动记录
 fn activitiesImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
 
     var limit: i32 = 10;
     var filter_type: ?[]const u8 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| return base.send_error(req, err);
-    defer params.deinit();
-
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "limit")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 10);
-        } else if (std.mem.eql(u8, param.key, "type") and param.value.len > 0) {
-            filter_type = param.value;
-        }
+    if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 10);
+    }
+    if (req.getParamSlice("type")) |filter_type_str| {
+        if (filter_type_str.len > 0) filter_type = filter_type_str;
     }
 
     var q = OrmActivity.Query();
@@ -864,23 +1113,23 @@ fn scheduledReportTriggerImpl(self: *Self, req: zap.Request) !void {
 
 /// 报表执行历史
 fn reportHistoryImpl(self: *Self, req: zap.Request) !void {
+    _ = self;
     req.parseQuery();
 
     var page: i32 = 1;
     var limit: i32 = 20;
     var filter_report_id: ?[]const u8 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| return base.send_error(req, err);
-    defer params.deinit();
-
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 1);
-        } else if (std.mem.eql(u8, param.key, "pageSize")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 20);
-        } else if (std.mem.eql(u8, param.key, "report_id") and param.value.len > 0) {
-            filter_report_id = param.value;
-        }
+    if (req.getParamSlice("page")) |page_str| {
+        page = @intCast(std.fmt.parseInt(i32, page_str, 10) catch 1);
+    }
+    if (req.getParamSlice("pageSize")) |page_size_str| {
+        limit = @intCast(std.fmt.parseInt(i32, page_size_str, 10) catch 20);
+    } else if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 20);
+    }
+    if (req.getParamSlice("report_id")) |report_id| {
+        if (report_id.len > 0) filter_report_id = report_id;
     }
 
     var q = OrmReportHistory.Query();
@@ -1247,18 +1496,17 @@ fn aiAnalysisImpl(self: *Self, req: zap.Request) !void {
 fn aiAnalysisHistoryImpl(self: *Self, req: zap.Request) !void {
     req.parseQuery();
 
+    _ = self;
     var page: i32 = 1;
     var limit: i32 = 20;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| return base.send_error(req, err);
-    defer params.deinit();
-
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 1);
-        } else if (std.mem.eql(u8, param.key, "pageSize")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 20);
-        }
+    if (req.getParamSlice("page")) |page_str| {
+        page = @intCast(std.fmt.parseInt(i32, page_str, 10) catch 1);
+    }
+    if (req.getParamSlice("pageSize")) |page_size_str| {
+        limit = @intCast(std.fmt.parseInt(i32, page_size_str, 10) catch 20);
+    } else if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 20);
     }
 
     var q = OrmAiAnalysis.Query();

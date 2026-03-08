@@ -52,21 +52,17 @@ pub const Dict = struct {
         var keyword: ?[]const u8 = null;
         var category: ?[]const u8 = null;
 
-        var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
-            return base.send_error(req, err);
-        };
-        defer params.deinit();
-
-        for (params.items) |param| {
-            if (std.mem.eql(u8, param.key, "page")) {
-                page = std.fmt.parseInt(i32, param.value, 10) catch 1;
-            } else if (std.mem.eql(u8, param.key, "page_size")) {
-                page_size = std.fmt.parseInt(i32, param.value, 10) catch 10;
-            } else if (std.mem.eql(u8, param.key, "keyword")) {
-                if (param.value.len > 0) keyword = param.value;
-            } else if (std.mem.eql(u8, param.key, "category")) {
-                if (param.value.len > 0) category = param.value;
-            }
+        if (req.getParamSlice("page")) |page_str| {
+            page = std.fmt.parseInt(i32, page_str, 10) catch 1;
+        }
+        if (req.getParamSlice("page_size")) |page_size_str| {
+            page_size = std.fmt.parseInt(i32, page_size_str, 10) catch 10;
+        }
+        if (req.getParamSlice("keyword")) |kw| {
+            if (kw.len > 0) keyword = kw;
+        }
+        if (req.getParamSlice("category")) |cat| {
+            if (cat.len > 0) category = cat;
         }
 
         // 查询总数

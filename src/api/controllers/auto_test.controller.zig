@@ -286,21 +286,19 @@ fn reportListImpl(self: *Self, req: zap.Request) !void {
     var filter_type: ?[]const u8 = null;
     var filter_status: ?[]const u8 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
-        return base.send_error(req, err);
-    };
-    defer params.deinit();
-
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 1);
-        } else if (std.mem.eql(u8, param.key, "pageSize") or std.mem.eql(u8, param.key, "limit")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 10);
-        } else if (std.mem.eql(u8, param.key, "type") and param.value.len > 0) {
-            filter_type = param.value;
-        } else if (std.mem.eql(u8, param.key, "status") and param.value.len > 0) {
-            filter_status = param.value;
-        }
+    if (req.getParamSlice("page")) |page_str| {
+        page = @intCast(std.fmt.parseInt(i32, page_str, 10) catch 1);
+    }
+    if (req.getParamSlice("pageSize")) |page_size_str| {
+        limit = @intCast(std.fmt.parseInt(i32, page_size_str, 10) catch 10);
+    } else if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 10);
+    }
+    if (req.getParamSlice("type")) |type_str| {
+        if (type_str.len > 0) filter_type = type_str;
+    }
+    if (req.getParamSlice("status")) |status_str| {
+        if (status_str.len > 0) filter_status = status_str;
     }
 
     var q = OrmTestReport.Query();
@@ -401,23 +399,22 @@ fn bugListImpl(self: *Self, req: zap.Request) !void {
     var filter_type: ?[]const u8 = null;
     var filter_severity: ?[]const u8 = null;
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch |err| {
-        return base.send_error(req, err);
-    };
-    defer params.deinit();
-
-    for (params.items) |param| {
-        if (std.mem.eql(u8, param.key, "page")) {
-            page = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 1);
-        } else if (std.mem.eql(u8, param.key, "pageSize") or std.mem.eql(u8, param.key, "limit")) {
-            limit = @intCast(std.fmt.parseInt(i32, param.value, 10) catch 10);
-        } else if (std.mem.eql(u8, param.key, "status") and param.value.len > 0) {
-            filter_status = param.value;
-        } else if (std.mem.eql(u8, param.key, "type") and param.value.len > 0) {
-            filter_type = param.value;
-        } else if (std.mem.eql(u8, param.key, "severity") and param.value.len > 0) {
-            filter_severity = param.value;
-        }
+    if (req.getParamSlice("page")) |page_str| {
+        page = @intCast(std.fmt.parseInt(i32, page_str, 10) catch 1);
+    }
+    if (req.getParamSlice("pageSize")) |page_size_str| {
+        limit = @intCast(std.fmt.parseInt(i32, page_size_str, 10) catch 10);
+    } else if (req.getParamSlice("limit")) |limit_str| {
+        limit = @intCast(std.fmt.parseInt(i32, limit_str, 10) catch 10);
+    }
+    if (req.getParamSlice("status")) |status_str| {
+        if (status_str.len > 0) filter_status = status_str;
+    }
+    if (req.getParamSlice("type")) |type_str| {
+        if (type_str.len > 0) filter_type = type_str;
+    }
+    if (req.getParamSlice("severity")) |severity_str| {
+        if (severity_str.len > 0) filter_severity = severity_str;
     }
 
     var q = OrmBugAnalysis.Query();

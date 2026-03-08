@@ -28,6 +28,7 @@ const di = @import("../../core/di/mod.zig");
 
 // 导入服务
 const ProjectService = @import("../../application/services/project_service.zig").ProjectService;
+const PageQuery = @import("../../domain/repositories/test_case_repository.zig").PageQuery;
 
 // 导入实体
 const Project = @import("../../domain/entities/project.model.zig").Project;
@@ -35,6 +36,50 @@ const Project = @import("../../domain/entities/project.model.zig").Project;
 // 导入 DTO
 const ProjectCreateDto = @import("../dto/project_create.dto.zig").ProjectCreateDto;
 const ProjectUpdateDto = @import("../dto/project_update.dto.zig").ProjectUpdateDto;
+
+pub fn list(req: zap.Request) void {
+    const allocator = global.get_allocator();
+
+    const page = if (req.getParamSlice("page")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 1
+    else
+        1;
+
+    const page_size = if (req.getParamSlice("page_size")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 100
+    else
+        100;
+
+    const service = di.resolveService(ProjectService) catch |err| {
+        base.send_error(req, err);
+        return;
+    };
+
+    const result = service.findAll(PageQuery{
+        .page = page,
+        .page_size = page_size,
+    }) catch |err| {
+        base.send_error(req, err);
+        return;
+    };
+    defer service.freePageResult(result);
+
+    const response = .{
+        .code = 0,
+        .msg = "查询成功",
+        .data = result,
+    };
+
+    const json = json_mod.JSON.encode(allocator, response) catch |err| {
+        base.send_error(req, err);
+        return;
+    };
+    defer allocator.free(json);
+
+    req.setStatus(.ok);
+    req.setHeader("Content-Type", "application/json; charset=utf-8") catch {};
+    req.sendBody(json) catch {};
+}
 
 /// 创建项目
 pub fn create(req: zap.Request) void {
@@ -56,8 +101,7 @@ pub fn create(req: zap.Request) void {
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -89,18 +133,17 @@ pub fn create(req: zap.Request) void {
 pub fn get(req: zap.Request) void {
     const allocator = global.get_allocator();
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -135,12 +178,12 @@ pub fn get(req: zap.Request) void {
 pub fn update(req: zap.Request) void {
     const allocator = global.get_allocator();
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
@@ -156,13 +199,22 @@ pub fn update(req: zap.Request) void {
     };
     defer json_mod.JSON.free(ProjectUpdateDto, allocator, &dto);
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
 
-    service.update(id, dto) catch |err| {
+    var project = service.findById(id) catch |err| {
+        base.send_error(req, err);
+        return;
+    } orelse {
+        base.send_failed(req, "项目不存在");
+        return;
+    };
+    defer service.freeProject(project);
+
+    dto.applyTo(&project);
+    service.update(id, &project) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -175,18 +227,17 @@ pub fn delete(req: zap.Request) void {
     const allocator = global.get_allocator();
     _ = allocator;
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -204,18 +255,17 @@ pub fn archive(req: zap.Request) void {
     const allocator = global.get_allocator();
     _ = allocator;
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -233,18 +283,17 @@ pub fn restore(req: zap.Request) void {
     const allocator = global.get_allocator();
     _ = allocator;
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -261,18 +310,17 @@ pub fn restore(req: zap.Request) void {
 pub fn getStatistics(req: zap.Request) void {
     const allocator = global.get_allocator();
 
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
-    const container = di.getGlobalContainer();
-    const service = container.resolve(ProjectService) catch |err| {
+    const service = di.resolveService(ProjectService) catch |err| {
         base.send_error(req, err);
         return;
     };

@@ -4,3 +4,4 @@
 pub const SecurityEvent = @import("security_event.controller.zig");
 pub const AuditLog = @import("audit_log.controller.zig");
 pub const Alert = @import("alert.controller.zig");
+pub const Blacklist = @import("blacklist.controller.zig");

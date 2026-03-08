@@ -721,7 +721,7 @@ pub const Database = struct {
     }
 
     /// 执行事务并返回结果（自动管理）
-    /// 
+    ///
     /// 使用示例：
     /// ```zig
     /// const result = try db.transactionWithResult(struct {
@@ -735,7 +735,7 @@ pub const Database = struct {
     pub fn transactionWithResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
         const ReturnType = @typeInfo(@TypeOf(func)).@"fn".return_type.?;
         _ = ReturnType;
-        
+
         // MySQL：使用连接池事务
         if (self.pool) |pool| {
             var tx = try Transaction.init(pool);
@@ -763,18 +763,18 @@ pub const Database = struct {
     }
 
     /// Savepoint 支持（嵌套事务）
-    /// 
+    ///
     /// 使用示例：
     /// ```zig
     /// try db.beginTransaction();
     /// defer db.rollback() catch {};
-    /// 
+    ///
     /// try OrmUser.create(db, .{ .name = "张三" });
-    /// 
+    ///
     /// try db.savepoint("sp1");
     /// try OrmOrder.create(db, .{ .user_id = 1 });
     /// try db.rollbackTo("sp1");  // 只回滚订单
-    /// 
+    ///
     /// try db.commit();
     /// ```
     pub fn savepoint(self: *Database, name: []const u8) !void {
@@ -1952,7 +1952,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
 
             _ = try db.exec(sql, .{});
             const id = db.lastInsertId();
-            
+
             var result: T = undefined;
             if (id > 0) {
                 result = (try find(db, id)) orelse return error.CreateFailed;
@@ -1969,17 +1969,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                     return error.CreateFailed;
                 }
             }
-            
+
             // 触发 created 事件
             if (comptime model_events.hasEvent(T, .created)) {
                 try model_events.fireEvent(T, .created, &result);
             }
-            
+
             return result;
         }
 
         /// 批量插入记录（单条 SQL，性能提升 10-100 倍）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// const users = [_]User{
@@ -1992,7 +1992,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn bulkInsert(db: *Database, data: anytype) !void {
             const DataType = @TypeOf(data);
             const type_info = @typeInfo(DataType);
-            
+
             // 获取数组元素类型
             const items = switch (type_info) {
                 .pointer => |ptr| switch (@typeInfo(ptr.child)) {
@@ -2002,17 +2002,17 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 .array => data,
                 else => @compileError("bulkInsert requires array or slice"),
             };
-            
+
             if (items.len == 0) return;
-            
+
             // 构建批量插入 SQL
             var sql = std.ArrayListUnmanaged(u8){};
             defer sql.deinit(db.allocator);
-            
+
             try sql.appendSlice(db.allocator, "INSERT INTO ");
             try sql.appendSlice(db.allocator, tableName());
             try sql.appendSlice(db.allocator, " (");
-            
+
             // 字段名
             const fields = std.meta.fields(T);
             var field_count: usize = 0;
@@ -2022,22 +2022,22 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                 try sql.appendSlice(db.allocator, field.name);
                 field_count += 1;
             }
-            
+
             try sql.appendSlice(db.allocator, ") VALUES ");
-            
+
             // 值
             for (items, 0..) |item, i| {
                 if (i > 0) try sql.appendSlice(db.allocator, ", ");
                 try sql.appendSlice(db.allocator, "(");
-                
+
                 var value_count: usize = 0;
                 inline for (fields) |field| {
                     if (std.mem.eql(u8, field.name, primaryKey())) continue;
                     if (value_count > 0) try sql.appendSlice(db.allocator, ", ");
-                    
+
                     const value = @field(item, field.name);
                     const FieldType = field.type;
-                    
+
                     if (FieldType == []const u8) {
                         const escaped = try escapeSqlString(db.allocator, value);
                         defer db.allocator.free(escaped);
@@ -2066,16 +2066,16 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
                         defer db.allocator.free(val_str);
                         try sql.appendSlice(db.allocator, val_str);
                     }
-                    
+
                     value_count += 1;
                 }
-                
+
                 try sql.appendSlice(db.allocator, ")");
             }
-            
+
             const final_sql = try sql.toOwnedSlice(db.allocator);
             defer db.allocator.free(final_sql);
-            
+
             _ = try db.exec(final_sql, .{});
         }
 
@@ -2091,21 +2091,19 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn destroy(db: *Database, id: anytype) !u64 {
             const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
             const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
-            
+
             if (has_soft_deletes and has_deleted_at) {
                 // 软删除：设置 deleted_at
                 const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
                 const now = std.time.timestamp();
-                
+
                 var buf: [512]u8 = undefined;
-                const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = {d} WHERE {s} = {any}", 
-                    .{ tableName(), deleted_at_col, now, primaryKey(), id });
+                const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = {d} WHERE {s} = {any}", .{ tableName(), deleted_at_col, now, primaryKey(), id });
                 return db.exec(sql, .{});
             } else {
                 // 物理删除
                 var buf: [256]u8 = undefined;
-                const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", 
-                    .{ tableName(), primaryKey(), id });
+                const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
                 return db.exec(sql, .{});
             }
         }
@@ -2113,8 +2111,7 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         /// 物理删除记录（忽略软删除设置）
         pub fn forceDestroy(db: *Database, id: anytype) !u64 {
             var buf: [256]u8 = undefined;
-            const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", 
-                .{ tableName(), primaryKey(), id });
+            const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
             return db.exec(sql, .{});
         }
 
@@ -2207,15 +2204,14 @@ pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
         pub fn restore(db: *Database, id: anytype) !u64 {
             const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
             const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
-            
+
             if (!has_soft_deletes or !has_deleted_at) {
                 return error.SoftDeletesNotEnabled;
             }
-            
+
             const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
             var buf: [512]u8 = undefined;
-            const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = NULL WHERE {s} = {any}", 
-                .{ tableName(), deleted_at_col, primaryKey(), id });
+            const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = NULL WHERE {s} = {any}", .{ tableName(), deleted_at_col, primaryKey(), id });
             return db.exec(sql, .{});
         }
 
@@ -2740,7 +2736,7 @@ pub fn ModelQuery(comptime T: type) type {
     const OrmQueryResult = QueryResult(T);
     const relations_mod = @import("relations.zig");
     const EagerLoader = relations_mod.EagerLoader(T);
-    
+
     return struct {
         const Self = @This();
 
@@ -2810,13 +2806,13 @@ pub fn ModelQuery(comptime T: type) type {
             // select_fields 和 group_fields 存储的是外部引用（通常是编译时常量），不需要释放
             self.select_fields.deinit(self.db.allocator);
             self.group_fields.deinit(self.db.allocator);
-            
+
             // 释放预加载器
             self.eager_loader.deinit();
         }
-        
+
         /// 预加载关系（解决 N+1 查询）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmRole.Query();
@@ -2832,12 +2828,12 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 带条件的预加载关系
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmRole.Query();
         /// defer q.deinit();
-        /// 
+        ///
         /// // 只预加载状态为 1 的菜单
         /// const config = relations_mod.EagerLoadConfig{
         ///     .where_clauses = &.{
@@ -2855,32 +2851,28 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 统计关联数量（不加载关联数据）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmRole.Query();
         /// defer q.deinit();
         /// _ = q.withCount(&.{"menus", "users"});
         /// const roles = try q.get();
-        /// 
+        ///
         /// // 访问计数（需要在模型中添加对应字段）
         /// for (roles) |role| {
-        ///     std.debug.print("菜单数: {d}, 用户数: {d}\n", 
+        ///     std.debug.print("菜单数: {d}, 用户数: {d}\n",
         ///         .{role.menus_count, role.users_count});
         /// }
         /// ```
-        /// 
+        ///
         /// 注意：需要在模型中添加 {relation}_count 字段
         pub fn withCount(self: *Self, relations: []const []const u8) *Self {
             // 为每个关系添加 COUNT 子查询到 SELECT
             for (relations) |rel| {
                 // 构建子查询：(SELECT COUNT(*) FROM related_table WHERE ...)
-                const subquery = std.fmt.allocPrint(
-                    self.db.allocator,
-                    "(SELECT COUNT(*) FROM {s} WHERE {s}_id = {s}.id) as {s}_count",
-                    .{ rel, self.table, self.table, rel }
-                ) catch continue;
-                
+                const subquery = std.fmt.allocPrint(self.db.allocator, "(SELECT COUNT(*) FROM {s} WHERE {s}_id = {s}.id) as {s}_count", .{ rel, self.table, self.table, rel }) catch continue;
+
                 self.select_fields.append(self.db.allocator, subquery) catch {
                     self.db.allocator.free(subquery);
                 };
@@ -2889,7 +2881,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 包含已软删除的记录
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmUser.Query();
@@ -2902,7 +2894,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 只查询已软删除的记录
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmUser.Query();
@@ -2915,7 +2907,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 应用查询作用域（无参数）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// // 模型定义
@@ -2928,7 +2920,7 @@ pub fn ModelQuery(comptime T: type) type {
         ///         },
         ///     };
         /// };
-        /// 
+        ///
         /// // 使用
         /// var q = OrmUser.Query();
         /// _ = q.scope("active");
@@ -2946,7 +2938,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 应用查询作用域（带参数）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// // 模型定义
@@ -2959,7 +2951,7 @@ pub fn ModelQuery(comptime T: type) type {
         ///         },
         ///     };
         /// };
-        /// 
+        ///
         /// // 使用
         /// var q = OrmUser.Query();
         /// _ = q.scopeWith("byRole", .{1});
@@ -2989,12 +2981,12 @@ pub fn ModelQuery(comptime T: type) type {
             var clause_buf: [256]u8 = undefined;
             const clause = std.fmt.bufPrint(&clause_buf, "{s} {s} ?", .{ field, op }) catch return self;
             const clause_owned = self.db.allocator.dupe(u8, clause) catch return self;
-            
+
             self.where_clauses.append(self.db.allocator, clause_owned) catch {
                 self.db.allocator.free(clause_owned);
                 return self;
             };
-            
+
             // 添加参数（深拷贝字符串）
             var param = query_mod.Value.from(val);
             if (param == .string_val) {
@@ -3002,7 +2994,7 @@ pub fn ModelQuery(comptime T: type) type {
                 param = .{ .string_val = str_copy };
             }
             self.bind_params.append(self.db.allocator, param) catch return self;
-            
+
             return self;
         }
 
@@ -3010,7 +3002,7 @@ pub fn ModelQuery(comptime T: type) type {
         pub fn whereIn(self: *Self, field: []const u8, values: anytype) *Self {
             const ValuesType = @TypeOf(values);
             const type_info = @typeInfo(ValuesType);
-            
+
             // 获取数组元素类型
             const ElemType = switch (type_info) {
                 .pointer => |ptr| ptr.child,
@@ -3021,14 +3013,14 @@ pub fn ModelQuery(comptime T: type) type {
             // 构建占位符 "field IN (?, ?, ?)"
             var placeholders = std.ArrayListUnmanaged(u8){};
             defer placeholders.deinit(self.db.allocator);
-            
+
             placeholders.appendSlice(self.db.allocator, field) catch return self;
             placeholders.appendSlice(self.db.allocator, " IN (") catch return self;
-            
+
             for (values, 0..) |v, i| {
                 if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
                 placeholders.append(self.db.allocator, '?') catch return self;
-                
+
                 // 添加参数
                 if (ElemType == []const u8 or ElemType == []u8) {
                     const str_copy = self.db.allocator.dupe(u8, v) catch return self;
@@ -3040,9 +3032,9 @@ pub fn ModelQuery(comptime T: type) type {
                     self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
                 }
             }
-            
+
             placeholders.append(self.db.allocator, ')') catch return self;
-            
+
             const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
@@ -3051,7 +3043,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// WHERE IN (子查询 - SQL 字符串)
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// var q = OrmOrder.Query();
@@ -3205,7 +3197,7 @@ pub fn ModelQuery(comptime T: type) type {
         pub fn whereNotIn(self: *Self, field: []const u8, values: anytype) *Self {
             const ValuesType = @TypeOf(values);
             const type_info = @typeInfo(ValuesType);
-            
+
             // 获取数组元素类型
             const ElemType = switch (type_info) {
                 .pointer => |ptr| ptr.child,
@@ -3216,14 +3208,14 @@ pub fn ModelQuery(comptime T: type) type {
             // 构建占位符 "field NOT IN (?, ?, ?)"
             var placeholders = std.ArrayListUnmanaged(u8){};
             defer placeholders.deinit(self.db.allocator);
-            
+
             placeholders.appendSlice(self.db.allocator, field) catch return self;
             placeholders.appendSlice(self.db.allocator, " NOT IN (") catch return self;
-            
+
             for (values, 0..) |v, i| {
                 if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
                 placeholders.append(self.db.allocator, '?') catch return self;
-                
+
                 // 添加参数
                 if (ElemType == []const u8 or ElemType == []u8) {
                     const str_copy = self.db.allocator.dupe(u8, v) catch return self;
@@ -3235,9 +3227,9 @@ pub fn ModelQuery(comptime T: type) type {
                     self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
                 }
             }
-            
+
             placeholders.append(self.db.allocator, ')') catch return self;
-            
+
             const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
             self.where_clauses.append(self.db.allocator, clause) catch {
                 self.db.allocator.free(clause);
@@ -3283,7 +3275,7 @@ pub fn ModelQuery(comptime T: type) type {
 
         /// WHERE 原始 SQL
         /// 原生 SQL WHERE 条件（支持占位符）
-        /// 使用: 
+        /// 使用:
         ///   .whereRaw("age > 18", {})  // 无参数
         ///   .whereRaw("age > ? AND status = ?", .{18, 1})  // 元组参数
         ///   .whereRaw("age > ? AND status = ?", param_builder)  // ParamBuilder
@@ -3293,9 +3285,9 @@ pub fn ModelQuery(comptime T: type) type {
                 self.db.allocator.free(clause);
                 return self;
             };
-            
+
             const ParamsType = @TypeOf(params);
-            
+
             // 如果是 ParamBuilder，直接使用其参数
             if (ParamsType == ParamBuilder or ParamsType == *ParamBuilder or ParamsType == *const ParamBuilder) {
                 const builder_params = if (ParamsType == ParamBuilder) params.items() else params.items();
@@ -3304,13 +3296,13 @@ pub fn ModelQuery(comptime T: type) type {
                 }
                 return self;
             }
-            
+
             // 如果 params 是 void，不处理参数
             if (ParamsType == void) return self;
-            
+
             // 添加参数（深拷贝字符串）
             const type_info = @typeInfo(ParamsType);
-            
+
             switch (type_info) {
                 .pointer => |ptr| {
                     if (ptr.size == .slice or @typeInfo(ptr.child) == .array) {
@@ -3348,7 +3340,7 @@ pub fn ModelQuery(comptime T: type) type {
                 },
                 else => {},
             }
-            
+
             return self;
         }
 
@@ -3401,7 +3393,7 @@ pub fn ModelQuery(comptime T: type) type {
         }
 
         /// 游标分页（解决大数据集 OFFSET 性能问题）
-        /// 
+        ///
         /// 使用示例：
         /// ```zig
         /// // 第一页（cursor = null）
@@ -3409,7 +3401,7 @@ pub fn ModelQuery(comptime T: type) type {
         /// defer q.deinit();
         /// _ = q.cursorPaginate(null, 20, .forward);
         /// const users = try q.get();
-        /// 
+        ///
         /// // 下一页（使用最后一条的 ID）
         /// const last_id = users[users.len - 1].id;
         /// var q2 = OrmUser.Query();
@@ -3417,7 +3409,7 @@ pub fn ModelQuery(comptime T: type) type {
         /// _ = q2.cursorPaginate(last_id, 20, .forward);
         /// const next_users = try q2.get();
         /// ```
-        /// 
+        ///
         /// 优势：
         /// - 避免 OFFSET 性能问题（大数据集）
         /// - 适合无限滚动
@@ -3429,28 +3421,28 @@ pub fn ModelQuery(comptime T: type) type {
                 }
                 break :blk "id";
             };
-            
+
             if (cursor) |c| {
                 switch (direction) {
                     .forward => _ = self.where(pk, ">", c),
                     .backward => _ = self.where(pk, "<", c),
                 }
             }
-            
+
             _ = self.limit(page_size);
-            
+
             switch (direction) {
                 .forward => _ = self.orderBy(pk, .asc),
                 .backward => _ = self.orderBy(pk, .desc),
             }
-            
+
             return self;
         }
 
         /// 游标方向
         pub const CursorDirection = enum {
-            forward,   // 向前（下一页）
-            backward,  // 向后（上一页）
+            forward, // 向前（下一页）
+            backward, // 向后（上一页）
         };
 
         /// GROUP BY
@@ -3679,9 +3671,6 @@ pub fn ModelQuery(comptime T: type) type {
                     self.db.allocator.free(group_str);
                 };
             }
-
-            // 释放嵌套查询
-            nested.deinit();
             return self;
         }
 
@@ -3713,8 +3702,6 @@ pub fn ModelQuery(comptime T: type) type {
                     self.db.allocator.free(group_str);
                 };
             }
-
-            nested.deinit();
             return self;
         }
 
@@ -3937,14 +3924,14 @@ pub fn ModelQuery(comptime T: type) type {
             defer result.deinit();
 
             const models = try self.mapResults(&result);
-            
+
             // 如果有预加载关系，自动加载
             if (self.eager_loader.relations.count() > 0) {
                 self.eager_loader.load(self.db, models) catch |err| {
                     logger_mod.err("预加载关系失败: {}", .{err});
                 };
             }
-            
+
             return models;
         }
 
@@ -4278,12 +4265,12 @@ pub fn ModelQuery(comptime T: type) type {
             const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
             const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
             const should_add_soft_delete = has_soft_deletes and has_deleted_at;
-            
+
             if (self.where_clauses.items.len == 0 and !should_add_soft_delete) {
                 std.log.err("[ORM] 拒绝无条件删除操作: DELETE FROM {s} (必须提供 WHERE 条件)", .{self.table});
                 return error.DeleteWithoutCondition;
             }
-            
+
             var sql = std.ArrayListUnmanaged(u8){};
             defer sql.deinit(self.db.allocator);
 
@@ -4376,17 +4363,17 @@ pub fn ModelQuery(comptime T: type) type {
             }
 
             const final_sql = try sql.toOwnedSlice(self.db.allocator);
-            
+
             // 替换占位符为实际参数值（安全转义）
             if (self.bind_params.items.len > 0) {
                 const replaced = try self.replacePlaceholders(final_sql);
                 self.db.allocator.free(final_sql);
                 return replaced;
             }
-            
+
             return final_sql;
         }
-        
+
         /// 替换 SQL 中的 ? 占位符为实际参数值（安全转义）
         fn replacePlaceholders(self: *Self, sql: []const u8) ![]u8 {
             // 先计算占位符数量
@@ -4394,30 +4381,29 @@ pub fn ModelQuery(comptime T: type) type {
             for (sql) |c| {
                 if (c == '?') placeholder_count += 1;
             }
-            
+
             // 校验参数数量
             if (placeholder_count != self.bind_params.items.len) {
-                std.log.err("Parameter count mismatch in SQL:\n  SQL: {s}\n  Placeholders: {d}\n  Parameters: {d}", 
-                    .{ sql, placeholder_count, self.bind_params.items.len });
-                
+                std.log.err("Parameter count mismatch in SQL:\n  SQL: {s}\n  Placeholders: {d}\n  Parameters: {d}", .{ sql, placeholder_count, self.bind_params.items.len });
+
                 if (placeholder_count > self.bind_params.items.len) {
                     return error.TooFewParameters;
                 } else {
                     return error.TooManyParameters;
                 }
             }
-            
+
             var result = std.ArrayListUnmanaged(u8){};
             errdefer result.deinit(self.db.allocator);
-            
+
             var param_idx: usize = 0;
             var i: usize = 0;
-            
+
             while (i < sql.len) : (i += 1) {
                 if (sql[i] == '?') {
                     const param = self.bind_params.items[param_idx];
                     param_idx += 1;
-                    
+
                     switch (param) {
                         .string_val => |s| {
                             try result.append(self.db.allocator, '\'');
@@ -4460,7 +4446,7 @@ pub fn ModelQuery(comptime T: type) type {
                     try result.append(self.db.allocator, sql[i]);
                 }
             }
-            
+
             return result.toOwnedSlice(self.db.allocator);
         }
 

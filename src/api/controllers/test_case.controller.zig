@@ -115,8 +115,7 @@ pub fn create(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -170,19 +169,18 @@ pub fn get(req: zap.Request) void {
     const allocator = global.get_allocator();
 
     // 1. 解析路径参数
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
     // 2. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -241,12 +239,12 @@ pub fn update(req: zap.Request) void {
     const allocator = global.get_allocator();
 
     // 1. 解析路径参数
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
@@ -264,14 +262,23 @@ pub fn update(req: zap.Request) void {
     defer json_mod.JSON.free(TestCaseUpdateDto, allocator, &dto);
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
 
+    var test_case = service.findById(id) catch |err| {
+        base.send_error(req, err);
+        return;
+    } orelse {
+        base.send_failed(req, "测试用例不存在");
+        return;
+    };
+    defer service.freeTestCase(test_case);
+
     // 4. 调用服务更新
-    service.update(id, dto) catch |err| {
+    dto.applyTo(&test_case);
+    service.update(id, &test_case) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -298,19 +305,18 @@ pub fn delete(req: zap.Request) void {
     _ = allocator;
 
     // 1. 解析路径参数
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
     // 2. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -357,29 +363,29 @@ pub fn search(req: zap.Request) void {
     const allocator = global.get_allocator();
 
     // 1. 解析查询参数
-    const project_id = if (req.getParamStr("project_id")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch null
+    const project_id = if (req.getParamSlice("project_id")) |s|
+        std.fmt.parseInt(i32, s, 10) catch null
     else
         null;
 
-    const module_id = if (req.getParamStr("module_id")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch null
+    const module_id = if (req.getParamSlice("module_id")) |s|
+        std.fmt.parseInt(i32, s, 10) catch null
     else
         null;
 
-    const status_str = if (req.getParamStr("status")) |s| s.str else null;
+    const status_str = req.getParamSlice("status");
     const status = if (status_str) |s| parseStatus(s) else null;
 
-    const assignee = if (req.getParamStr("assignee")) |s| s.str else null;
-    const keyword = if (req.getParamStr("keyword")) |s| s.str else null;
+    const assignee = req.getParamSlice("assignee");
+    const keyword = req.getParamSlice("keyword");
 
-    const page = if (req.getParamStr("page")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch 1
+    const page = if (req.getParamSlice("page")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 1
     else
         1;
 
-    const page_size = if (req.getParamStr("page_size")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch 20
+    const page_size = if (req.getParamSlice("page_size")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 20
     else
         20;
 
@@ -395,8 +401,7 @@ pub fn search(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -468,8 +473,7 @@ pub fn batchDelete(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -527,8 +531,7 @@ pub fn batchUpdateStatus(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -586,8 +589,7 @@ pub fn batchUpdateAssignee(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -636,12 +638,12 @@ pub fn execute(req: zap.Request) void {
     const allocator = global.get_allocator();
 
     // 1. 解析路径参数
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
@@ -665,8 +667,7 @@ pub fn execute(req: zap.Request) void {
     };
 
     // 4. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
@@ -725,24 +726,24 @@ pub fn getExecutions(req: zap.Request) void {
     const allocator = global.get_allocator();
 
     // 1. 解析路径参数
-    const id_str = req.getParamStr("id") orelse {
+    const id_str = req.getParamSlice("id") orelse {
         base.send_failed(req, "缺少参数 id");
         return;
     };
 
-    const id = std.fmt.parseInt(i32, id_str.str, 10) catch {
+    const id = std.fmt.parseInt(i32, id_str, 10) catch {
         base.send_failed(req, "参数 id 格式错误");
         return;
     };
 
     // 2. 解析查询参数
-    const page = if (req.getParamStr("page")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch 1
+    const page = if (req.getParamSlice("page")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 1
     else
         1;
 
-    const page_size = if (req.getParamStr("page_size")) |s|
-        std.fmt.parseInt(i32, s.str, 10) catch 20
+    const page_size = if (req.getParamSlice("page_size")) |s|
+        std.fmt.parseInt(i32, s, 10) catch 20
     else
         20;
 
@@ -752,18 +753,24 @@ pub fn getExecutions(req: zap.Request) void {
     };
 
     // 3. 获取服务
-    const container = di.getGlobalContainer();
-    const service = container.resolve(TestCaseService) catch |err| {
+    const service = di.resolveService(TestCaseService) catch |err| {
         base.send_error(req, err);
         return;
     };
 
     // 4. 调用服务查询执行历史
-    const result = service.getExecutions(id, query) catch |err| {
+    const result = service.execution_repo.findByTestCase(id, query) catch |err| {
         base.send_error(req, err);
         return;
     };
-    defer service.freeExecutionPageResult(result);
+    defer {
+        for (result.items) |item| {
+            if (item.executor.len > 0) allocator.free(item.executor);
+            if (item.actual_result.len > 0) allocator.free(item.actual_result);
+            if (item.remark.len > 0) allocator.free(item.remark);
+        }
+        allocator.free(result.items);
+    }
 
     // 5. 返回成功响应
     const response = .{

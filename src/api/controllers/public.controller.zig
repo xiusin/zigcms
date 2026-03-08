@@ -124,18 +124,15 @@ pub fn upload(self: *Self, req: zap.Request) !void {
 pub fn folder(self: *Self, req: zap.Request) !void {
     req.parseBody() catch |e| return base.send_error(req, e);
     if (req.body == null) return;
-    var params = req.parametersToOwnedStrList(self.allocator) catch return;
-    defer params.deinit();
 
     var fold: ?[]const u8 = null;
     var request_path: ?[]const u8 = null;
 
-    for (params.items) |item| {
-        if (strings.eql("folder", item.key)) {
-            fold = item.value;
-        } else if (strings.eql("path", item.key)) {
-            request_path = item.value;
-        }
+    if (req.getParamSlice("folder")) |folder_value| {
+        fold = folder_value;
+    }
+    if (req.getParamSlice("path")) |path_value| {
+        request_path = path_value;
     }
 
     if (fold == null or request_path == null) {
@@ -167,13 +164,8 @@ pub fn files(self: *Self, req: zap.Request) !void {
 
     var path: []const u8 = "";
 
-    var params = req.parametersToOwnedStrList(self.allocator) catch return;
-    defer params.deinit();
-
-    for (params.items) |item| {
-        if (strings.eql("path", item.key)) {
-            path = item.value;
-        }
+    if (req.getParamSlice("path")) |path_value| {
+        path = path_value;
     }
 
     const basepath = self.upload_base_dir();

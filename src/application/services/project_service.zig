@@ -396,7 +396,7 @@ pub const ProjectService = struct {
 
     /// 序列化项目为 JSON
     fn serializeProject(self: *Self, project: Project) ![]const u8 {
-        return try std.json.stringifyAlloc(self.allocator, project, .{});
+        return try std.fmt.allocPrint(self.allocator, "{f}", .{std.json.fmt(project, .{})});
     }
 
     /// 反序列化 JSON 为项目
@@ -408,7 +408,7 @@ pub const ProjectService = struct {
 
     /// 序列化统计数据为 JSON
     fn serializeStatistics(self: *Self, stats: ProjectStatistics) ![]const u8 {
-        return try std.json.stringifyAlloc(self.allocator, stats, .{});
+        return try std.fmt.allocPrint(self.allocator, "{f}", .{std.json.fmt(stats, .{})});
     }
 
     /// 反序列化 JSON 为统计数据
