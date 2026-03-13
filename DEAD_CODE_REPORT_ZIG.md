@@ -2,7 +2,7 @@
 
 ## 1. 扫描范围与方法
 
-- 扫描范围：`/src/**/*.zig`（共 399 个 Zig 文件，整体仓库 Zig 文件 408 个）
+- 扫描范围：`/src/**/*.zig`（共 397 个 Zig 文件，整体仓库 Zig 文件 408 个）
 - 可达性根节点：`main.zig`、`root.zig`、`cmd/*.zig`
 - 方法：解析 `@import(...)` 构建文件级依赖图，从根节点 DFS，未可达文件判定为“死代码候选”。
 - 额外规则：标记“注释禁用块/桩代码/补丁遗留文件”。
@@ -10,31 +10,27 @@
 
 ## 2. 结果总览
 
-- 不可达 `src` 文件：**113**
-- 其中高置信候选（排除 test/patch/example）：**101**
+- 不可达 `src` 文件：**112**
+- 其中高置信候选（排除 test/patch/example）：**102**
 - 分类统计：
   - `example_or_template`: 2
   - `feature_unwired`: 17
   - `middleware_unwired`: 5
-  - `patch_artifact`: 2
   - `plugin_unwired`: 11
   - `test_only`: 8
-  - `unreferenced_module`: 68
+  - `unreferenced_module`: 69
 
 ## 3. 高风险/高优先级死代码点（建议先处理）
 
-1) 实时通信控制器被注释禁用（明显死分支）  
-   - 位置：`src/api/controllers/mod.zig:86-88`  
-   - 现象：`WebSocket/SSE` 控制器导出被整段注释。
-2) 基础设施消息系统导出被注释禁用  
-   - 位置：`src/infrastructure/mod.zig:76-79`  
-   - 现象：`messaging` 模块未接入。
-3) 用例层导出全部注释占位  
-   - 位置：`src/application/usecases/mod.zig:63-71`  
-   - 现象：`user/content` 用例导出为注释，模块无调用入口。
-4) SQL 驱动 stub 保底分支（低频/可疑死分支）  
+1) SQL 驱动 stub 保底分支（低频/可疑死分支）  
    - 位置：`src/application/services/sql/interface.zig:34-133`  
    - 现象：`PgStub/MySQLStub` 在当前 `root.zig` 已启用 `mysql_enabled` 情况下大概率不走。
+2) 未接线 middleware 组（功能碎片化风险）  
+   - 位置：`src/api/middleware/*.zig`  
+   - 现象：模块存在但未进入主请求链。
+3) feature_unwired 业务链路（需要业务确认）  
+   - 位置：`moderation/alert_rule/sensitive_word/feedback_comment` 相关模块  
+   - 现象：实现存在但主入口不可达。
 
 ## 4. 死代码清单（位置与区间）
 
@@ -49,6 +45,7 @@
 | `src/api/controllers/security/alert_rule.controller.zig` | `1-178` | `feature_unwired` |
 | `src/api/controllers/security/report.controller.zig` | `1-372` | `unreferenced_module` |
 | `src/api/controllers/statistics.controller.zig` | `1-169` | `unreferenced_module` |
+| `src/api/controllers/websocket.controller.zig` | `1-69` | `unreferenced_module` |
 | `src/api/dto/category_create.dto.zig` | `1-35` | `unreferenced_module` |
 | `src/api/dto/friend_link_create.dto.zig` | `1-31` | `unreferenced_module` |
 | `src/api/dto/material_category_create.dto.zig` | `1-29` | `unreferenced_module` |
@@ -136,8 +133,6 @@
 | `src/infrastructure/notification/sms_notifier.zig` | `1-118` | `unreferenced_module` |
 | `src/infrastructure/report/quality_report_generator.zig` | `1-486` | `unreferenced_module` |
 | `src/infrastructure/report/security_report_generator.zig` | `1-658` | `unreferenced_module` |
-| `src/infrastructure/security/security_monitor_db.patch.zig` | `1-139` | `patch_artifact` |
-| `src/infrastructure/security/security_monitor_ws.patch.zig` | `1-112` | `patch_artifact` |
 | `src/infrastructure/websocket/mod.zig` | `1-7` | `unreferenced_module` |
 | `src/infrastructure/websocket/ws_server.zig` | `1-382` | `unreferenced_module` |
 | `src/plugins/dependency_resolver.zig` | `1-253` | `plugin_unwired` |
@@ -157,16 +152,14 @@
 ## 5. 结论与处理建议
 
 ### 5.1 处理优先级
-- P0：注释禁用导出块（可立即删除或恢复接线）
+- P0：注释禁用导出块（已完成）与补丁遗留迁出（已完成）
 - P1：不可达业务模块（feature_unwired / middleware_unwired / unreferenced_module）
 - P2：插件与模板未接线模块（plugin_unwired / example_or_template）
-- P3：测试/补丁遗留（test_only / patch_artifact）
 
 ### 5.2 建议动作
 1. 对 `feature_unwired` 与 `middleware_unwired` 逐个确认：是“计划上线功能”还是“遗弃代码”。
 2. 对确认遗弃的模块执行删除；对保留模块补齐路由/容器/导出接线。
 3. 在 CI 加入“不可达模块扫描”脚本，防止新增死代码。
-4. 将 `*.patch.zig` 迁出 `src` 或归档到 `docs/patches`，避免混淆生产代码。
 
 ### 5.3 置信度
 - 文件级不可达判定：**高**（静态依赖图可复现）
