@@ -57,20 +57,3 @@ pub const UseCaseExecutor = struct {
         return try use_case.execute(input);
     }
 };
-
-// 导出用例模块
-pub const user = struct {
-    // TODO: 用户相关用例
-    // pub const RegisterUser = @import("user/register_user.zig");
-    // pub const LoginUser = @import("user/login_user.zig");
-};
-
-pub const content = struct {
-    // TODO: 内容管理用例
-    // pub const CreateArticle = @import("content/create_article.zig");
-    // pub const PublishArticle = @import("content/publish_article.zig");
-};
-
-pub const member = struct {
-    // TODO: 会员管理用例
-};
