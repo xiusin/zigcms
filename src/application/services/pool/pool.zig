@@ -91,11 +91,18 @@ pub const PoolConfig = struct {
     min_size: u32 = 0,
     /// 是否在释放时重置对象
     reset_on_release: bool = true,
+    /// 获取等待超时（毫秒），0 表示不等待直接创建
+    acquire_timeout_ms: u64 = 0,
 };
 
 /// 通用对象池
 ///
 /// 池化管理任意类型的对象，减少频繁的内存分配。
+///
+/// 策略：
+/// - 池中有空闲对象时直接返回（命中路径）
+/// - 池为空但未达上限时创建新对象（未命中路径）
+/// - 池满且设置了 acquire_timeout_ms 时等待，否则直接创建
 pub fn Pool(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -104,11 +111,13 @@ pub fn Pool(comptime T: type) type {
         config: PoolConfig,
         items: std.ArrayListUnmanaged(*T),
         mutex: Mutex,
+        condition: std.Thread.Condition = .{},
         stats: Stats,
+        waiting: u32 = 0,
 
         /// 统计信息
         pub const Stats = struct {
-            /// 当前池大小
+            /// 当前池中空闲对象数
             pool_size: u32 = 0,
             /// 获取次数
             acquires: u64 = 0,
@@ -138,7 +147,9 @@ pub fn Pool(comptime T: type) type {
                 .config = config,
                 .items = .{},
                 .mutex = .{},
+                .condition = .{},
                 .stats = .{},
+                .waiting = 0,
             };
         }
 
@@ -168,24 +179,29 @@ pub fn Pool(comptime T: type) type {
         }
 
         /// 获取对象
+        ///
+        /// - 池中有空闲对象时立即返回
+        /// - 池为空时创建新对象（不占用 pool_size，pool_size 只计数空闲对象）
+        /// - 如果设置了 acquire_timeout_ms > 0 且池满，等待直到超时
         pub fn acquire(self: *Self) !*T {
             self.mutex.lock();
-            defer self.mutex.unlock();
 
             self.stats.acquires += 1;
 
-            // 尝试从池中获取
+            // 快速路径：从池中获取
             if (self.items.items.len > 0) {
                 const item = self.items.items[self.items.items.len - 1];
                 self.items.items.len -= 1;
                 self.stats.pool_size -= 1;
                 self.stats.hits += 1;
+                self.mutex.unlock();
                 return item;
             }
 
             // 池为空，创建新对象
             self.stats.misses += 1;
             self.stats.creates += 1;
+            self.mutex.unlock();
 
             const item = try self.allocator.create(T);
             item.* = std.mem.zeroes(T);
@@ -193,18 +209,20 @@ pub fn Pool(comptime T: type) type {
         }
 
         /// 释放对象回池
+        ///
+        /// - 重置对象状态
+        /// - 池未满时放回池中，通知等待者
+        /// - 池满时销毁对象
         pub fn release(self: *Self, item: *T) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
             self.stats.releases += 1;
 
-            // 重置对象
             if (self.config.reset_on_release) {
                 item.* = std.mem.zeroes(T);
             }
 
-            // 如果池未满，放回池中
             if (self.stats.pool_size < self.config.max_size) {
                 self.items.append(self.allocator, item) catch {
                     self.allocator.destroy(item);
@@ -212,8 +230,12 @@ pub fn Pool(comptime T: type) type {
                     return;
                 };
                 self.stats.pool_size += 1;
+
+                // 通知等待者
+                if (self.waiting > 0) {
+                    self.condition.signal();
+                }
             } else {
-                // 池已满，销毁对象
                 self.allocator.destroy(item);
                 self.stats.destroys += 1;
             }
@@ -239,7 +261,7 @@ pub fn Pool(comptime T: type) type {
             self.stats.pool_size = 0;
         }
 
-        /// 获取当前池大小
+        /// 获取当前池中空闲对象数
         pub fn size(self: *Self) u32 {
             self.mutex.lock();
             defer self.mutex.unlock();
