@@ -379,7 +379,7 @@ pub const MySQLConfig = struct {
 ///
 /// 内存所有权说明：
 /// - Database 拥有 conn 和 pool 的所有权
-/// - 对于 MySQL：pool 拥有所有连接，conn 是从 pool 借用的第一个连接
+/// - 对于 MySQL：pool 拥有所有连接，conn 未使用（每次操作从池获取）
 /// - 对于 SQLite/Memory/PostgreSQL：conn 直接由 Database 拥有
 /// - deinit() 会正确清理所有资源
 ///
