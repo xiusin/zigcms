@@ -390,14 +390,146 @@ pub const MySQLConfig = struct {
 pub const Database = struct {
     allocator: Allocator,
     conn: interface.Connection,
-    /// 内部连接池（仅 MySQL 使用）
-    /// 当 pool 不为 null 时，conn 是从 pool 借用的连接
     pool: ?*ConnectionPool = null,
     driver_type: interface.DriverType,
     last_insert_id: u64 = 0,
     debug: bool = true,
     enable_logging: bool = true,
     logger: ?*logger_mod.Logger = null,
+
+    // ================================================================
+    // 连接守卫 - RAII 风格，deinit 时自动归还连接
+    // ================================================================
+
+    /// 连接守卫
+    ///
+    /// 使用方式：
+    /// ```zig
+    /// var guard = try db.acquireGuard();
+    /// defer guard.deinit();   // 自动归还连接，永远不会忘
+    /// guard.conn.query(...);  // 使用连接
+    /// ```
+    pub const ConnectionGuard = struct {
+        db: *Database,
+        pooled: ?*PooledConnection,
+        conn: interface.Connection,
+
+        pub fn deinit(self: *ConnectionGuard) void {
+            if (self.pooled) |pc| {
+                if (self.db.pool) |pool| pool.release(pc);
+            }
+        }
+
+        pub fn markBroken(self: *ConnectionGuard) void {
+            if (self.pooled) |pc| {
+                pc.broken = true;
+            }
+        }
+    };
+
+    /// 获取连接守卫（RAII 风格）
+    ///
+    /// MySQL：从连接池获取，deinit 时自动归还
+    /// SQLite/PostgreSQL：直接使用自身连接，deinit 为空操作
+    pub fn acquireGuard(self: *Database) !ConnectionGuard {
+        if (self.pool) |pool| {
+            const pooled = try pool.acquire();
+            return .{
+                .db = self,
+                .pooled = pooled,
+                .conn = pooled.conn,
+            };
+        }
+        return .{
+            .db = self,
+            .pooled = null,
+            .conn = self.conn,
+        };
+    }
+
+    // ================================================================
+    // 回调式 API - 连接生命周期完全托管，零心智负担
+    // ================================================================
+
+    /// 在连接上下文中执行操作（自动获取/归还连接）
+    ///
+    /// ```zig
+    /// try db.withConnection(struct {
+    ///     pub fn run(conn: interface.Connection) !void {
+    ///         _ = try conn.exec("INSERT INTO users ...");
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withConnection(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        var guard = try self.acquireGuard();
+        defer guard.deinit();
+        return @call(.auto, func, .{guard.conn} ++ args);
+    }
+
+    /// 在事务中执行操作（自动 begin/commit/rollback）
+    ///
+    /// ```zig
+    /// try db.withTransaction(struct {
+    ///     pub fn run(tx: *Transaction) !void {
+    ///         _ = try tx.exec("INSERT ...");
+    ///         _ = try tx.exec("UPDATE ...");
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withTransaction(self: *Database, comptime func: anytype, args: anytype) !void {
+        if (self.pool) |pool| {
+            var tx = try Transaction.init(pool);
+            defer tx.deinit();
+
+            @call(.auto, func, .{&tx} ++ args) catch |err| {
+                tx.rollback() catch {};
+                return err;
+            };
+
+            try tx.commit();
+            return;
+        }
+
+        try self.conn.beginTransaction();
+        @call(.auto, func, .{self} ++ args) catch |err| {
+            self.conn.rollback() catch {};
+            return err;
+        };
+        try self.conn.commit();
+    }
+
+    /// 在事务中执行操作并返回结果
+    ///
+    /// ```zig
+    /// const user = try db.withTransactionResult(struct {
+    ///     pub fn run(tx: *Transaction) !User {
+    ///         _ = try tx.exec("INSERT ...");
+    ///         return User{ .id = 1 };
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withTransactionResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        if (self.pool) |pool| {
+            var tx = try Transaction.init(pool);
+            defer tx.deinit();
+
+            const result = @call(.auto, func, .{&tx} ++ args) catch |err| {
+                tx.rollback() catch {};
+                return err;
+            };
+
+            try tx.commit();
+            return result;
+        }
+
+        try self.conn.beginTransaction();
+        const result = @call(.auto, func, .{self} ++ args) catch |err| {
+            self.conn.rollback() catch {};
+            return err;
+        };
+        try self.conn.commit();
+        return result;
+    }
 
     /// 从统一连接创建
     pub fn fromConnection(allocator: Allocator, conn: interface.Connection) Database {
@@ -505,7 +637,6 @@ pub const Database = struct {
     pub fn rawQuery(self: *Database, sql_query: []const u8, args: anytype) !interface.ResultSet {
         const start_time = std.time.nanoTimestamp();
 
-        // 格式化 SQL，绑定参数
         const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
         defer self.allocator.free(formatted_sql);
 
@@ -516,39 +647,23 @@ pub const Database = struct {
         }
 
         var retry_count: u32 = 0;
-        // 最多重试1次
         while (retry_count <= 1) : (retry_count += 1) {
-            // MySQL：从连接池获取连接
-            var pooled_conn: ?*PooledConnection = null;
-            var conn = if (self.pool) |pool| blk: {
-                pooled_conn = try pool.acquire();
-                break :blk pooled_conn.?.conn;
-            } else self.conn;
+            var guard = try self.acquireGuard();
+            defer guard.deinit();
 
-            // 确保归还连接
-            defer if (pooled_conn) |pc| {
-                if (self.pool) |pool| pool.release(pc);
-            };
-
-            const result = conn.query(formatted_sql) catch |err| {
+            const result = guard.conn.query(formatted_sql) catch |err| {
                 const is_conn_error = switch (err) {
                     error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
                     else => false,
                 };
 
                 if (is_conn_error) {
-                    if (pooled_conn) |pc| {
-                        pc.broken = true; // 标记为损坏，归还时会被销毁
-                        if (retry_count < 1) {
-                            // 准备重试，continue 会触发 defer 释放当前连接
-                            continue;
-                        }
-                    }
+                    guard.markBroken();
+                    if (retry_count < 1) continue;
                 }
 
                 const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
-                // 获取详细错误信息
                 const detail_msg = if (sql_errors.getLastError()) |sql_err|
                     sql_err.getNativeMessage() orelse @errorName(err)
                 else
@@ -583,14 +698,13 @@ pub const Database = struct {
 
             return result;
         }
-        return error.QueryFailed; // Should not reach here
+        return error.QueryFailed;
     }
 
     /// 执行原始命令（支持参数绑定）
     pub fn exec(self: *Database, sql_query: []const u8, args: anytype) !u64 {
         const start_time = std.time.nanoTimestamp();
 
-        // 格式化 SQL，绑定参数
         const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
         defer self.allocator.free(formatted_sql);
 
@@ -601,38 +715,23 @@ pub const Database = struct {
         }
 
         var retry_count: u32 = 0;
-        // 最多重试1次
         while (retry_count <= 1) : (retry_count += 1) {
-            // MySQL：从连接池获取连接
-            var pooled_conn: ?*PooledConnection = null;
-            var conn = if (self.pool) |pool| blk: {
-                pooled_conn = try pool.acquire();
-                break :blk pooled_conn.?.conn;
-            } else self.conn;
+            var guard = try self.acquireGuard();
+            defer guard.deinit();
 
-            // 确保归还连接
-            defer if (pooled_conn) |pc| {
-                if (self.pool) |pool| pool.release(pc);
-            };
-
-            const affected = conn.exec(formatted_sql) catch |err| {
+            const affected = guard.conn.exec(formatted_sql) catch |err| {
                 const is_conn_error = switch (err) {
                     error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
                     else => false,
                 };
 
                 if (is_conn_error) {
-                    if (pooled_conn) |pc| {
-                        pc.broken = true;
-                        if (retry_count < 1) {
-                            continue;
-                        }
-                    }
+                    guard.markBroken();
+                    if (retry_count < 1) continue;
                 }
 
                 const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
-                // 获取详细错误信息
                 const detail_msg = if (sql_errors.getLastError()) |sql_err|
                     sql_err.getNativeMessage() orelse @errorName(err)
                 else
@@ -651,7 +750,7 @@ pub const Database = struct {
                 }
                 return err;
             };
-            self.last_insert_id = conn.lastInsertId();
+            self.last_insert_id = guard.conn.lastInsertId();
 
             const elapsed_ms = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start_time)) / 1_000_000.0;
 
@@ -673,7 +772,6 @@ pub const Database = struct {
     /// 开始事务（MySQL 使用连接池事务）
     pub fn beginTransaction(self: *Database) !void {
         if (self.pool) |_| {
-            // MySQL：使用 Transaction 对象更安全
             return error.UseTransactionObject;
         }
         try self.conn.beginTransaction();
@@ -689,73 +787,14 @@ pub const Database = struct {
         try self.conn.rollback();
     }
 
-    /// 执行事务（自动管理）
+    /// 执行事务（自动管理，委托给 withTransaction）
     pub fn transaction(self: *Database, comptime func: anytype, args: anytype) !void {
-        // MySQL：使用连接池事务
-        if (self.pool) |pool| {
-            var tx = try Transaction.init(pool);
-            defer tx.deinit();
-
-            @call(.auto, func, .{&tx} ++ args) catch |err| {
-                try tx.rollback();
-                return err;
-            };
-
-            try tx.commit();
-            return;
-        }
-
-        // PostgreSQL/SQLite：使用简单事务
-        try self.beginTransaction();
-
-        @call(.auto, func, .{self} ++ args) catch |err| {
-            try self.rollback();
-            return err;
-        };
-
-        try self.commit();
+        return self.withTransaction(func, args);
     }
 
-    /// 执行事务并返回结果（自动管理）
-    ///
-    /// 使用示例：
-    /// ```zig
-    /// const result = try db.transactionWithResult(struct {
-    ///     pub fn run(tx: *Database) !User {
-    ///         const user = try OrmUser.create(tx, .{ .name = "张三" });
-    ///         try OrmOrder.create(tx, .{ .user_id = user.id });
-    ///         return user;
-    ///     }
-    /// }.run, .{});
-    /// ```
+    /// 执行事务并返回结果（自动管理，委托给 withTransactionResult）
     pub fn transactionWithResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
-        const ReturnType = @typeInfo(@TypeOf(func)).@"fn".return_type.?;
-        _ = ReturnType;
-
-        // MySQL：使用连接池事务
-        if (self.pool) |pool| {
-            var tx = try Transaction.init(pool);
-            defer tx.deinit();
-
-            const result = @call(.auto, func, .{&tx} ++ args) catch |err| {
-                try tx.rollback();
-                return err;
-            };
-
-            try tx.commit();
-            return result;
-        }
-
-        // PostgreSQL/SQLite：使用简单事务
-        try self.beginTransaction();
-
-        const result = @call(.auto, func, .{self} ++ args) catch |err| {
-            try self.rollback();
-            return err;
-        };
-
-        try self.commit();
-        return result;
+        return self.withTransactionResult(func, args);
     }
 
     /// Savepoint 支持（嵌套事务）
