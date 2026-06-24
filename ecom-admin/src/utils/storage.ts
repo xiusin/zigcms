@@ -42,7 +42,7 @@ export interface UserPreferences {
 }
 
 class StorageManager {
-  private prefix: string = 'quality-center-';
+  private prefix: string = 'ecom-admin-';
 
   /**
    * 生成存储键

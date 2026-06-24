@@ -83,13 +83,14 @@ pub const MySQLError = driver.MySQLError;
 
 // 高阶ORM
 pub const Database = orm.Database;
-pub const MySQLConfig = orm.MySQLConfig; // MySQL配置（包含连接池选项）
+pub const ConnectionGuard = orm.Database.ConnectionGuard;
+pub const MySQLConfig = orm.MySQLConfig;
 pub const define = orm.define;
 pub const ModelQuery = orm.ModelQuery;
 pub const HasMany = orm.HasMany;
 pub const BelongsTo = orm.BelongsTo;
-pub const Migrator = orm.Migrator; // 数据库迁移器
-pub const Dialect = orm.Dialect; // 数据库方言
+pub const Migrator = orm.Migrator;
+pub const Dialect = orm.Dialect;
 
 // 带超时控制的查询（需要 RequestContext）
 pub const queryWithContext = @import("query_with_context.zig").queryWithContext;

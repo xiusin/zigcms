@@ -31,9 +31,6 @@ pub const BizMemberTag = integration.BizMemberTag;
 pub const BizMemberTagRel = integration.BizMemberTagRel;
 pub const BizMemberBalanceLog = integration.BizMemberBalanceLog;
 pub const BizMemberPointLog = integration.BizMemberPointLog;
-pub const OpTask = integration.OpTask;
-pub const OpTaskLog = integration.OpTaskLog;
-pub const OpTaskScheduleLog = integration.OpTaskScheduleLog;
 pub const SysAdminRoleAudit = integration.SysAdminRoleAudit;
 pub const SysOAuthBind = @import("sys_oauth_bind.model.zig").SysOAuthBind;
 pub const SysOAuthLog = @import("sys_oauth_log.model.zig").SysOAuthLog;
@@ -52,9 +49,6 @@ pub const biz_member_tag = integration.biz_member_tag;
 pub const biz_member_tag_rel = integration.biz_member_tag_rel;
 pub const biz_member_balance_log = integration.biz_member_balance_log;
 pub const biz_member_point_log = integration.biz_member_point_log;
-pub const op_task = integration.op_task;
-pub const op_task_log = integration.op_task_log;
-pub const op_task_schedule_log = integration.op_task_schedule_log;
 pub const sys_admin_role_audit = integration.sys_admin_role_audit;
 
 /// 实体类型枚举，用于泛型操作

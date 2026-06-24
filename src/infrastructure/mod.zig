@@ -142,7 +142,7 @@ pub fn init(allocator: std.mem.Allocator, config: InfraConfig) !*sql.Database {
                 .database = config.db_name,
                 .min_connections = 2,
                 .max_connections = @max(2, config.db_pool_size),
-                .keepalive_interval_ms = 0,
+                .idle_eviction_interval_ms = 0,
             };
 
             db.* = sql.Database.mysql(allocator, mysql_cfg) catch |e| {

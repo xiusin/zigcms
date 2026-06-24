@@ -56,30 +56,10 @@ pub const system_ext = struct {
     pub const Config = @import("system_config.controller.zig");
     pub const Role = @import("system_role.controller.zig");
     pub const Member = @import("business_member.controller.zig");
-    pub const Task = @import("operation_task.controller.zig");
     pub const Payment = @import("system_payment.controller.zig");
     pub const Version = @import("system_version.controller.zig");
     pub const Log = @import("log.controller.zig");
 };
-
-// 自动化测试控制器
-pub const auto_test = struct {
-    pub const AutoTest = @import("auto_test.controller.zig");
-};
-
-// 质量中心控制器
-pub const quality_center = struct {
-    pub const QualityCenter = @import("quality_center.controller.zig");
-    pub const TestCase = @import("test_case.controller.zig");
-    pub const Project = @import("project.controller.zig");
-    pub const Module = @import("module.controller.zig");
-    pub const Requirement = @import("requirement.controller.zig");
-    pub const Feedback = @import("feedback.controller.zig");
-    pub const AI = @import("ai.controller.zig");
-};
-
-// 安全管理控制器
-pub const security = @import("security/mod.zig");
 
 // 通用控制器类型
 pub const ControllerType = enum {
@@ -89,5 +69,4 @@ pub const ControllerType = enum {
     public,
     setting,
     system_ext,
-    task,
 };
