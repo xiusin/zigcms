@@ -1,133 +1,139 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const orm = @import("../../application/services/sql/orm.zig");
 
-/// 数据库连接池管理器
-/// 支持动态调整连接池大小
-pub const ConnectionPoolManager = struct {
-    allocator: Allocator,
+/// 连接池监控器
+///
+/// 对接 ORM 层 ConnectionPool，提供外部可观测性：
+/// - 定时采集池统计信息（总量/活跃/空闲）
+/// - 接近容量上限时发出警告
+/// - 跟踪峰值使用量
+/// - 健康检查
+///
+/// 注意：本监控器只读不写，不参与连接的实际管理。
+/// 连接的获取/释放/回收/健康检查由 ORM 层 ConnectionPool 负责。
+pub const PoolMonitor = struct {
+    pool: *orm.ConnectionPool,
     config: Config,
-    current_size: std.atomic.Value(u32),
-    active_connections: std.atomic.Value(u32),
-    peak_connections: std.atomic.Value(u32),
-    last_scale_time: std.atomic.Value(i64),
-    
+    peak_active: usize = 0,
+    last_check_time: i64 = 0,
+
     pub const Config = struct {
-        min_size: u32 = 5,
-        max_size: u32 = 50,
-        initial_size: u32 = 10,
-        scale_up_threshold: f32 = 0.8,  // 80% 使用率时扩容
-        scale_down_threshold: f32 = 0.3,  // 30% 使用率时缩容
-        scale_interval: i64 = 60,  // 调整间隔（秒）
-        scale_step: u32 = 5,  // 每次调整的连接数
+        /// 活跃连接数警告阈值（比例，默认 0.75 = 75%）
+        warn_threshold: f32 = 0.75,
+        /// 活跃连接数临界阈值（比例，默认 0.90 = 90%）
+        critical_threshold: f32 = 0.90,
+        /// 检查间隔（秒），0 表示仅手动检查
+        check_interval_secs: i64 = 30,
+        /// 是否启用日志输出
+        enable_logging: bool = true,
+        /// 日志前缀
+        log_prefix: []const u8 = "[PoolMonitor]",
     };
-    
-    pub fn init(allocator: Allocator, config: Config) ConnectionPoolManager {
+
+    pub fn init(pool: *sql.ConnectionPool, config: Config) PoolMonitor {
         return .{
-            .allocator = allocator,
+            .pool = pool,
             .config = config,
-            .current_size = std.atomic.Value(u32).init(config.initial_size),
-            .active_connections = std.atomic.Value(u32).init(0),
-            .peak_connections = std.atomic.Value(u32).init(0),
-            .last_scale_time = std.atomic.Value(i64).init(0),
         };
     }
-    
-    /// 获取连接时调用
-    pub fn onAcquire(self: *ConnectionPoolManager) void {
-        const active = self.active_connections.fetchAdd(1, .monotonic) + 1;
-        
-        // 更新峰值
-        const peak = self.peak_connections.load(.monotonic);
-        if (active > peak) {
-            _ = self.peak_connections.cmpxchgWeak(peak, active, .monotonic, .monotonic);
+
+    /// 执行一次检查，返回池状态
+    pub fn check(self: *PoolMonitor) Status {
+        const stats = self.pool.getStats();
+        const max_size = self.pool.config.max_size;
+
+        if (stats.active > self.peak_active) {
+            self.peak_active = stats.active;
         }
-        
-        // 检查是否需要扩容
-        self.checkScaleUp();
-    }
-    
-    /// 释放连接时调用
-    pub fn onRelease(self: *ConnectionPoolManager) void {
-        _ = self.active_connections.fetchSub(1, .monotonic);
-        
-        // 检查是否需要缩容
-        self.checkScaleDown();
-    }
-    
-    /// 检查是否需要扩容
-    fn checkScaleUp(self: *ConnectionPoolManager) void {
-        const now = std.time.timestamp();
-        const last_scale = self.last_scale_time.load(.monotonic);
-        
-        // 检查调整间隔
-        if (now - last_scale < self.config.scale_interval) {
-            return;
-        }
-        
-        const current = self.current_size.load(.monotonic);
-        const active = self.active_connections.load(.monotonic);
-        
-        // 计算使用率
-        const usage_rate = @as(f32, @floatFromInt(active)) / @as(f32, @floatFromInt(current));
-        
-        // 如果使用率超过阈值且未达到最大值，则扩容
-        if (usage_rate >= self.config.scale_up_threshold and current < self.config.max_size) {
-            const new_size = @min(current + self.config.scale_step, self.config.max_size);
-            
-            if (self.current_size.cmpxchgStrong(current, new_size, .monotonic, .monotonic) == null) {
-                _ = self.last_scale_time.cmpxchgStrong(last_scale, now, .monotonic, .monotonic);
-                std.log.info("连接池扩容: {d} -> {d} (使用率: {d:.1}%)", .{ current, new_size, usage_rate * 100 });
+
+        const usage_rate: f32 = if (max_size > 0)
+            @as(f32, @floatFromInt(stats.active)) / @as(f32, @floatFromInt(max_size))
+        else
+            0.0;
+
+        const level: AlertLevel = if (usage_rate >= self.config.critical_threshold)
+            .critical
+        else if (usage_rate >= self.config.warn_threshold)
+            .warning
+        else
+            .normal;
+
+        self.last_check_time = std.time.timestamp();
+
+        if (self.config.enable_logging) {
+            switch (level) {
+                .critical => std.log.err("{s} 连接池接近饱和! 活跃={d}/{d} ({d:.1}%) 空闲={d} 峰值={d}", .{
+                    self.config.log_prefix,
+                    stats.active, max_size, usage_rate * 100,
+                    stats.idle, self.peak_active,
+                }),
+                .warning => std.log.warn("{s} 连接池使用率较高: 活跃={d}/{d} ({d:.1}%) 空闲={d}", .{
+                    self.config.log_prefix,
+                    stats.active, max_size, usage_rate * 100,
+                    stats.idle,
+                }),
+                .normal => std.log.info("{s} 连接池正常: 活跃={d}/{d} ({d:.1}%) 空闲={d}", .{
+                    self.config.log_prefix,
+                    stats.active, max_size, usage_rate * 100,
+                    stats.idle,
+                }),
             }
         }
-    }
-    
-    /// 检查是否需要缩容
-    fn checkScaleDown(self: *ConnectionPoolManager) void {
-        const now = std.time.timestamp();
-        const last_scale = self.last_scale_time.load(.monotonic);
-        
-        // 检查调整间隔
-        if (now - last_scale < self.config.scale_interval) {
-            return;
-        }
-        
-        const current = self.current_size.load(.monotonic);
-        const active = self.active_connections.load(.monotonic);
-        
-        // 计算使用率
-        const usage_rate = @as(f32, @floatFromInt(active)) / @as(f32, @floatFromInt(current));
-        
-        // 如果使用率低于阈值且未达到最小值，则缩容
-        if (usage_rate <= self.config.scale_down_threshold and current > self.config.min_size) {
-            const new_size = @max(current - self.config.scale_step, self.config.min_size);
-            
-            if (self.current_size.cmpxchgStrong(current, new_size, .monotonic, .monotonic) == null) {
-                _ = self.last_scale_time.cmpxchgStrong(last_scale, now, .monotonic, .monotonic);
-                std.log.info("连接池缩容: {d} -> {d} (使用率: {d:.1}%)", .{ current, new_size, usage_rate * 100 });
-            }
-        }
-    }
-    
-    /// 获取当前统计信息
-    pub fn getStats(self: *ConnectionPoolManager) Stats {
-        const current = self.current_size.load(.monotonic);
-        const active = self.active_connections.load(.monotonic);
-        const peak = self.peak_connections.load(.monotonic);
-        
+
         return .{
-            .current_size = current,
-            .active_connections = active,
-            .idle_connections = current - active,
-            .peak_connections = peak,
-            .usage_rate = @as(f32, @floatFromInt(active)) / @as(f32, @floatFromInt(current)),
+            .total = stats.total,
+            .active = stats.active,
+            .idle = stats.idle,
+            .max_size = max_size,
+            .peak_active = self.peak_active,
+            .usage_rate = usage_rate,
+            .alert_level = level,
+            .healthy = self.pool.isHealthy(),
         };
     }
-    
-    pub const Stats = struct {
-        current_size: u32,
-        active_connections: u32,
-        idle_connections: u32,
-        peak_connections: u32,
+
+    /// 启动后台监控线程
+    pub fn startMonitoring(self: *PoolMonitor, allocator: std.mem.Allocator) !std.Thread {
+        if (self.config.check_interval_secs == 0) return error.IntervalNotSet;
+        return try std.Thread.spawn(.{}, monitorWorker, .{ self, allocator });
+    }
+
+    fn monitorWorker(self: *PoolMonitor, allocator: std.mem.Allocator) void {
+        _ = allocator;
+        while (true) {
+            const interval_ns = @as(u64, @intCast(self.config.check_interval_secs)) * std.time.ns_per_s;
+            std.time.sleep(interval_ns);
+
+            const status = self.check();
+
+            if (status.alert_level == .critical) {
+                if (!status.healthy) {
+                    std.log.err("{s} 连接池不健康，需要立即关注!", .{self.config.log_prefix});
+                }
+            }
+
+            if (self.pool.closed) break;
+        }
+    }
+
+    pub const AlertLevel = enum {
+        normal,
+        warning,
+        critical,
+    };
+
+    pub const Status = struct {
+        total: usize,
+        active: usize,
+        idle: usize,
+        max_size: usize,
+        peak_active: usize,
         usage_rate: f32,
+        alert_level: AlertLevel,
+        healthy: bool,
     };
 };
+
+test "PoolMonitor: basic check" {
+    _ = PoolMonitor;
+}

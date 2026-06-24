@@ -8,9 +8,6 @@ import Mock from 'mockjs';
 import { complexSchema } from './complex-schema';
 import cmsMock from './cms';
 import oauthMock from './oauth';
-import autoTestMock from './auto-test';
-import qualityCenterMock from './quality-center';
-
 // 注册 CMS Mock
 cmsMock.forEach((item) => {
   Mock.mock(new RegExp(item.url), item.method, item.response);
@@ -20,18 +17,6 @@ cmsMock.forEach((item) => {
 oauthMock.forEach((item: any) => {
   Mock.mock(new RegExp(item.url), item.method, item.response);
 });
-
-// 注册自动化测试系统 Mock
-autoTestMock.forEach((item: any) => {
-  Mock.mock(new RegExp(item.url), item.method, item.response);
-});
-
-// 注册质量中心 Mock
-if (qualityCenterMock && Array.isArray(qualityCenterMock)) {
-  qualityCenterMock.forEach((item: any) => {
-    Mock.mock(new RegExp(item.url), item.method, item.response);
-  });
-}
 
 // 设置 Mock 随机数的全局种子，保证数据一致性
 Mock.Random.extend({
