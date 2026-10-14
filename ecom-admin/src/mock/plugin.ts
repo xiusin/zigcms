@@ -1,0 +1,75 @@
+/**
+ * Vite Mock 插件
+ * 用于在开发环境中拦截 API 请求并返回 Mock 数据
+ */
+import type { Plugin } from 'vite';
+import { mockData } from './data';
+
+interface MockConfig {
+  enable?: boolean;
+  timeout?: number;
+}
+
+export function viteMockPlugin(config: MockConfig = {}): Plugin {
+  const { enable = true, timeout = 300 } = config;
+  // 更精确地指定需要代理的路径，避免拦截菜单等接口
+  // 只有登录认证相关的接口才走真实后端
+  const passthroughPrefixes = [
+    '/api/system/auth/',      // 登录认证
+    '/api/system/user/info',  // 用户信息刷新
+    '/api/system/captcha',    // 验证码
+    '/api/system/dict',       // 字典管理走真实后端
+    '/api/dict',              // 历史字典接口走真实后端
+    '/api/system/config',
+    '/api/business/member',
+    '/api/member/',
+    '/api/security/blacklist',
+    '/api/operation/task',
+    '/api/system/log',
+    '/api/quality/',
+  ];
+
+  return {
+    name: 'vite-plugin-mock',
+    configureServer(server) {
+      if (!enable) return;
+
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url || '';
+
+        // 只拦截 API 请求
+        if (!url.startsWith('/api')) {
+          return next();
+        }
+
+        // 登录/刷新用户信息联调走 ZigCMS 实际后端
+        if (passthroughPrefixes.some((prefix) => url.startsWith(prefix))) {
+          return next();
+        }
+
+        // 查找匹配的 Mock 数据
+        const mockKey = url.split('?')[0];
+        const mockItem = mockData[mockKey];
+
+        if (mockItem) {
+          // 模拟网络延迟
+          setTimeout(() => {
+            // 设置响应头
+            res.setHeader('Content-Type', 'application/json');
+
+            // 返回 Mock 数据
+            const responseData =
+              typeof mockItem === 'function' ? mockItem(req) : mockItem;
+            res.end(JSON.stringify(responseData));
+          }, timeout);
+          return;
+        }
+
+        // 没有匹配的 Mock 数据，继续转发
+        next();
+      });
+    },
+  };
+}
+
+export default viteMockPlugin;

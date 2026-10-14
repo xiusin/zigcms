@@ -1,0 +1,20 @@
+.{
+    .name = .zigcms,
+    .version = "0.0.0",
+    .fingerprint = 0x7a661597fa815ed0,
+    .minimum_zig_version = "0.15.0",
+    .dependencies = .{
+        .zap = .{ .path = "vendor/zap" },
+        .regex = .{ .path = "vendor/regex" },
+        .pretty = .{ .path = "vendor/pretty" },
+        .sqlite = .{ .path = "vendor/sqlite" },
+        .pg = .{ .path = "vendor/pg" },
+        .dotenv = .{ .path = "vendor/dotenv" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "vendor",
+    },
+}

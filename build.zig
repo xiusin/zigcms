@@ -1,0 +1,244 @@
+//! ZigCMS 构建配置
+//!
+//! 本文件定义了 ZigCMS 项目的构建配置，包括：
+//! - 主可执行文件 (zigcms)
+//! - 静态库 (libzigcms)
+//! - 动态库 (libzigcms.so/dylib)
+//! - 命令行工具 (codegen, migrate, plugin-gen)
+//! - 测试套件
+//!
+//! ## 构建目标
+//! - `zig build` - 构建所有目标
+//! - `zig build run` - 运行主程序
+//! - `zig build test` - 运行测试
+//! - `zig build lib` - 仅构建库
+//! - `zig build codegen` - 运行代码生成工具
+//! - `zig build migrate` - 运行数据库迁移工具
+
+const std = @import("std");
+
+// 辅助函数：添加通用导入
+fn addCommonImports(module: *std.Build.Module, deps: anytype) void {
+    module.addImport("zap", deps.zap.module("zap"));
+    module.addImport("pg", deps.pg.module("pg"));
+    module.addImport("pretty", deps.pretty.module("pretty"));
+    module.addImport("regex", deps.regex.module("regex"));
+    module.addImport("sqlite", deps.sqlite.module("sqlite"));
+}
+
+// 辅助函数：设置 MySQL 路径 (Zig 0.16: 在 Module 上操作)
+fn setupMySQLPaths(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    module.linkSystemLibrary("mysqlclient", .{});
+    if (target.result.os.tag == .macos) {
+        // 根据 CPU 架构选择正确的 MySQL 路径
+        switch (target.result.cpu.arch) {
+            .x86_64 => {
+                // Intel Mac
+                module.addLibraryPath(.{ .cwd_relative = "/usr/local/opt/mysql-client/lib" });
+                module.addIncludePath(.{ .cwd_relative = "/usr/local/opt/mysql-client/include" });
+            },
+            .aarch64 => {
+                // Apple Silicon
+                module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+                module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+            },
+            else => {
+                // 未知架构，尝试 Homebrew 路径
+                module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/lib" });
+                module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/mysql-client/include" });
+            },
+        }
+    }
+    if (target.result.os.tag == .linux) {
+        module.addLibraryPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+        module.addIncludePath(.{ .cwd_relative = "/usr/include/mysql" });
+    }
+}
+
+// 辅助函数：为模块配置通用链接选项
+fn configureModuleLinks(module: *std.Build.Module, sqlite: *std.Build.Dependency, target: std.Build.ResolvedTarget) void {
+    module.link_libc = true;
+    module.linkLibrary(sqlite.artifact("sqlite"));
+    setupMySQLPaths(module, target);
+}
+
+// 辅助函数：创建命令行工具
+fn createCommandTool(b: *std.Build, name: []const u8, source_file: []const u8, description: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+    const commands_base = b.createModule(.{
+        .root_source_file = b.path("cmd/base.zig"),
+    });
+
+    const module = b.createModule(.{
+        .root_source_file = b.path(source_file),
+        .target = target,
+        .optimize = optimize,
+    });
+    module.addImport("base", commands_base);
+    module.link_libc = true;
+
+    const exe = b.addExecutable(.{ .name = name, .root_module = module });
+    b.installArtifact(exe);
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    const step = b.step(name, description);
+    step.dependOn(&run_cmd.step);
+    return step;
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    // ========================================================================
+    // 依赖项
+    // ========================================================================
+    const zap = b.dependency("zap", .{ .target = target, .optimize = optimize });
+    const regex = b.dependency("regex", .{ .target = target, .optimize = optimize });
+    const pg = b.dependency("pg", .{ .target = target, .optimize = optimize });
+    const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
+    const sqlite = b.dependency("sqlite", .{ .target = target, .optimize = optimize });
+    // const curl = b.dependency("curl", .{ .target = target, .optimize = optimize });
+
+    // ========================================================================
+    // ZigCMS 核心库 (静态库)
+    // ========================================================================
+    const lib_module = b.createModule(.{
+        .root_source_file = b.path("root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // 为库模块添加依赖
+    addCommonImports(lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    configureModuleLinks(lib_module, sqlite, target);
+
+    const static_lib = b.addLibrary(.{
+        .name = "zigcms",
+        .root_module = lib_module,
+        .linkage = .static,
+    });
+    b.installArtifact(static_lib);
+
+    // ========================================================================
+    // ZigCMS 核心库 (动态库)
+    // ========================================================================
+    const shared_lib_module = b.createModule(.{
+        .root_source_file = b.path("root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // 为动态库模块添加依赖
+    addCommonImports(shared_lib_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    configureModuleLinks(shared_lib_module, sqlite, target);
+
+    const shared_lib = b.addLibrary(.{
+        .name = "zigcms",
+        .root_module = shared_lib_module,
+        .linkage = .dynamic,
+    });
+    b.installArtifact(shared_lib);
+
+    // 库构建步骤
+    const lib_step = b.step("lib", "Build ZigCMS as a library (static and dynamic)");
+    lib_step.dependOn(&static_lib.step);
+    lib_step.dependOn(&shared_lib.step);
+
+    // ========================================================================
+    // 主可执行文件
+    // ========================================================================
+    const exe_module = b.createModule(.{
+        .root_source_file = b.path("main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{ .name = "zigcms", .root_module = exe_module });
+
+    addCommonImports(exe_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    configureModuleLinks(exe_module, sqlite, target);
+
+    b.installArtifact(exe);
+
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    const run_step = b.step("run", "Run the ZigCMS server");
+    run_step.dependOn(&run_cmd.step);
+
+    // ========================================================================
+    // 单元测试
+    // ========================================================================
+    const lib_unit_tests_module = b.createModule(.{
+        .root_source_file = b.path("root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addCommonImports(lib_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    configureModuleLinks(lib_unit_tests_module, sqlite, target);
+
+    const lib_unit_tests = b.addTest(.{
+        .name = "zigcms-lib-tests",
+        .root_module = lib_unit_tests_module,
+    });
+
+    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+
+    const exe_unit_tests_module = b.createModule(.{
+        .root_source_file = b.path("main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addCommonImports(exe_unit_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    configureModuleLinks(exe_unit_tests_module, sqlite, target);
+
+    const exe_unit_tests = b.addTest(.{
+        .name = "zigcms-exe-tests",
+        .root_module = exe_unit_tests_module,
+    });
+
+    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+
+    // 测试步骤
+    const test_step = b.step("test", "Run all tests (unit + integration)");
+    test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_exe_unit_tests.step);
+
+    // 仅单元测试步骤
+    const unit_test_step = b.step("test-unit", "Run unit tests only");
+    unit_test_step.dependOn(&run_lib_unit_tests.step);
+    unit_test_step.dependOn(&run_exe_unit_tests.step);
+
+    // ========================================================================
+    // 属性测试 (Property-Based Tests)
+    // ========================================================================
+    const property_tests_module = b.createModule(.{
+        .root_source_file = b.path("tests/property/orm_property_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addCommonImports(property_tests_module, .{ .zap = zap, .pg = pg, .pretty = pretty, .regex = regex, .sqlite = sqlite });
+    // 添加 zigcms 库模块引用
+    property_tests_module.addImport("zigcms", lib_module);
+    configureModuleLinks(property_tests_module, sqlite, target);
+
+    const property_tests = b.addTest(.{
+        .name = "zigcms-property-tests",
+        .root_module = property_tests_module,
+    });
+
+    const run_property_tests = b.addRunArtifact(property_tests);
+
+    // 属性测试步骤
+    const property_test_step = b.step("test-property", "Run property-based tests (ORM correctness properties)");
+    property_test_step.dependOn(&run_property_tests.step);
+
+    // ========================================================================
+    // Database Migration Tool (from commands/)
+    // ========================================================================
+    _ = createCommandTool(b, "migrate", "cmd/migrate/main.zig", "Run database migrations (up/down/status/create)", target, optimize);
+
+    // ========================================================================
+    // Plugin Code Generator (from commands/)
+    // ========================================================================
+    _ = createCommandTool(b, "plugin-gen", "cmd/plugingen/main.zig", "Generate plugin code from template (--help for options)", target, optimize);
+}

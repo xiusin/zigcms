@@ -1,0 +1,5691 @@
+//! MySQL ORM - 高阶 Eloquent 风格 ORM
+//!
+//! 提供类似 Laravel Eloquent 的模型操作，支持真正的数据库交互。
+//!
+//! ## 使用示例
+//!
+//! ```zig
+//! const orm = @import("services").sql.orm;
+//!
+//! // 定义模型
+//! const User = orm.define(struct {
+//!     pub const table_name = "users";
+//!     pub const primary_key = "id";
+//!
+//!     id: u64,
+//!     name: []const u8,
+//!     email: []const u8,
+//!     age: ?u32 = null,
+//!     created_at: ?[]const u8 = null,
+//! });
+//!
+//! // 使用
+//! var db = try orm.Database.init(allocator, config);
+//! defer db.deinit();
+//!
+//! // 查询
+//! const users = try User.query(&db)
+//!     .where("age", ">", 18)
+//!     .orderBy("created_at", .desc)
+//!     .limit(10)
+//!     .get();
+//!
+//! // 创建
+//! const user = try User.create(&db, .{
+//!     .name = "张三",
+//!     .email = "zhangsan@example.com",
+//! });
+//!
+//! // 更新
+//! try User.find(&db, 1).?.update(.{ .name = "李四" });
+//!
+//! // 删除
+//! try User.destroy(&db, 1);
+//! ```
+
+const std = @import("std");
+const core_meta = @import("../../../core/meta.zig");
+const core_io = @import("../../../core/io.zig");
+const Allocator = std.mem.Allocator;
+const datetime = @import("../datetime/datetime.zig");
+const interface = @import("interface.zig");
+const query_mod = @import("query.zig");
+const soft_deletes = @import("soft_deletes.zig");
+const query_scopes = @import("query_scopes.zig");
+const model_events = @import("model_events.zig");
+const logger_mod = @import("../logger/logger.zig");
+const ParamBuilder = @import("param_builder.zig").ParamBuilder;
+const sql_errors = @import("sql_errors.zig");
+
+pub const OrderDir = query_mod.OrderDir;
+
+// ============================================================================
+// 公共辅助函数
+// ============================================================================
+
+/// 转义 SQL 字符串中的危险字符以防止 SQL 注入
+/// 转义: 单引号('), 反斜杠(\), NULL字节(\0), 换行(\n), 回车(\r), 双引号(")
+pub fn escapeSqlString(allocator: Allocator, str: []const u8) ![]u8 {
+    var result = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+    errdefer result.deinit(allocator);
+
+    for (str) |c| {
+        switch (c) {
+            '\'' => try result.appendSlice(allocator, "''"),
+            '\\' => try result.appendSlice(allocator, "\\\\"),
+            0 => try result.appendSlice(allocator, "\\0"),
+            '\n' => try result.appendSlice(allocator, "\\n"),
+            '\r' => try result.appendSlice(allocator, "\\r"),
+            '"' => try result.appendSlice(allocator, "\\\""),
+            else => try result.append(allocator, c),
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
+// ============================================================================
+// QueryResult - 查询结果包装器（使用 Arena Allocator 自动管理内存）
+// ============================================================================
+
+/// 查询结果包装器 - 使用 Arena Allocator 自动管理内存
+///
+/// 优势：
+/// - 使用 Arena Allocator 一次性分配所有内存
+/// - deinit() 一次性释放所有内存，无泄漏风险
+/// - 比逐个字符串释放更高效
+/// - 自动管理字符串所有权，无需手动调用 freeModel/freeModels
+///
+/// 使用示例：
+/// ```zig
+/// var result = try QueryResult(User).fromAll(db, backing_allocator);
+/// defer result.deinit();
+///
+/// for (result.items()) |user| {
+///     std.debug.print("User: {s}\n", .{user.name});
+/// }
+/// ```
+pub fn QueryResult(comptime T: type) type {
+    return struct {
+        arena: std.heap.ArenaAllocator,
+        models: []T,
+
+        const Self = @This();
+
+        /// 从 ResultSet 创建查询结果
+        ///
+        /// 参数：
+        /// - backing_allocator: 底层分配器（通常是 GPA）
+        /// - result_set: 数据库查询结果集
+        ///
+        /// 返回：QueryResult 实例（调用者必须调用 deinit 释放）
+        pub fn fromResultSet(backing_allocator: Allocator, result_set: *interface.ResultSet) !Self {
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            const allocator = arena.allocator();
+            const models = try mapResults(T, allocator, result_set);
+
+            return .{
+                .arena = arena,
+                .models = models,
+            };
+        }
+
+        /// 从数据库执行 SELECT * 查询并返回结果
+        ///
+        /// 参数：
+        /// - db: 数据库连接
+        /// - backing_allocator: 底层分配器
+        ///
+        /// 返回：QueryResult 实例（调用者必须调用 deinit 释放）
+        pub fn fromAll(db: anytype, backing_allocator: Allocator) !Self {
+            const Model = comptime @import("model.zig").Model(T);
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            const allocator = arena.allocator();
+
+            // 执行查询
+            const sql = try std.fmt.allocPrint(allocator, "SELECT * FROM {s}", .{Model.tableName()});
+            var result_set = try db.rawQuery(sql);
+            errdefer result_set.deinit();
+
+            const models = try mapResults(T, allocator, &result_set);
+            result_set.deinit();
+
+            return .{
+                .arena = arena,
+                .models = models,
+            };
+        }
+
+        /// 获取所有模型
+        pub fn items(self: *const Self) []const T {
+            return self.models;
+        }
+
+        /// 获取第一个模型
+        pub fn first(self: *const Self) ?T {
+            if (self.models.len == 0) return null;
+            return self.models[0];
+        }
+
+        /// 获取最后一个模型
+        pub fn last(self: *const Self) ?T {
+            if (self.models.len == 0) return null;
+            return self.models[self.models.len - 1];
+        }
+
+        /// 获取数量
+        pub fn count(self: *const Self) usize {
+            return self.models.len;
+        }
+
+        /// 是否为空
+        pub fn isEmpty(self: *const Self) bool {
+            return self.models.len == 0;
+        }
+
+        /// 获取指定索引的模型
+        pub fn get(self: *const Self, index: usize) ?T {
+            if (index >= self.models.len) return null;
+            return self.models[index];
+        }
+
+        /// 释放所有内存（一次性释放 Arena 中的所有分配）
+        pub fn deinit(self: *Self) void {
+            self.arena.deinit();
+            self.models = &.{};
+        }
+    };
+}
+
+/// 格式化 WHERE 条件（顶层函数，供多处使用）
+pub fn formatWhere(allocator: Allocator, field: []const u8, op: []const u8, value: anytype) ![]u8 {
+    const V = @TypeOf(value);
+    const type_info = @typeInfo(V);
+
+    if (V == []const u8) {
+        const escaped = try escapeSqlString(allocator, value);
+        defer allocator.free(escaped);
+        return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, escaped });
+    } else if (type_info == .pointer and type_info.pointer.size == .one) {
+        // 处理字符串字面量类型 *const [N:0]u8
+        const child_info = @typeInfo(type_info.pointer.child);
+        if (child_info == .array and child_info.array.child == u8) {
+            const str: []const u8 = value;
+            const escaped = try escapeSqlString(allocator, str);
+            defer allocator.free(escaped);
+            return std.fmt.allocPrint(allocator, "{s} {s} '{s}'", .{ field, op, escaped });
+        }
+        return std.fmt.allocPrint(allocator, "{s} {s} NULL", .{ field, op });
+    } else if (type_info == .int or type_info == .comptime_int) {
+        return std.fmt.allocPrint(allocator, "{s} {s} {d}", .{ field, op, value });
+    } else if (type_info == .float or type_info == .comptime_float) {
+        return std.fmt.allocPrint(allocator, "{s} {s} {d}", .{ field, op, value });
+    } else if (V == bool) {
+        return std.fmt.allocPrint(allocator, "{s} {s} {d}", .{ field, op, @as(u8, if (value) 1 else 0) });
+    } else {
+        return std.fmt.allocPrint(allocator, "{s} {s} NULL", .{ field, op });
+    }
+}
+
+/// 将数据库结果映射到模型（顶层泛型函数）
+///
+/// 内存所有权说明：
+/// - 返回的 []T 数组由调用者拥有，必须使用 allocator.free() 释放
+/// - 数组中每个模型的字符串字段由 allocator 分配，必须使用 freeModel() 释放
+/// - 推荐使用 freeModels() 一次性释放数组和所有模型的字符串内存
+///
+/// 使用示例：
+/// ```zig
+/// const models = try mapResults(User, allocator, &result);
+/// defer User.freeModels(allocator, models);
+/// ```
+///
+/// 参数：
+/// - T: 目标模型类型
+/// - allocator: 用于分配结果数组和字符串的分配器
+/// - result: 数据库查询结果集
+///
+/// 返回：映射后的模型数组
+/// 错误：内存分配失败
+pub fn mapResults(comptime T: type, allocator: Allocator, result: *interface.ResultSet) ![]T {
+    var models = std.ArrayListUnmanaged(T){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+    errdefer models.deinit(allocator);
+
+    const fields = core_meta.fields(T);
+    var field_indices: [fields.len]?usize = @splat(null);
+
+    // 缓存字段映射索引：将模型字段名映射到 ResultSet 列索引
+    if (result.field_names.len > 0) {
+        for (result.field_names, 0..) |col_name, col_idx| {
+            inline for (fields, 0..) |field, f_idx| {
+                if (std.mem.eql(u8, col_name, field.name)) {
+                    field_indices[f_idx] = col_idx;
+                }
+            }
+        }
+    }
+
+    while (result.next()) {
+        const row = result.getCurrentRow() orelse continue;
+        var model: T = undefined;
+
+        inline for (fields, 0..) |field, f_idx| {
+            // 使用缓存索引直接获取值，避免 O(N) 字符串查找
+            var value: ?[]const u8 = null;
+            if (field_indices[f_idx]) |idx| {
+                if (idx < row.values.len) {
+                    value = row.values[idx];
+                }
+            }
+
+            if (@typeInfo(field.type) == .optional) {
+                if (value) |v| {
+                    @field(model, field.name) = try allocator.dupe(u8, v);
+                } else {
+                    @field(model, field.name) = null;
+                }
+            } else if (field.type == []const u8) {
+                if (value) |v| {
+                    @field(model, field.name) = try allocator.dupe(u8, v);
+                } else {
+                    @field(model, field.name) = "";
+                }
+            } else if (@typeInfo(field.type) == .int) {
+                if (value) |v| {
+                    var parsed = std.fmt.parseInt(field.type, v, 10) catch 0;
+                    if (std.mem.endsWith(u8, field.name, "_at")) {
+                        // 转换时间戳从秒到纳秒
+                        parsed *= 1_000_000_000;
+                    }
+                    @field(model, field.name) = parsed;
+                } else {
+                    @field(model, field.name) = 0;
+                }
+            } else if (@typeInfo(field.type) == .float) {
+                if (value) |v| {
+                    @field(model, field.name) = std.fmt.parseFloat(field.type, v) catch 0;
+                } else {
+                    @field(model, field.name) = 0;
+                }
+            } else if (field.type == bool) {
+                @field(model, field.name) = if (value) |v| std.mem.eql(u8, v, "1") else false;
+            } else {
+                // 处理 JSON 字段类型（JsonField 和 JsonArray）
+                if (comptime isJsonFieldType(field.type)) {
+                    if (value) |v| {
+                        // 直接从 JSON 字符串创建 JsonField（复用数据库返回的字符串，不拷贝）
+                        // 注意：这里使用 unsafe 方法，直接使用数据库返回的字符串
+                        // 实际项目中应该复制一份以确保安全
+                        @field(model, field.name) = try createJsonFieldFromDb(field.type, allocator, v);
+                    } else {
+                        @field(model, field.name) = field.type.empty();
+                    }
+                }
+            }
+        }
+
+        try models.append(allocator, model);
+    }
+
+    return models.toOwnedSlice(allocator);
+}
+
+// ============================================================================
+// JSON 字段支持
+// ============================================================================
+
+/// 检查类型是否为 JsonField
+fn isJsonFieldType(comptime T: type) bool {
+    // 通过编译时检查判断是否为 JsonField 类型
+    const info = @typeInfo(T);
+    if (info != .Struct) return false;
+    // 检查是否有 JsonField 特征方法
+    return @hasDecl(T, "toSqlString") and @hasDecl(T, "fromJson");
+}
+
+/// 从数据库值创建 JsonField
+fn createJsonFieldFromDb(comptime JsonType: type, allocator: Allocator, json_str: []const u8) !JsonType {
+    // 复制字符串，因为数据库连接可能会重用内存
+    const owned_str = try allocator.dupe(u8, json_str);
+    return JsonType.fromJson(owned_str, allocator);
+}
+
+// ============================================================================
+// 数据库管理器
+// ============================================================================
+
+/// MySQL 配置（扩展）
+pub const MySQLConfig = struct {
+    host: []const u8 = "localhost",
+    port: u16 = 3306,
+    user: []const u8 = "root",
+    password: []const u8 = "",
+    database: []const u8,
+
+    // 连接池配置（可选）
+    min_connections: usize = 3,
+    max_connections: usize = 30,
+    acquire_timeout_ms: u64 = 5000,
+    max_idle_time_ms: u64 = 300_000,
+    max_lifetime_ms: u64 = 1_800_000,
+    transaction_timeout_ms: u64 = 30_000,
+    /// 空闲连接回收间隔（毫秒），0 禁用
+    idle_eviction_interval_ms: u64 = 120_000,
+};
+
+/// 数据库管理器 - 使用统一驱动接口
+///
+/// 内存所有权说明：
+/// - Database 拥有 conn 和 pool 的所有权
+/// - 对于 MySQL：pool 拥有所有连接，conn 未使用（每次操作从池获取）
+/// - 对于 SQLite/Memory/PostgreSQL：conn 直接由 Database 拥有
+/// - deinit() 会正确清理所有资源
+///
+/// 生命周期：
+/// - 创建：sqlite()/mysql()/memory()/postgres()
+/// - 使用：rawQuery()/exec()/query() 等
+/// - 销毁：deinit()
+pub const Database = struct {
+    allocator: Allocator,
+    conn: interface.Connection,
+    pool: ?*ConnectionPool = null,
+    driver_type: interface.DriverType,
+    last_insert_id: u64 = 0,
+    debug: bool = true,
+    enable_logging: bool = true,
+    logger: ?*logger_mod.Logger = null,
+
+    // ================================================================
+    // 连接守卫 - RAII 风格，deinit 时自动归还连接
+    // ================================================================
+
+    /// 连接守卫
+    ///
+    /// 使用方式：
+    /// ```zig
+    /// var guard = try db.acquireGuard();
+    /// defer guard.deinit();   // 自动归还连接，永远不会忘
+    /// guard.conn.query(...);  // 使用连接
+    /// ```
+    pub const ConnectionGuard = struct {
+        db: *Database,
+        pooled: ?*PooledConnection,
+        conn: interface.Connection,
+
+        pub fn deinit(self: *ConnectionGuard) void {
+            if (self.pooled) |pc| {
+                if (self.db.pool) |pool| pool.release(pc);
+            }
+        }
+
+        pub fn markBroken(self: *ConnectionGuard) void {
+            if (self.pooled) |pc| {
+                pc.broken = true;
+            }
+        }
+    };
+
+    /// 获取连接守卫（RAII 风格）
+    ///
+    /// MySQL：从连接池获取，deinit 时自动归还
+    /// SQLite/PostgreSQL：直接使用自身连接，deinit 为空操作
+    pub fn acquireGuard(self: *Database) !ConnectionGuard {
+        if (self.pool) |pool| {
+            const pooled = try pool.acquire();
+            return .{
+                .db = self,
+                .pooled = pooled,
+                .conn = pooled.conn,
+            };
+        }
+        return .{
+            .db = self,
+            .pooled = null,
+            .conn = self.conn,
+        };
+    }
+
+    // ================================================================
+    // 回调式 API - 连接生命周期完全托管，零心智负担
+    // ================================================================
+
+    /// 在连接上下文中执行操作（自动获取/归还连接）
+    ///
+    /// ```zig
+    /// try db.withConnection(struct {
+    ///     pub fn run(conn: interface.Connection) !void {
+    ///         _ = try conn.exec("INSERT INTO users ...");
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withConnection(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        var guard = try self.acquireGuard();
+        defer guard.deinit();
+        return @call(.auto, func, .{guard.conn} ++ args);
+    }
+
+    /// 在事务中执行操作（自动 begin/commit/rollback）
+    ///
+    /// ```zig
+    /// try db.withTransaction(struct {
+    ///     pub fn run(tx: *Transaction) !void {
+    ///         _ = try tx.exec("INSERT ...");
+    ///         _ = try tx.exec("UPDATE ...");
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withTransaction(self: *Database, comptime func: anytype, args: anytype) !void {
+        if (self.pool) |pool| {
+            var tx = try Transaction.init(pool);
+            defer tx.deinit();
+
+            @call(.auto, func, .{&tx} ++ args) catch |err| {
+                tx.rollback() catch {};
+                return err;
+            };
+
+            try tx.commit();
+            return;
+        }
+
+        try self.conn.beginTransaction();
+        @call(.auto, func, .{self} ++ args) catch |err| {
+            self.conn.rollback() catch {};
+            return err;
+        };
+        try self.conn.commit();
+    }
+
+    /// 在事务中执行操作并返回结果
+    ///
+    /// ```zig
+    /// const user = try db.withTransactionResult(struct {
+    ///     pub fn run(tx: *Transaction) !User {
+    ///         _ = try tx.exec("INSERT ...");
+    ///         return User{ .id = 1 };
+    ///     }
+    /// }.run);
+    /// ```
+    pub fn withTransactionResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        if (self.pool) |pool| {
+            var tx = try Transaction.init(pool);
+            defer tx.deinit();
+
+            const result = @call(.auto, func, .{&tx} ++ args) catch |err| {
+                tx.rollback() catch {};
+                return err;
+            };
+
+            try tx.commit();
+            return result;
+        }
+
+        try self.conn.beginTransaction();
+        const result = @call(.auto, func, .{self} ++ args) catch |err| {
+            self.conn.rollback() catch {};
+            return err;
+        };
+        try self.conn.commit();
+        return result;
+    }
+
+    /// 从统一连接创建
+    pub fn fromConnection(allocator: Allocator, conn: interface.Connection) Database {
+        return .{
+            .allocator = allocator,
+            .conn = conn,
+            .pool = null,
+            .driver_type = conn.getDriverType(),
+            .last_insert_id = 0,
+        };
+    }
+
+    /// 创建 SQLite 数据库（开发/测试）
+    pub fn sqlite(allocator: Allocator, path: []const u8) !Database {
+        var conn = try interface.Driver.sqlite(allocator, path);
+
+        // 启用 WAL 模式
+        _ = try conn.exec("PRAGMA journal_mode=WAL");
+        _ = try conn.exec("PRAGMA synchronous=NORMAL");
+
+        return .{
+            .allocator = allocator,
+            .conn = conn,
+            .pool = null,
+            .driver_type = .sqlite,
+            .last_insert_id = 0,
+        };
+    }
+
+    /// 创建 MySQL 数据库（内部自动使用连接池）
+    pub fn mysql(allocator: Allocator, config: MySQLConfig) !Database {
+        const pool = try allocator.create(ConnectionPool);
+        errdefer allocator.destroy(pool);
+
+        pool.* = try ConnectionPool.init(allocator, .{
+            .host = config.host,
+            .port = config.port,
+            .user = config.user,
+            .password = config.password,
+            .database = config.database,
+        }, .{
+            .min_size = config.min_connections,
+            .max_size = config.max_connections,
+            .acquire_timeout_ms = config.acquire_timeout_ms,
+            .max_idle_time_ms = config.max_idle_time_ms,
+            .max_lifetime_ms = config.max_lifetime_ms,
+            .transaction_timeout_ms = config.transaction_timeout_ms,
+            .idle_eviction_interval_ms = config.idle_eviction_interval_ms,
+        });
+
+        // 启动后台空闲连接回收
+        if (config.idle_eviction_interval_ms > 0) {
+            try pool.startEviction();
+        }
+
+        return .{
+            .allocator = allocator,
+            .conn = undefined,
+            .pool = pool,
+            .driver_type = .mysql,
+            .last_insert_id = 0,
+        };
+    }
+
+    /// 创建内存数据库（纯测试）
+    pub fn memory(allocator: Allocator) !Database {
+        return .{
+            .allocator = allocator,
+            .conn = try interface.Driver.memory(allocator),
+            .pool = null,
+            .driver_type = .memory,
+            .last_insert_id = 0,
+        };
+    }
+
+    /// 创建 PostgreSQL 数据库（pg.Pool 内部已线程安全）
+    pub fn postgres(allocator: Allocator, config: interface.PostgreSQLConfig) !Database {
+        return .{
+            .allocator = allocator,
+            .conn = try interface.Driver.postgres(allocator, config),
+            .pool = null,
+            .driver_type = .postgresql,
+            .last_insert_id = 0,
+        };
+    }
+
+    /// 清理数据库资源
+    ///
+    /// 内存清理策略：
+    /// - MySQL（有连接池）：释放连接池，池会自动清理所有连接
+    /// - SQLite/Memory/PostgreSQL（无连接池）：直接释放连接
+    ///
+    /// 注意：调用 deinit 后，Database 实例不应再被使用
+    pub fn deinit(self: *Database) void {
+        if (self.pool) |pool| {
+            pool.deinit();
+            self.allocator.destroy(pool);
+            self.pool = null;
+        } else {
+            self.conn.deinit();
+        }
+    }
+
+    /// 执行原始查询（支持参数绑定）
+    pub fn rawQuery(self: *Database, sql_query: []const u8, args: anytype) !interface.ResultSet {
+        const start_time = std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds();
+
+        const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
+        defer self.allocator.free(formatted_sql);
+
+        if (self.logger) |log| {
+            if (self.debug) log.debug("[SQL] {s}", .{formatted_sql});
+        } else if (self.debug) {
+            std.debug.print("[SQL] {s}\n", .{formatted_sql});
+        }
+
+        var retry_count: u32 = 0;
+        while (retry_count <= 1) : (retry_count += 1) {
+            var guard = try self.acquireGuard();
+            defer guard.deinit();
+
+            const result = guard.conn.query(formatted_sql) catch |err| {
+                const is_conn_error = switch (err) {
+                    error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
+                    else => false,
+                };
+
+                if (is_conn_error) {
+                    guard.markBroken();
+                    if (retry_count < 1) continue;
+                }
+
+                const elapsed_ms = @as(f64, @floatFromInt(std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds() - start_time)) / 1_000_000.0;
+
+                const detail_msg = if (sql_errors.getLastError()) |sql_err|
+                    sql_err.getNativeMessage() orelse @errorName(err)
+                else
+                    @errorName(err);
+
+                if (self.logger) |log| {
+                    if (self.enable_logging) {
+                        log.err("Query failed: {s}", .{detail_msg});
+                        log.err("SQL: {s}", .{formatted_sql});
+                        log.err("Duration: {d:.2}ms", .{elapsed_ms});
+                    }
+                } else if (self.enable_logging) {
+                    std.debug.print("[ERROR] Query failed: {s}\n", .{detail_msg});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
+                    std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+                }
+                return err;
+            };
+
+            const elapsed_ms = @as(f64, @floatFromInt(std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds() - start_time)) / 1_000_000.0;
+            const row_count = result.rowCount();
+
+            if (self.logger) |log| {
+                if (self.enable_logging) {
+                    log.info("Query executed: {d} rows, {d:.2}ms", .{ row_count, elapsed_ms });
+                    log.debug("SQL: {s}", .{formatted_sql});
+                }
+            } else if (self.enable_logging) {
+                std.debug.print("[INFO] Query executed: {d} rows, {d:.2}ms\n", .{ row_count, elapsed_ms });
+                std.debug.print("[SQL] {s}\n", .{formatted_sql});
+            }
+
+            return result;
+        }
+        return error.QueryFailed;
+    }
+
+    /// 执行原始命令（支持参数绑定）
+    pub fn exec(self: *Database, sql_query: []const u8, args: anytype) !u64 {
+        const start_time = std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds();
+
+        const formatted_sql = try query_mod.format(self.allocator, sql_query, args);
+        defer self.allocator.free(formatted_sql);
+
+        if (self.logger) |log| {
+            if (self.debug) log.debug("[SQL] {s}", .{formatted_sql});
+        } else if (self.debug) {
+            std.debug.print("[SQL] {s}\n", .{formatted_sql});
+        }
+
+        var retry_count: u32 = 0;
+        while (retry_count <= 1) : (retry_count += 1) {
+            var guard = try self.acquireGuard();
+            defer guard.deinit();
+
+            const affected = guard.conn.exec(formatted_sql) catch |err| {
+                const is_conn_error = switch (err) {
+                    error.ConnectionFailed, error.ConnectionLost, error.ServerGone, error.BrokenPipe => true,
+                    else => false,
+                };
+
+                if (is_conn_error) {
+                    guard.markBroken();
+                    if (retry_count < 1) continue;
+                }
+
+                const elapsed_ms = @as(f64, @floatFromInt(std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds() - start_time)) / 1_000_000.0;
+
+                const detail_msg = if (sql_errors.getLastError()) |sql_err|
+                    sql_err.getNativeMessage() orelse @errorName(err)
+                else
+                    @errorName(err);
+
+                if (self.logger) |log| {
+                    if (self.enable_logging) {
+                        log.err("Exec failed: {s}", .{detail_msg});
+                        log.err("SQL: {s}", .{formatted_sql});
+                        log.err("Duration: {d:.2}ms", .{elapsed_ms});
+                    }
+                } else if (self.enable_logging) {
+                    std.debug.print("[ERROR] Exec failed: {s}\n", .{detail_msg});
+                    std.debug.print("[ERROR] SQL: {s}\n", .{formatted_sql});
+                    std.debug.print("[ERROR] Duration: {d:.2}ms\n", .{elapsed_ms});
+                }
+                return err;
+            };
+            self.last_insert_id = guard.conn.lastInsertId();
+
+            const elapsed_ms = @as(f64, @floatFromInt(std.Io.Timestamp.now(core_io.getIo(), .real).toNanoseconds() - start_time)) / 1_000_000.0;
+
+            if (self.logger) |log| {
+                if (self.enable_logging) {
+                    log.info("Exec executed: {d} rows affected, {d:.2}ms", .{ affected, elapsed_ms });
+                    log.debug("SQL: {s}", .{formatted_sql});
+                }
+            } else if (self.enable_logging) {
+                std.debug.print("[INFO] Exec executed: {d} rows affected, {d:.2}ms\n", .{ affected, elapsed_ms });
+                std.debug.print("[SQL] {s}\n", .{formatted_sql});
+            }
+
+            return affected;
+        }
+        return error.QueryFailed;
+    }
+
+    /// 开始事务（MySQL 使用连接池事务）
+    pub fn beginTransaction(self: *Database) !void {
+        if (self.pool) |_| {
+            return error.UseTransactionObject;
+        }
+        try self.conn.beginTransaction();
+    }
+
+    /// 提交事务
+    pub fn commit(self: *Database) !void {
+        try self.conn.commit();
+    }
+
+    /// 回滚事务
+    pub fn rollback(self: *Database) !void {
+        try self.conn.rollback();
+    }
+
+    /// 执行事务（自动管理，委托给 withTransaction）
+    pub fn transaction(self: *Database, comptime func: anytype, args: anytype) !void {
+        return self.withTransaction(func, args);
+    }
+
+    /// 执行事务并返回结果（自动管理，委托给 withTransactionResult）
+    pub fn transactionWithResult(self: *Database, comptime func: anytype, args: anytype) !@typeInfo(@TypeOf(func)).@"fn".return_type.? {
+        return self.withTransactionResult(func, args);
+    }
+
+    /// Savepoint 支持（嵌套事务）
+    ///
+    /// 使用示例：
+    /// ```zig
+    /// try db.beginTransaction();
+    /// defer db.rollback() catch {};
+    ///
+    /// try OrmUser.create(db, .{ .name = "张三" });
+    ///
+    /// try db.savepoint("sp1");
+    /// try OrmOrder.create(db, .{ .user_id = 1 });
+    /// try db.rollbackTo("sp1");  // 只回滚订单
+    ///
+    /// try db.commit();
+    /// ```
+    pub fn savepoint(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
+    /// 回滚到 Savepoint
+    pub fn rollbackTo(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "ROLLBACK TO SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
+    /// 释放 Savepoint
+    pub fn releaseSavepoint(self: *Database, name: []const u8) !void {
+        var buf: [256]u8 = undefined;
+        const sql = try std.fmt.bufPrint(&buf, "RELEASE SAVEPOINT {s}", .{name});
+        _ = try self.exec(sql, .{});
+    }
+
+    /// 获取驱动类型
+    pub fn getDriverType(self: *const Database) interface.DriverType {
+        return self.driver_type;
+    }
+
+    /// 获取最后插入的 ID
+    pub fn lastInsertId(self: *Database) u64 {
+        return self.last_insert_id;
+    }
+
+    /// 简单键值存储 - 获取值
+    /// 用于缓存版本号等轻量级场景
+    pub fn kv_get(self: *Database, allocator: Allocator, key: []const u8) ![]const u8 {
+        const sql = "SELECT value FROM sys_kv_store WHERE key = ?";
+        var result = try self.rawQuery(sql, .{key});
+        defer result.deinit();
+
+        if (result.next()) {
+            const row = result.getCurrentRow() orelse return error.KeyNotFound;
+            const value = row.getString("value") orelse return error.ValueNotFound;
+            return try allocator.dupe(u8, value);
+        }
+        return error.KeyNotFound;
+    }
+
+    /// 简单键值存储 - 设置值
+    /// 用于缓存版本号等轻量级场景
+    pub fn kv_set(self: *Database, key: []const u8, value: []const u8) !void {
+        const sql = switch (self.driver_type) {
+            .mysql => "INSERT INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()",
+            .sqlite, .memory => "INSERT OR REPLACE INTO sys_kv_store (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+            else => return error.UnsupportedDriver,
+        };
+        _ = try self.exec(sql, .{ key, value });
+    }
+};
+
+// ============================================================================
+// 模型构建器
+// ============================================================================
+
+/// 数据库方言
+pub const Dialect = enum { mysql, sqlite, postgresql };
+
+/// 模型配置
+pub const ModelConfig = struct {
+    table_name: ?[]const u8 = null,
+    primary_key: ?[]const u8 = null,
+};
+
+/// 定义模型
+pub fn define(comptime T: type) type {
+    return defineWithConfig(T, .{});
+}
+
+/// 定义模型（带配置）
+pub fn defineWithConfig(comptime T: type, comptime config: ModelConfig) type {
+    return struct {
+        const Self = @This();
+        /// 原始模型结构体类型（用于关联查询）
+        pub const Model = T;
+
+        // ====================================================================
+        // 默认数据库连接 - 实现 Laravel 风格无 db 参数调用
+        // ====================================================================
+
+        /// 默认数据库连接（可选）
+        var default_db: ?*Database = null;
+
+        /// 设置默认数据库连接
+        /// 使用: Product.use(&db);
+        /// 之后: Product.where("name", "=", "test").get()
+        pub fn use(db: *Database) void {
+            default_db = db;
+        }
+
+        /// 获取默认数据库连接
+        pub fn getDb() *Database {
+            return default_db orelse @panic("Model has no default database. Call Model.use(&db) first.");
+        }
+
+        /// 检查是否设置了默认连接
+        pub fn hasDb() bool {
+            return default_db != null;
+        }
+
+        /// 获取表名
+        pub fn tableName() []const u8 {
+            const tbl = if (config.table_name) |n| n else if (@hasDecl(T, "table_name")) T.table_name else @typeName(T);
+
+            var last_dot: ?usize = null;
+            var dot_count: usize = 0;
+            for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    dot_count += 1;
+                    last_dot = i;
+                }
+            }
+
+            const base = if (last_dot) |idx| tbl[idx + 1 ..] else tbl;
+
+            if (dot_count == 1) {
+                if (default_db) |db| {
+                    if (db.driver_type == .postgresql or db.driver_type == .mysql) return tbl;
+                }
+            }
+
+            return base;
+        }
+
+        /// 获取主键名
+        pub fn primaryKey() []const u8 {
+            if (config.primary_key) |k| return k;
+            if (@hasDecl(T, "primary_key")) {
+                return T.primary_key;
+            }
+            return "id";
+        }
+
+        // ====================================================================
+        // 数据库迁移 - Schema 生成
+        // ====================================================================
+
+        /// 将 Zig 类型映射到 SQL 类型（编译期）
+        fn zigTypeToSqlType(comptime ZigType: type, comptime dialect: Dialect, comptime field_name: []const u8) []const u8 {
+            const is_primary = std.mem.eql(u8, field_name, primaryKey());
+            const type_info = @typeInfo(ZigType);
+
+            if (type_info == .optional) {
+                return zigTypeToSqlType(type_info.optional.child, dialect, field_name);
+            }
+
+            if (ZigType == []const u8) {
+                if (std.mem.endsWith(u8, field_name, "content") or
+                    std.mem.endsWith(u8, field_name, "description") or
+                    std.mem.endsWith(u8, field_name, "body"))
+                {
+                    return switch (dialect) {
+                        .mysql => "LONGTEXT",
+                        .sqlite, .postgresql => "TEXT",
+                    };
+                }
+                return switch (dialect) {
+                    .mysql, .postgresql => "VARCHAR(255)",
+                    .sqlite => "TEXT",
+                };
+            }
+
+            if (type_info == .int) {
+                const bits = type_info.int.bits;
+                if (is_primary) {
+                    return switch (dialect) {
+                        .mysql => if (bits <= 32) "INT AUTO_INCREMENT" else "BIGINT AUTO_INCREMENT",
+                        .sqlite => "INTEGER",
+                        .postgresql => if (bits <= 32) "SERIAL" else "BIGSERIAL",
+                    };
+                }
+                return switch (dialect) {
+                    .mysql => if (bits <= 8) "TINYINT" else if (bits <= 16) "SMALLINT" else if (bits <= 32) "INT" else "BIGINT",
+                    .sqlite => "INTEGER",
+                    .postgresql => if (bits <= 16) "SMALLINT" else if (bits <= 32) "INTEGER" else "BIGINT",
+                };
+            }
+
+            if (type_info == .float) {
+                const bits = type_info.float.bits;
+                return switch (dialect) {
+                    .mysql => if (bits <= 32) "FLOAT" else "DOUBLE",
+                    .sqlite => "REAL",
+                    .postgresql => if (bits <= 32) "REAL" else "DOUBLE PRECISION",
+                };
+            }
+
+            if (ZigType == bool) {
+                return switch (dialect) {
+                    .mysql => "TINYINT(1)",
+                    .sqlite => "INTEGER",
+                    .postgresql => "BOOLEAN",
+                };
+            }
+
+            return switch (dialect) {
+                .mysql, .postgresql => "VARCHAR(255)",
+                .sqlite => "TEXT",
+            };
+        }
+
+        /// 生成 CREATE TABLE SQL 语句（运行时版本）
+        pub fn createTableSql(db: *Database, dialect: Dialect) ![]const u8 {
+            return switch (dialect) {
+                .mysql => createTableSqlForDialect(db, .mysql),
+                .sqlite => createTableSqlForDialect(db, .sqlite),
+                .postgresql => createTableSqlForDialect(db, .postgresql),
+            };
+        }
+
+        /// 为特定方言生成 CREATE TABLE SQL（编译时方言）
+        fn createTableSqlForDialect(db: *Database, comptime dialect: Dialect) ![]const u8 {
+            const fields = core_meta.fields(T);
+            const pk = primaryKey();
+            const tbl = if (config.table_name) |n| n else if (@hasDecl(T, "table_name")) T.table_name else @typeName(T);
+
+            var last_dot: ?usize = null;
+            var dot_count: usize = 0;
+            for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    dot_count += 1;
+                    last_dot = i;
+                }
+            }
+
+            const base = if (last_dot) |idx| tbl[idx + 1 ..] else tbl;
+            const resolved_table_name = switch (dialect) {
+                .sqlite => base,
+                .mysql, .postgresql => if (dot_count == 1) tbl else base,
+            };
+
+            var sql_builder = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer sql_builder.deinit(db.allocator);
+
+            try sql_builder.appendSlice(db.allocator, "CREATE TABLE IF NOT EXISTS ");
+            try sql_builder.appendSlice(db.allocator, resolved_table_name);
+            try sql_builder.appendSlice(db.allocator, " (\n");
+
+            var first_field = true;
+            inline for (fields) |field| {
+                if (@hasDecl(T, "ignore_fields")) {
+                    var skip = false;
+                    for (T.ignore_fields) |ignore| {
+                        if (std.mem.eql(u8, field.name, ignore)) {
+                            skip = true;
+                            break;
+                        }
+                    }
+                    if (skip) continue;
+                }
+
+                const is_pk = std.mem.eql(u8, field.name, pk);
+                const sql_type = zigTypeToSqlType(field.type, dialect, field.name);
+
+                if (!first_field) try sql_builder.appendSlice(db.allocator, ",\n");
+                first_field = false;
+                try sql_builder.appendSlice(db.allocator, "    ");
+                try sql_builder.appendSlice(db.allocator, field.name);
+                try sql_builder.appendSlice(db.allocator, " ");
+                try sql_builder.appendSlice(db.allocator, sql_type);
+
+                if (is_pk and dialect != .sqlite) {
+                    try sql_builder.appendSlice(db.allocator, " NOT NULL");
+                }
+            }
+
+            try sql_builder.appendSlice(db.allocator, ",\n    PRIMARY KEY (");
+            try sql_builder.appendSlice(db.allocator, pk);
+            try sql_builder.appendSlice(db.allocator, ")\n)");
+
+            if (dialect == .mysql) {
+                try sql_builder.appendSlice(db.allocator, " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+
+            try sql_builder.append(db.allocator, ';');
+
+            return sql_builder.toOwnedSlice(db.allocator);
+        }
+
+        /// 生成 DROP TABLE SQL 语句
+        pub fn dropTableSql() []const u8 {
+            const tbl = tableName();
+            comptime var pure_table_name: []const u8 = tbl;
+            inline for (tbl, 0..) |c, i| {
+                if (c == '.') {
+                    pure_table_name = tbl[i + 1 ..];
+                    break;
+                }
+            }
+            return "DROP TABLE IF EXISTS " ++ pure_table_name ++ ";";
+        }
+
+        /// 执行建表
+        pub fn createTable(db: *Database) !void {
+            const dialect: Dialect = switch (db.driver_type) {
+                .mysql => .mysql,
+                .sqlite, .memory => .sqlite,
+                .postgresql => .postgresql,
+            };
+            const sql_str = try createTableSql(db, dialect);
+            defer db.allocator.free(sql_str);
+            _ = try db.exec(sql_str, .{});
+        }
+
+        /// 执行删表
+        pub fn dropTable(db: *Database) !void {
+            _ = try db.exec(dropTableSql(), .{});
+        }
+
+        /// 释放模型中的字符串内存（使用模型绑定的数据库分配器）
+        ///
+        /// 内存所有权说明：
+        /// - 只释放由 ORM 查询分配的字符串（长度 > 0 且非静态字符串）
+        /// - 静态字符串（如 ""）不会被释放
+        /// - 可选字符串字段如果有值也会被释放
+        ///
+        /// 注意：调用后模型中的字符串指针将变为悬空指针，不应再访问
+        ///
+        /// 参数：
+        /// - model: 要释放的模型指针
+        pub fn freeModel(model: *T) void {
+            const allocator = getDb().allocator;
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const str = @field(model.*, field.name);
+                    // 只释放非空字符串（空字符串 "" 是静态分配的）
+                    if (str.len > 0 and str.ptr != "".ptr) {
+                        allocator.free(str);
+                    }
+                } else if (@typeInfo(field.type) == .optional) {
+                    const ChildType = @typeInfo(field.type).optional.child;
+                    if (ChildType == []const u8) {
+                        if (@field(model.*, field.name)) |str| {
+                            if (str.len > 0 and str.ptr != "".ptr) {
+                                allocator.free(str);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// 释放模型数组及其所有字符串内存（使用模型绑定的数据库分配器）
+        ///
+        /// 内存所有权说明：
+        /// - 释放数组中每个模型的字符串字段
+        /// - 释放数组本身
+        /// - 这是释放 ORM 查询结果的推荐方式
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// const users = try User.all(db);
+        /// defer User.freeModels(users);
+        /// ```
+        ///
+        /// 参数：
+        /// - models: 要释放的模型数组
+        pub fn freeModels(models: []T) void {
+            const allocator = getDb().allocator;
+            for (models) |*model| freeModel(model);
+            allocator.free(models);
+        }
+
+        /// 使用默认数据库分配器释放单个模型（便捷包装）
+        pub fn freeModelWithDefault(model: *T) void {
+            freeModel(model);
+        }
+
+        /// 使用默认数据库分配器释放模型数组（便捷包装）
+        pub fn freeModelsWithDefault(models: []T) void {
+            freeModels(models);
+        }
+
+        // ====================================================================
+        // ModelList - 自动管理内存的模型列表包装器
+        // ====================================================================
+
+        /// 模型列表包装器，自动管理内存释放
+        /// 使用示例：
+        /// ```zig
+        /// var list = try Product.collect(db);
+        /// defer list.deinit();
+        /// for (list.items()) |p| { ... }
+        /// ```
+        pub const List = struct {
+            allocator: Allocator,
+            data: []T,
+
+            /// 获取所有项
+            pub fn items(self: *const List) []T {
+                return self.data;
+            }
+
+            /// 获取第一个
+            pub fn first(self: *const List) ?T {
+                if (self.data.len == 0) return null;
+                return self.data[0];
+            }
+
+            /// 获取最后一个
+            pub fn last(self: *const List) ?T {
+                if (self.data.len == 0) return null;
+                return self.data[self.data.len - 1];
+            }
+
+            /// 获取数量
+            pub fn count(self: *const List) usize {
+                return self.data.len;
+            }
+
+            /// 是否为空
+            pub fn isEmpty(self: *const List) bool {
+                return self.data.len == 0;
+            }
+
+            /// 是否非空
+            pub fn isNotEmpty(self: *const List) bool {
+                return self.data.len > 0;
+            }
+
+            /// 获取指定索引
+            pub fn get(self: *const List, index: usize) ?T {
+                if (index >= self.data.len) return null;
+                return self.data[index];
+            }
+
+            /// 遍历并执行函数
+            pub fn each(self: *const List, func: fn (T) void) void {
+                for (self.data) |item| {
+                    func(item);
+                }
+            }
+
+            // 注意：由于 Zig 编译时限制，pluck 通过迭代器模式实现
+            // 使用: for (list.items()) |item| { _ = item.field_name; }
+
+            /// 释放所有内存
+            pub fn deinit(self: *List) void {
+                freeModels(self.allocator, self.data);
+                self.data = &.{};
+            }
+        };
+
+        /// 创建 List 包装器（从已有数据）
+        pub fn toList(allocator: Allocator, data: []T) List {
+            return List{ .allocator = allocator, .data = data };
+        }
+
+        /// 获取所有记录（返回 List）
+        pub fn collect(db: *Database) !List {
+            const data = try all(db);
+            return List{ .allocator = db.allocator, .data = data };
+        }
+
+        /// 创建查询构建器
+        pub fn query(db: *Database) ModelQuery(T) {
+            return ModelQuery(T).init(db, tableName());
+        }
+
+        // ====================================================================
+        // 静态快捷方法 - Laravel 风格
+        // 用法: Product.where(db, "name", "=", "test").get()
+        // ====================================================================
+
+        /// 通用的静态方法生成器
+        fn createStaticMethod(comptime method_name: []const u8, comptime args: anytype) type {
+            return struct {
+                pub fn call(db: *Database, method_args: args) ModelQuery(T) {
+                    const q = query(db);
+                    @field(q, method_name)(method_args) catch unreachable;
+                    return q;
+                }
+            };
+        }
+
+        /// 静态 where - 创建查询并添加条件
+        /// 用法: Product.where(db, "category", "=", "电子").get()
+        pub fn where(db: *Database, field: []const u8, op: []const u8, value: anytype) ModelQuery(T) {
+            var q = query(db);
+            _ = q.where(field, op, value);
+            return q;
+        }
+
+        /// 静态 whereEq - 等于条件
+        /// 用法: Product.whereEq(db, "category", "电子").get()
+        pub fn whereEq(db: *Database, field: []const u8, value: anytype) ModelQuery(T) {
+            return where(db, field, "=", value);
+        }
+
+        /// 静态 whereIn - IN 条件
+        /// 用法: Product.whereIn(db, "id", &.{1,2,3}).get()
+        pub fn whereIn(db: *Database, field: []const u8, values: anytype) ModelQuery(T) {
+            var q = query(db);
+            _ = q.whereIn(field, values);
+            return q;
+        }
+
+        /// 静态 whereLike - LIKE 条件
+        /// 用法: Product.whereLike(db, "name", "%手机%").get()
+        pub fn whereLike(db: *Database, field: []const u8, pattern: []const u8) ModelQuery(T) {
+            var q = query(db);
+            _ = q.whereLike(field, pattern);
+            return q;
+        }
+
+        /// 静态 whereNull - IS NULL 条件
+        /// 用法: Product.whereNull(db, "deleted_at").get()
+        pub fn whereNull(db: *Database, field: []const u8) ModelQuery(T) {
+            var q = query(db);
+            _ = q.whereNull(field);
+            return q;
+        }
+
+        /// 静态 whereNotNull - IS NOT NULL 条件
+        pub fn whereNotNull(db: *Database, field: []const u8) ModelQuery(T) {
+            var q = query(db);
+            _ = q.whereNotNull(field);
+            return q;
+        }
+
+        /// 静态 orderBy - 排序
+        /// 用法: Product.orderBy(db, "price", .desc).get()
+        pub fn orderBy(db: *Database, field: []const u8, dir: query_mod.OrderDir) ModelQuery(T) {
+            var q = query(db);
+            _ = q.orderBy(field, dir);
+            return q;
+        }
+
+        /// 静态 latest - 按 created_at 降序
+        /// 用法: Product.latest(db).take(10).get()
+        pub fn latest(db: *Database) ModelQuery(T) {
+            var q = query(db);
+            _ = q.latest();
+            return q;
+        }
+
+        /// 静态 oldest - 按 created_at 升序
+        pub fn oldest(db: *Database) ModelQuery(T) {
+            var q = query(db);
+            _ = q.oldest();
+            return q;
+        }
+
+        /// 静态 select - 选择字段
+        /// 用法: Product.select(db, &.{"id", "name"}).get()
+        pub fn selectFields(db: *Database, fields: []const []const u8) ModelQuery(T) {
+            var q = query(db);
+            _ = q.select(fields);
+            return q;
+        }
+
+        /// 静态 limit - 限制数量
+        /// 用法: Product.limit(db, 10).get()
+        pub fn take(db: *Database, n: u64) ModelQuery(T) {
+            var q = query(db);
+            _ = q.limit(n);
+            return q;
+        }
+
+        /// 静态 page - 分页
+        /// 用法: Product.page(db, 1, 20).get()
+        pub fn paginate(db: *Database, page_num: u64, page_size: u64) ModelQuery(T) {
+            var q = query(db);
+            _ = q.page(page_num, page_size);
+            return q;
+        }
+
+        // ====================================================================
+        // 无 db 参数的静态方法（需先调用 use(&db)）
+        // 用法:
+        //   Product.use(&db);  // 初始化时设置一次
+        //   Product.Where("name", "=", "test").get()  // 之后无需传 db
+        // ====================================================================
+
+        /// 无参 Where - 使用默认连接
+        pub fn Where(field: []const u8, op: []const u8, value: anytype) ModelQuery(T) {
+            return where(getDb(), field, op, value);
+        }
+
+        /// 无参 WhereEq
+        pub fn WhereEq(field: []const u8, value: anytype) ModelQuery(T) {
+            return whereEq(getDb(), field, value);
+        }
+
+        /// 无参 WhereIn
+        pub fn WhereIn(field: []const u8, values: anytype) ModelQuery(T) {
+            return whereIn(getDb(), field, values);
+        }
+
+        /// 无参 WhereLike
+        pub fn WhereLike(field: []const u8, pattern: []const u8) ModelQuery(T) {
+            return whereLike(getDb(), field, pattern);
+        }
+
+        /// 无参 WhereNull
+        pub fn WhereNull(field: []const u8) ModelQuery(T) {
+            return whereNull(getDb(), field);
+        }
+
+        /// 无参 WhereNotNull
+        pub fn WhereNotNull(field: []const u8) ModelQuery(T) {
+            return whereNotNull(getDb(), field);
+        }
+
+        /// 无参 OrderBy
+        pub fn OrderBy(field: []const u8, dir: query_mod.OrderDir) ModelQuery(T) {
+            return orderBy(getDb(), field, dir);
+        }
+
+        /// 无参 Latest - 按 created_at 降序
+        pub fn Latest() ModelQuery(T) {
+            return latest(getDb());
+        }
+
+        /// 无参 Oldest - 按 created_at 升序
+        pub fn Oldest() ModelQuery(T) {
+            return oldest(getDb());
+        }
+
+        /// 无参 Take - 限制数量
+        pub fn Take(n: u64) ModelQuery(T) {
+            return take(getDb(), n);
+        }
+
+        /// 无参 Paginate - 分页
+        pub fn Paginate(page_num: u64, page_size: u64) ModelQuery(T) {
+            return paginate(getDb(), page_num, page_size);
+        }
+
+        /// 无参 When - 条件查询
+        pub fn When(condition: bool, comptime apply: fn (*ModelQuery(T)) *ModelQuery(T)) ModelQuery(T) {
+            var q = query(getDb());
+            return q.when(condition, apply).*;
+        }
+
+        /// 无参 Query - 创建查询构建器
+        pub fn Query() ModelQuery(T) {
+            return query(getDb());
+        }
+
+        /// 无参 Find
+        pub fn Find(id: anytype) !?T {
+            return find(getDb(), id);
+        }
+
+        /// 无参 FindOrFail
+        pub fn FindOrFail(id: anytype) !T {
+            return (try find(getDb(), id)) orelse error.ModelNotFound;
+        }
+
+        /// 无参 All
+        pub fn All() ![]T {
+            return all(getDb());
+        }
+
+        /// 无参 Collect - 返回 List
+        pub fn Collect() !List {
+            return collect(getDb());
+        }
+
+        /// 无参 First
+        pub fn First() !?T {
+            return first(getDb());
+        }
+
+        /// 无参 FirstOrFail
+        pub fn FirstOrFail() !T {
+            return (try first(getDb())) orelse error.ModelNotFound;
+        }
+
+        /// 无参 Count
+        pub fn Count() !u64 {
+            return count(getDb());
+        }
+
+        /// 无参 Exists
+        pub fn Exists(id: anytype) !bool {
+            return exists(getDb(), id);
+        }
+
+        /// 操作选项
+        pub const Options = struct {
+            db: ?*Database = null,
+        };
+
+        /// 指定数据库连接（用于事务等场景）
+        /// 用法: User.withDB(&tx).Create(data)
+        pub fn withDB(db: *Database) OptionsBuilder {
+            return OptionsBuilder{ .db = db };
+        }
+
+        /// 带选项的操作构建器
+        /// 用法: User.withOptions(.{ .db = &tx }).Create(data)
+        pub fn withOptions(opts: Options) OptionsBuilder {
+            return OptionsBuilder{ .db = opts.db orelse getDb() };
+        }
+
+        /// 选项构建器 - 提供带指定 db 的写操作方法
+        pub const OptionsBuilder = struct {
+            db: *Database,
+
+            pub fn Create(self: OptionsBuilder, data: anytype) !T {
+                return create(self.db, data);
+            }
+
+            pub fn Update(self: OptionsBuilder, id: anytype, data: anytype) !u64 {
+                return update(self.db, id, data);
+            }
+
+            pub fn Destroy(self: OptionsBuilder, id: anytype) !u64 {
+                return destroy(self.db, id);
+            }
+
+            pub fn InsertMany(self: OptionsBuilder, items: anytype) !u64 {
+                return insertMany(self.db, items);
+            }
+
+            pub fn UpdateOrCreate(self: OptionsBuilder, conditions: anytype, data: anytype) !T {
+                return updateOrCreate(self.db, conditions, data);
+            }
+
+            pub fn FirstOrCreate(self: OptionsBuilder, conditions: anytype, defaults: anytype) !T {
+                return firstOrCreate(self.db, conditions, defaults);
+            }
+
+            pub fn Increment(self: OptionsBuilder, id: anytype, field: []const u8, amount: i64) !u64 {
+                return increment(self.db, id, field, amount);
+            }
+
+            pub fn Decrement(self: OptionsBuilder, id: anytype, field: []const u8, amount: i64) !u64 {
+                return decrement(self.db, id, field, amount);
+            }
+        };
+
+        /// Create - 使用默认连接
+        pub fn Create(data: anytype) !T {
+            return create(getDb(), data);
+        }
+
+        /// Update - 使用默认连接
+        pub fn Update(id: anytype, data: anytype) !u64 {
+            return update(getDb(), id, data);
+        }
+
+        /// Destroy - 使用默认连接
+        pub fn Destroy(id: anytype) !u64 {
+            return destroy(getDb(), id);
+        }
+
+        /// InsertMany - 批量插入
+        pub fn InsertMany(items: anytype) !u64 {
+            return insertMany(getDb(), items);
+        }
+
+        /// UpdateOrCreate - 使用默认连接
+        pub fn UpdateOrCreate(conditions: anytype, data: anytype) !T {
+            return updateOrCreate(getDb(), conditions, data);
+        }
+
+        /// FirstOrCreate - 使用默认连接
+        pub fn FirstOrCreate(conditions: anytype, defaults: anytype) !T {
+            return firstOrCreate(getDb(), conditions, defaults);
+        }
+
+        /// Increment - 使用默认连接
+        pub fn Increment(id: anytype, field: []const u8, amount: i64) !u64 {
+            return increment(getDb(), id, field, amount);
+        }
+
+        /// Decrement - 使用默认连接
+        pub fn Decrement(id: anytype, field: []const u8, amount: i64) !u64 {
+            return decrement(getDb(), id, field, amount);
+        }
+
+        /// UpdateBuilder - 动态构建更新字段的构建器
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var builder = try User.updateBuilder(allocator, id);
+        /// defer builder.deinit();
+        ///
+        /// try builder.set("username", "new_name");
+        /// try builder.set("status", 1);
+        /// try builder.set("dept_id", null);  // 可选字段
+        ///
+        /// _ = try builder.execute();
+        /// ```
+        pub fn updateBuilder(allocator: Allocator, id: anytype) !UpdateBuilder(T, @TypeOf(id)) {
+            return UpdateBuilder(T, @TypeOf(id)).init(allocator, getDb(), id);
+        }
+
+        /// 动态构建匿名结构体并更新（推荐）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// _ = try User.UpdateWith(id, .{
+        ///     .username = "new_name",
+        ///     .status = 1,
+        ///     .dept_id = null,  // null 会被跳过
+        /// });
+        /// ```
+        pub fn UpdateWith(id: anytype, data: anytype) !u64 {
+            return updateWith(getDb(), id, data);
+        }
+
+        /// 动态构建更新（内部实现）
+        fn updateWith(db: *Database, id: anytype, data: anytype) !u64 {
+            const DataType = @TypeOf(data);
+            const type_info = @typeInfo(DataType);
+
+            if (type_info != .@"struct") {
+                @compileError("UpdateWith requires a struct type");
+            }
+
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer sql.deinit(db.allocator);
+
+            try sql.appendSlice(db.allocator, "UPDATE ");
+            try sql.appendSlice(db.allocator, tableName());
+            try sql.appendSlice(db.allocator, " SET ");
+
+            const fields = core_meta.fields(DataType);
+            var field_count: usize = 0;
+            const pk = primaryKey();
+
+            inline for (fields) |field| {
+                const is_pk = std.mem.eql(u8, field.name, pk);
+                const is_created_at = comptime std.mem.eql(u8, field.name, "created_at");
+                const is_updated_at = comptime std.mem.eql(u8, field.name, "updated_at");
+
+                if (!is_pk and !is_created_at and !is_updated_at) {
+                    const value = @field(data, field.name);
+                    const field_type_info = @typeInfo(field.type);
+
+                    // 检查是否应该包含此字段
+                    const should_include = if (comptime field_type_info == .optional)
+                        value != null
+                    else
+                        true;
+
+                    if (should_include) {
+                        if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+                        try sql.appendSlice(db.allocator, field.name);
+                        try sql.appendSlice(db.allocator, " = ");
+                        try appendValue(db.allocator, &sql, value, field.name);
+                        field_count += 1;
+                    }
+                }
+            }
+
+            // 自动添加 updated_at
+            if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+            try sql.appendSlice(db.allocator, "updated_at = FROM_UNIXTIME(");
+            const now = @divTrunc(std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds(), 1000);
+            var buf: [32]u8 = undefined;
+            const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
+            try sql.appendSlice(db.allocator, ts_str);
+            try sql.appendSlice(db.allocator, ")");
+
+            if (field_count == 0) {
+                sql.deinit(db.allocator);
+                return error.NoFieldsToUpdate;
+            }
+
+            try sql.appendSlice(db.allocator, " WHERE ");
+            try sql.appendSlice(db.allocator, pk);
+            try sql.appendSlice(db.allocator, " = ");
+
+            const id_str = try std.fmt.bufPrint(&buf, "{any}", .{id});
+            try sql.appendSlice(db.allocator, id_str);
+
+            const final_sql = try sql.toOwnedSlice(db.allocator);
+            defer db.allocator.free(final_sql);
+
+            return db.exec(final_sql, .{});
+        }
+
+        /// UpdateBuilder 类型定义
+        pub fn UpdateBuilder(comptime ModelType: type, comptime IdType: type) type {
+            _ = ModelType; // 用于类型推导，不直接使用
+            return struct {
+                const Builder = @This();
+
+                allocator: Allocator,
+                db: *Database,
+                id: IdType,
+                fields: std.StringHashMapUnmanaged(FieldValue),
+
+                const FieldValue = union(enum) {
+                    int: i64,
+                    string: []const u8,
+                    null_value: void,
+                };
+
+                pub fn init(allocator: Allocator, db: *Database, id: IdType) !Builder {
+                    return Builder{
+                        .allocator = allocator,
+                        .db = db,
+                        .id = id,
+                        .fields = std.StringHashMapUnmanaged(FieldValue){},
+                    };
+                }
+
+                pub fn deinit(self: *Builder) void {
+                    // 释放字符串字段
+                    var it = self.fields.iterator();
+                    while (it.next()) |entry| {
+                        if (entry.value_ptr.* == .string) {
+                            self.allocator.free(entry.value_ptr.string);
+                        }
+                        self.allocator.free(entry.key_ptr.*);
+                    }
+                    self.fields.deinit(self.allocator);
+                }
+
+                /// 设置整数字段
+                pub fn setInt(self: *Builder, field_name: []const u8, value: anytype) !*Builder {
+                    const name_copy = try self.allocator.dupe(u8, field_name);
+                    errdefer self.allocator.free(name_copy);
+
+                    try self.fields.put(self.allocator, name_copy, .{ .int = @intCast(value) });
+                    return self;
+                }
+
+                /// 设置字符串字段
+                pub fn setString(self: *Builder, field_name: []const u8, value: []const u8) !*Builder {
+                    const name_copy = try self.allocator.dupe(u8, field_name);
+                    errdefer self.allocator.free(name_copy);
+
+                    const trimmed = std.mem.trim(u8, value, " \t\r\n");
+                    const value_copy = try self.allocator.dupe(u8, trimmed);
+                    errdefer self.allocator.free(value_copy);
+
+                    try self.fields.put(self.allocator, name_copy, .{ .string = value_copy });
+                    return self;
+                }
+
+                /// 设置可选整数字段（null 值会被跳过）
+                pub fn setOptionalInt(self: *Builder, field_name: []const u8, value: ?i64) !*Builder {
+                    if (value) |v| {
+                        return self.setInt(field_name, v);
+                    }
+                    return self;
+                }
+
+                /// 设置可选字符串字段（null 值会被跳过）
+                pub fn setOptionalString(self: *Builder, field_name: []const u8, value: ?[]const u8) !*Builder {
+                    if (value) |v| {
+                        return self.setString(field_name, v);
+                    }
+                    return self;
+                }
+
+                /// 从 JSON 值设置字段（自动判断类型）
+                pub fn setFromJson(self: *Builder, field_name: []const u8, json_value: std.json.Value) !*Builder {
+                    switch (json_value) {
+                        .null => return self, // 跳过 null
+                        .integer => |v| return self.setInt(field_name, v),
+                        .string => |v| return self.setString(field_name, v),
+                        else => return self, // 其他类型跳过
+                    }
+                }
+
+                /// 执行更新
+                pub fn execute(self: *Builder) !u64 {
+                    if (self.fields.count() == 0) {
+                        return error.NoFieldsToUpdate;
+                    }
+
+                    var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+                    errdefer sql.deinit(self.allocator);
+
+                    try sql.appendSlice(self.allocator, "UPDATE ");
+                    try sql.appendSlice(self.allocator, tableName());
+                    try sql.appendSlice(self.allocator, " SET ");
+
+                    var field_count: usize = 0;
+
+                    // 添加用户设置的字段
+                    var it = self.fields.iterator();
+                    while (it.next()) |entry| {
+                        if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
+
+                        try sql.appendSlice(self.allocator, entry.key_ptr.*);
+                        try sql.appendSlice(self.allocator, " = ");
+
+                        switch (entry.value_ptr.*) {
+                            .int => |v| {
+                                var buf: [32]u8 = undefined;
+                                const val_str = try std.fmt.bufPrint(&buf, "{d}", .{v});
+                                try sql.appendSlice(self.allocator, val_str);
+                            },
+                            .string => |v| {
+                                try sql.append(self.allocator, '\'');
+                                // 转义单引号
+                                for (v) |c| {
+                                    if (c == '\'') try sql.append(self.allocator, '\'');
+                                    try sql.append(self.allocator, c);
+                                }
+                                try sql.append(self.allocator, '\'');
+                            },
+                            .null_value => {
+                                try sql.appendSlice(self.allocator, "NULL");
+                            },
+                        }
+
+                        field_count += 1;
+                    }
+
+                    // 自动添加 updated_at
+                    if (field_count > 0) try sql.appendSlice(self.allocator, ", ");
+                    try sql.appendSlice(self.allocator, "updated_at = FROM_UNIXTIME(");
+                    const now = @divTrunc(std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds(), 1000);
+                    var buf: [32]u8 = undefined;
+                    const ts_str = try std.fmt.bufPrint(&buf, "{d}", .{now});
+                    try sql.appendSlice(self.allocator, ts_str);
+                    try sql.appendSlice(self.allocator, ")");
+
+                    try sql.appendSlice(self.allocator, " WHERE ");
+                    try sql.appendSlice(self.allocator, primaryKey());
+                    try sql.appendSlice(self.allocator, " = ");
+
+                    const id_str = try std.fmt.bufPrint(&buf, "{any}", .{self.id});
+                    try sql.appendSlice(self.allocator, id_str);
+
+                    const final_sql = try sql.toOwnedSlice(self.allocator);
+                    defer self.allocator.free(final_sql);
+
+                    return self.db.exec(final_sql, .{});
+                }
+            };
+        }
+
+        /// 克隆模型到指定分配器（只拷贝字符串字段，数值直接赋值）
+        pub inline fn cloneModel(allocator: Allocator, src: *const T) !T {
+            var dst = src.*;
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const v = @field(dst, field.name);
+                    @field(dst, field.name) = try allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(dst, field.name)) |s| {
+                            @field(dst, field.name) = try allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+            return dst;
+        }
+
+        /// 释放模型中的字符串字段（匹配 mapResults 的分配策略）
+        inline fn freeModelStrings(allocator: Allocator, model: *T) void {
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const s = @field(model.*, field.name);
+                    // 只释放非空字符串（空字符串 "" 是静态分配的）
+                    if (s.len > 0 and s.ptr != "".ptr) {
+                        allocator.free(s);
+                    }
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(model.*, field.name)) |s| {
+                            if (s.len > 0 and s.ptr != "".ptr) {
+                                allocator.free(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// 查找单条记录
+        pub fn find(db: *Database, id: anytype) !?T {
+            var q = query(db);
+            defer q.deinit();
+
+            const pk = primaryKey();
+            _ = q.where(pk, "=", id).limit(1);
+
+            const results = try q.get();
+            if (results.len == 0) {
+                db.allocator.free(results);
+                return null;
+            }
+
+            // 深拷贝第一条的字符串字段
+            var out = results[0];
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const v = @field(out, field.name);
+                    @field(out, field.name) = try db.allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const ChildType = @typeInfo(field.type).optional.child;
+                    if (ChildType == []const u8) {
+                        if (@field(out, field.name)) |s| {
+                            @field(out, field.name) = try db.allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+
+            // 释放原结果集
+            for (results) |*m| Self.freeModelStrings(db.allocator, m);
+            db.allocator.free(results);
+
+            return out;
+        }
+
+        /// 查找或抛出错误
+        pub fn findOrFail(db: *Database, id: anytype) !T {
+            return find(db, id) orelse error.ModelNotFound;
+        }
+
+        /// 获取所有记录
+        pub fn all(db: *Database) ![]T {
+            var q = query(db);
+            defer q.deinit();
+            return q.get();
+        }
+
+        /// 获取所有记录（使用 Arena Allocator 自动管理内存）
+        ///
+        /// 推荐使用此方法代替 all()，避免内存泄漏风险
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var result = try User.allWithArena(db, allocator);
+        /// defer result.deinit();
+        ///
+        /// for (result.items()) |user| {
+        ///     std.debug.print("User: {s}\n", .{user.name});
+        /// }
+        /// ```
+        ///
+        /// 参数：
+        /// - db: 数据库连接
+        /// - backing_allocator: 底层分配器（通常使用 db.allocator）
+        ///
+        /// 返回：QueryResult 实例（必须调用 deinit 释放内存）
+        pub fn allWithArena(db: *Database, backing_allocator: Allocator) !QueryResult(T) {
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            const allocator = arena.allocator();
+
+            // 执行查询
+            const sql = try std.fmt.allocPrint(allocator, "SELECT * FROM {s}", .{tableName()});
+            var result_set = try db.rawQuery(sql, .{});
+            errdefer result_set.deinit();
+
+            const models = try mapResults(T, allocator, &result_set);
+            result_set.deinit();
+
+            return QueryResult(T){
+                .arena = arena,
+                .models = models,
+            };
+        }
+
+        /// 创建记录
+        pub fn create(db: *Database, data: anytype) !T {
+            const sql = try buildInsertSql(db.allocator, tableName(), data);
+            defer db.allocator.free(sql);
+
+            _ = try db.exec(sql, .{});
+            const id = db.lastInsertId();
+
+            var result: T = undefined;
+            if (id > 0) {
+                result = (try find(db, id)) orelse return error.CreateFailed;
+            } else {
+                var q = query(db);
+                defer q.deinit();
+                _ = q.orderBy(primaryKey(), .desc);
+                _ = q.limit(1);
+                const rows = try q.get();
+                defer freeModels(rows);
+                if (rows.len > 0) {
+                    result = rows[0];
+                } else {
+                    return error.CreateFailed;
+                }
+            }
+
+            // 触发 created 事件
+            if (comptime model_events.hasEvent(T, .created)) {
+                try model_events.fireEvent(T, .created, &result);
+            }
+
+            return result;
+        }
+
+        /// 批量插入记录（单条 SQL，性能提升 10-100 倍）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// const users = [_]User{
+        ///     .{ .name = "张三", .email = "zhangsan@example.com" },
+        ///     .{ .name = "李四", .email = "lisi@example.com" },
+        ///     .{ .name = "王五", .email = "wangwu@example.com" },
+        /// };
+        /// try OrmUser.bulkInsert(db, &users);
+        /// ```
+        pub fn bulkInsert(db: *Database, data: anytype) !void {
+            const DataType = @TypeOf(data);
+            const type_info = @typeInfo(DataType);
+
+            // 获取数组元素类型
+            const items = switch (type_info) {
+                .pointer => |ptr| switch (@typeInfo(ptr.child)) {
+                    .array => data,
+                    else => @compileError("bulkInsert requires array or slice"),
+                },
+                .array => data,
+                else => @compileError("bulkInsert requires array or slice"),
+            };
+
+            if (items.len == 0) return;
+
+            // 构建批量插入 SQL
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(db.allocator);
+
+            try sql.appendSlice(db.allocator, "INSERT INTO ");
+            try sql.appendSlice(db.allocator, tableName());
+            try sql.appendSlice(db.allocator, " (");
+
+            // 字段名
+            const fields = core_meta.fields(T);
+            var field_count: usize = 0;
+            inline for (fields) |field| {
+                if (std.mem.eql(u8, field.name, primaryKey())) continue;
+                if (field_count > 0) try sql.appendSlice(db.allocator, ", ");
+                try sql.appendSlice(db.allocator, field.name);
+                field_count += 1;
+            }
+
+            try sql.appendSlice(db.allocator, ") VALUES ");
+
+            // 值
+            for (items, 0..) |item, i| {
+                if (i > 0) try sql.appendSlice(db.allocator, ", ");
+                try sql.appendSlice(db.allocator, "(");
+
+                var value_count: usize = 0;
+                inline for (fields) |field| {
+                    if (std.mem.eql(u8, field.name, primaryKey())) continue;
+                    if (value_count > 0) try sql.appendSlice(db.allocator, ", ");
+
+                    const value = @field(item, field.name);
+                    const FieldType = field.type;
+
+                    if (FieldType == []const u8) {
+                        const escaped = try escapeSqlString(db.allocator, value);
+                        defer db.allocator.free(escaped);
+                        try sql.appendSlice(db.allocator, "'");
+                        try sql.appendSlice(db.allocator, escaped);
+                        try sql.appendSlice(db.allocator, "'");
+                    } else if (@typeInfo(FieldType) == .optional) {
+                        if (value) |v| {
+                            const ChildType = @typeInfo(FieldType).optional.child;
+                            if (ChildType == []const u8) {
+                                const escaped = try escapeSqlString(db.allocator, v);
+                                defer db.allocator.free(escaped);
+                                try sql.appendSlice(db.allocator, "'");
+                                try sql.appendSlice(db.allocator, escaped);
+                                try sql.appendSlice(db.allocator, "'");
+                            } else {
+                                const val_str = try std.fmt.allocPrint(db.allocator, "{any}", .{v});
+                                defer db.allocator.free(val_str);
+                                try sql.appendSlice(db.allocator, val_str);
+                            }
+                        } else {
+                            try sql.appendSlice(db.allocator, "NULL");
+                        }
+                    } else {
+                        const val_str = try std.fmt.allocPrint(db.allocator, "{any}", .{value});
+                        defer db.allocator.free(val_str);
+                        try sql.appendSlice(db.allocator, val_str);
+                    }
+
+                    value_count += 1;
+                }
+
+                try sql.appendSlice(db.allocator, ")");
+            }
+
+            const final_sql = try sql.toOwnedSlice(db.allocator);
+            defer db.allocator.free(final_sql);
+
+            _ = try db.exec(final_sql, .{});
+        }
+
+        /// 更新记录
+        pub fn update(db: *Database, id: anytype, data: anytype) !u64 {
+            const sql = try buildUpdateSql(db.allocator, tableName(), primaryKey(), id, data);
+            defer db.allocator.free(sql);
+            return db.exec(sql, .{});
+        }
+
+        /// 删除记录（支持软删除）
+        /// 如果模型启用软删除，则只标记 deleted_at，否则物理删除
+        pub fn destroy(db: *Database, id: anytype) !u64 {
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+
+            if (has_soft_deletes and has_deleted_at) {
+                // 软删除：设置 deleted_at
+                const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+                const now = @divTrunc(std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds(), 1000);
+
+                var buf: [512]u8 = undefined;
+                const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = {d} WHERE {s} = {any}", .{ tableName(), deleted_at_col, now, primaryKey(), id });
+                return db.exec(sql, .{});
+            } else {
+                // 物理删除
+                var buf: [256]u8 = undefined;
+                const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
+                return db.exec(sql, .{});
+            }
+        }
+
+        /// 物理删除记录（忽略软删除设置）
+        pub fn forceDestroy(db: *Database, id: anytype) !u64 {
+            var buf: [256]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "DELETE FROM {s} WHERE {s} = {any}", .{ tableName(), primaryKey(), id });
+            return db.exec(sql, .{});
+        }
+
+        /// 统计记录数
+        pub fn count(db: *Database) !u64 {
+            var buf: [256]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "SELECT COUNT(*) as cnt FROM {s}", .{tableName()});
+
+            var result = try db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return @intCast(0);
+                return @intCast(row.getInt("cnt") orelse 0);
+            }
+            return 0;
+        }
+
+        /// 检查是否存在
+        pub fn exists(db: *Database, id: anytype) !bool {
+            if (try find(db, id)) |*model| {
+                var m = model.*;
+                freeModel(db.allocator, &m);
+                return true;
+            }
+            return false;
+        }
+
+        /// 第一条记录
+        pub fn first(db: *Database) !?T {
+            var q = query(db);
+            defer q.deinit();
+            _ = q.limit(1);
+            const results = try q.get();
+            if (results.len == 0) return null;
+            defer db.allocator.free(results);
+            return results[0];
+        }
+
+        /// 批量插入
+        pub fn insertMany(db: *Database, comptime RecordType: type, records: []const RecordType) !u64 {
+            var total: u64 = 0;
+            for (records) |record| {
+                _ = try create(db, record);
+                total += 1;
+            }
+            return total;
+        }
+
+        /// 更新或创建
+        pub fn updateOrCreate(db: *Database, search: anytype, update_data: anytype) !T {
+            // 先查找
+            var q = query(db);
+            defer q.deinit();
+
+            inline for (@typeInfo(@TypeOf(search)).@"struct".field_names, @typeInfo(@TypeOf(search)).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                _ = q.where(field.name, "=", @field(search, field.name));
+            }
+
+            const results = try q.get();
+            defer if (results.len > 0) db.allocator.free(results);
+
+            if (results.len > 0) {
+                // 存在则更新
+                const existing = results[0];
+                const id_field = primaryKey();
+
+                // 获取ID
+                inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                    if (std.mem.eql(u8, field.name, id_field)) {
+                        const id = @field(existing, field.name);
+                        _ = try Self.update(db, id, update_data);
+                        return find(db, id) orelse error.UpdateFailed;
+                    }
+                }
+                return error.PrimaryKeyNotFound;
+            } else {
+                // 不存在则创建
+                return create(db, update_data);
+            }
+        }
+
+        /// 软删除
+        pub fn softDelete(db: *Database, id: anytype) !u64 {
+            const now_fmt = datetime.nowGoDatetime();
+            return update(db, id, .{ .deleted_at = now_fmt.str });
+        }
+
+        /// 恢复软删除
+        pub fn restore(db: *Database, id: anytype) !u64 {
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+
+            if (!has_soft_deletes or !has_deleted_at) {
+                return error.SoftDeletesNotEnabled;
+            }
+
+            const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+            var buf: [512]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = NULL WHERE {s} = {any}", .{ tableName(), deleted_at_col, primaryKey(), id });
+            return db.exec(sql, .{});
+        }
+
+        /// 查找或创建
+        /// 如果找到则返回，否则创建新记录
+        pub fn firstOrCreate(db: *Database, search: anytype, defaults: anytype) !T {
+            var q = query(db);
+            defer q.deinit();
+
+            inline for (@typeInfo(@TypeOf(search)).@"struct".field_names, @typeInfo(@TypeOf(search)).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                _ = q.where(field.name, "=", @field(search, field.name));
+            }
+            _ = q.limit(1);
+
+            const results = try q.get();
+            if (results.len > 0) {
+                defer db.allocator.free(results);
+                return results[0];
+            }
+
+            // 不存在则创建
+            return create(db, defaults);
+        }
+
+        /// 自增字段
+        pub fn increment(db: *Database, id: anytype, field_name: []const u8, amount: i64) !u64 {
+            var buf: [512]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "UPDATE {s} SET {s} = {s} + {d} WHERE {s} = {any}", .{
+                tableName(),
+                field_name,
+                field_name,
+                amount,
+                primaryKey(),
+                id,
+            });
+            return db.exec(sql, .{});
+        }
+
+        /// 自减字段
+        pub fn decrement(db: *Database, id: anytype, field_name: []const u8, amount: i64) !u64 {
+            return increment(db, id, field_name, -amount);
+        }
+
+        /// 获取某字段的单个值
+        pub fn getValue(db: *Database, id: anytype, field_name: []const u8) !?[]const u8 {
+            var buf: [256]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "SELECT {s} FROM {s} WHERE {s} = {any} LIMIT 1", .{
+                field_name,
+                tableName(),
+                primaryKey(),
+                id,
+            });
+
+            var result = try db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return null;
+                return row.getString(field_name);
+            }
+            return null;
+        }
+
+        /// 获取某列的所有值
+        pub fn pluck(db: *Database, field_name: []const u8) ![][]const u8 {
+            var buf: [256]u8 = undefined;
+            const sql = try std.fmt.bufPrint(&buf, "SELECT {s} FROM {s}", .{ field_name, tableName() });
+
+            var result = try db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            var values = std.ArrayList([]const u8).init(db.allocator);
+            errdefer values.deinit();
+
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
+                if (row.getString(field_name)) |v| {
+                    try values.append(try db.allocator.dupe(u8, v));
+                }
+            }
+
+            return values.toOwnedSlice();
+        }
+
+        /// 批量插入或更新 (Upsert)
+        /// unique_by: 用于判断唯一性的字段名数组
+        /// update_fields: 可选，要更新的字段名数组，为 null 则更新除 unique_by 外的所有字段
+        /// 返回影响的记录数
+        pub fn upsert(db: *Database, records: []const T, unique_by: []const []const u8, update_fields: ?[]const []const u8) !u64 {
+            if (records.len == 0) return 0;
+
+            var total_affected: u64 = 0;
+
+            for (records) |record| {
+                // 检查是否已存在
+                var q = Self.query(db);
+                defer q.deinit();
+
+                for (unique_by) |field_name| {
+                    inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                        if (std.mem.eql(u8, field.name, field_name)) {
+                            _ = q.where(field.name, "=", @field(record, field.name));
+                            break;
+                        }
+                    }
+                }
+
+                const does_exist = try q.exists();
+
+                if (does_exist) {
+                    // 更新现有记录
+                    const pk = Self.primaryKey();
+                    var id: u64 = 0;
+
+                    // 从记录中获取 ID（假设 unique_by 包含主键或可以通过查询获取）
+                    // 这里简化：重新查询获取 ID
+                    const existing_records = try q.limit(1).get();
+                    defer db.allocator.free(existing_records);
+
+                    if (existing_records.len > 0) {
+                        const existing = existing_records[0];
+                        inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                            if (std.mem.eql(u8, field.name, pk)) {
+                                id = @field(existing, field.name);
+                                break;
+                            }
+                        }
+
+                        // 构建更新数据
+                        var update_data: T = undefined;
+                        const fields_to_update = update_fields orelse blk: {
+                            // 默认更新除 unique_by 外的所有字段
+                            var all_fields: [core_meta.fields(T).len][]const u8 = undefined;
+                            var idx: usize = 0;
+                            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                                var is_unique = false;
+                                for (unique_by) |u| {
+                                    if (std.mem.eql(u8, field.name, u)) {
+                                        is_unique = true;
+                                        break;
+                                    }
+                                }
+                                if (!is_unique) {
+                                    all_fields[idx] = field.name;
+                                    idx += 1;
+                                }
+                            }
+                            break :blk all_fields[0..idx];
+                        };
+
+                        inline for (core_meta.fields(T), 0..) |field, i| {
+                            if (i < fields_to_update.len and std.mem.eql(u8, field.name, fields_to_update[i])) {
+                                @field(update_data, field.name) = @field(record, field.name);
+                            }
+                        }
+
+                        _ = try Self.update(db, id, update_data);
+                        total_affected += 1;
+                    }
+                } else {
+                    // 插入新记录
+                    _ = try Self.create(db, record);
+                    total_affected += 1;
+                }
+            }
+
+            return total_affected;
+        }
+
+        /// 按条件删除多条记录
+        pub fn deleteWhere(db: *Database, field: []const u8, op: []const u8, val: anytype) !u64 {
+            var q = query(db);
+            defer q.deinit();
+            _ = q.where(field, op, val);
+
+            var sql_buf = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql_buf.deinit(db.allocator);
+
+            try sql_buf.appendSlice(db.allocator, "DELETE FROM ");
+            try sql_buf.appendSlice(db.allocator, tableName());
+            try q.appendWhere(&sql_buf);
+
+            const sql = try sql_buf.toOwnedSlice(db.allocator);
+            defer db.allocator.free(sql);
+
+            return db.exec(sql, .{});
+        }
+
+        /// 按条件更新多条记录
+        pub fn updateWhere(db: *Database, conditions: anytype, data: anytype) !u64 {
+            var sql_buf = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql_buf.deinit(db.allocator);
+
+            try sql_buf.appendSlice(db.allocator, "UPDATE ");
+            try sql_buf.appendSlice(db.allocator, tableName());
+            try sql_buf.appendSlice(db.allocator, " SET ");
+
+            const DataType = @TypeOf(data);
+            inline for (core_meta.fields(DataType), 0..) |field, i| {
+                if (i > 0) try sql_buf.appendSlice(db.allocator, ", ");
+                try sql_buf.appendSlice(db.allocator, field.name);
+                try sql_buf.appendSlice(db.allocator, " = ");
+                try appendValue(db.allocator, &sql_buf, @field(data, field.name));
+            }
+
+            try sql_buf.appendSlice(db.allocator, " WHERE ");
+
+            const CondType = @TypeOf(conditions);
+            inline for (core_meta.fields(CondType), 0..) |field, i| {
+                if (i > 0) try sql_buf.appendSlice(db.allocator, " AND ");
+                try sql_buf.appendSlice(db.allocator, field.name);
+                try sql_buf.appendSlice(db.allocator, " = ");
+                try appendValue(db.allocator, &sql_buf, @field(conditions, field.name));
+            }
+
+            const sql = try sql_buf.toOwnedSlice(db.allocator);
+            defer db.allocator.free(sql);
+
+            return db.exec(sql, .{});
+        }
+
+        // ====================================================================
+        // 关联模型 - Laravel Eloquent 风格
+        // ====================================================================
+
+        /// 一对一关联 (hasOne)
+        /// 用法: const profile = try user.hasOne(Profile, "user_id").get();
+        /// 等价于 Laravel: $user->hasOne(Profile::class, 'user_id')
+        pub fn hasOne(self: *const T, comptime Related: type, foreign_key: []const u8) RelationQuery(Related) {
+            const pk = primaryKey();
+            var pk_value: u64 = 0;
+
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (std.mem.eql(u8, field.name, pk)) {
+                    pk_value = @field(self.*, field.name);
+                    break;
+                }
+            }
+
+            return RelationQuery(Related).init(getDb(), foreign_key, pk_value, .has_one);
+        }
+
+        /// 一对多关联 (hasMany)
+        /// 用法: const posts = try user.hasMany(Post, "user_id").get();
+        /// 等价于 Laravel: $user->hasMany(Post::class, 'user_id')
+        pub fn hasMany(self: *const T, comptime Related: type, foreign_key: []const u8) RelationQuery(Related) {
+            const pk = primaryKey();
+            var pk_value: u64 = 0;
+
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (std.mem.eql(u8, field.name, pk)) {
+                    pk_value = @field(self.*, field.name);
+                    break;
+                }
+            }
+
+            return RelationQuery(Related).init(getDb(), foreign_key, pk_value, .has_many);
+        }
+
+        /// 属于关联 (belongsTo)
+        /// 用法: const user = try post.belongsTo(User, "user_id").get();
+        /// 等价于 Laravel: $post->belongsTo(User::class, 'user_id')
+        pub fn belongsTo(self: *const T, comptime Related: type, foreign_key: []const u8) RelationQuery(Related) {
+            var fk_value: u64 = 0;
+
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (std.mem.eql(u8, field.name, foreign_key)) {
+                    const val = @field(self.*, field.name);
+                    if (@TypeOf(val) == ?u64) {
+                        fk_value = val orelse 0;
+                    } else if (@TypeOf(val) == u64) {
+                        fk_value = val;
+                    } else if (@TypeOf(val) == ?u32) {
+                        fk_value = val orelse 0;
+                    } else if (@TypeOf(val) == u32) {
+                        fk_value = val;
+                    }
+                    break;
+                }
+            }
+
+            // Related 模型的主键
+            const RelatedModel = define(Related);
+            const related_pk = RelatedModel.primaryKey();
+
+            return RelationQuery(Related).init(getDb(), related_pk, fk_value, .belongs_to);
+        }
+
+        /// 静态方法：获取指定 ID 的关联
+        /// 用法: const posts = try User.HasMany(Post, "user_id", user_id).get();
+        pub fn HasMany(comptime Related: type, foreign_key: []const u8, id: u64) RelationQuery(Related) {
+            return RelationQuery(Related).init(getDb(), foreign_key, id, .has_many);
+        }
+
+        /// 静态方法：获取指定 ID 的一对一关联
+        pub fn HasOne(comptime Related: type, foreign_key: []const u8, id: u64) RelationQuery(Related) {
+            return RelationQuery(Related).init(getDb(), foreign_key, id, .has_one);
+        }
+
+        /// 静态方法：获取属于的模型
+        pub fn BelongsTo(comptime Related: type, foreign_key_value: u64) RelationQuery(Related) {
+            const RelatedModel = define(Related);
+            const related_pk = RelatedModel.primaryKey();
+            return RelationQuery(Related).init(getDb(), related_pk, foreign_key_value, .belongs_to);
+        }
+
+        /// 预加载关联 (with)
+        /// 用法: const users = try User.With(Post, "user_id").get();
+        pub fn With(comptime Related: type, foreign_key: []const u8) WithQuery(T, Related) {
+            return WithQuery(T, Related).init(getDb(), foreign_key);
+        }
+
+        // 内部辅助函数
+
+        fn buildInsertSql(allocator: Allocator, table: []const u8, data: anytype) ![]u8 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer sql.deinit(allocator);
+
+            try sql.appendSlice(allocator, "INSERT INTO ");
+            try sql.appendSlice(allocator, table);
+            try sql.appendSlice(allocator, " (");
+
+            const DataType = @TypeOf(data);
+            const fields = core_meta.fields(DataType);
+            var first_field = true;
+
+            inline for (fields) |field| {
+                const value = @field(data, field.name);
+                if (!shouldSkipInsertField(field.name, value)) {
+                    if (!first_field) try sql.appendSlice(allocator, ", ");
+                    try sql.appendSlice(allocator, field.name);
+                    first_field = false;
+                }
+            }
+
+            try sql.appendSlice(allocator, ") VALUES (");
+            var first_value = true;
+
+            inline for (fields) |field| {
+                const value = @field(data, field.name);
+                if (!shouldSkipInsertField(field.name, value)) {
+                    if (!first_value) try sql.appendSlice(allocator, ", ");
+                    try appendValue(allocator, &sql, value, field.name);
+                    first_value = false;
+                }
+            }
+
+            try sql.append(allocator, ')');
+
+            return sql.toOwnedSlice(allocator);
+        }
+
+        fn shouldSkipInsertField(field_name: []const u8, value: anytype) bool {
+            const V = @TypeOf(value);
+            const type_info = @typeInfo(V);
+
+            if (type_info == .optional and value == null) {
+                return true;
+            }
+
+            if (std.mem.eql(u8, field_name, "id")) {
+                if (type_info == .optional) {
+                    if (value) |v| {
+                        const inner_type = @typeInfo(@TypeOf(v));
+                        if (inner_type == .int or inner_type == .comptime_int) {
+                            return v <= 0;
+                        }
+                        // 如果是字符串类型，检查长度
+                        if (inner_type == .pointer) {
+                            // Zig 0.15: 检查是否是切片类型
+                            if (@TypeOf(v) == []const u8 or @TypeOf(v) == []u8) {
+                                return v.len == 0;
+                            }
+                        }
+                        return false;
+                    }
+                    return true;
+                }
+                if (type_info == .int or type_info == .comptime_int) {
+                    return value <= 0;
+                }
+            }
+
+            return false;
+        }
+
+        fn buildUpdateSql(allocator: Allocator, table: []const u8, pk: []const u8, id: anytype, data: anytype) ![]u8 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer sql.deinit(allocator);
+
+            try sql.appendSlice(allocator, "UPDATE ");
+            try sql.appendSlice(allocator, table);
+            try sql.appendSlice(allocator, " SET ");
+
+            const DataType = @TypeOf(data);
+            const fields = core_meta.fields(DataType);
+
+            var field_count: usize = 0;
+            inline for (fields) |field| {
+                // 编译时跳过 created_at
+                const is_created_at = comptime std.mem.eql(u8, field.name, "created_at");
+                if (!is_created_at) {
+                    // 运行时跳过主键
+                    const is_pk = std.mem.eql(u8, field.name, pk);
+                    if (!is_pk) {
+                        const value = @field(data, field.name);
+                        const type_info = @typeInfo(field.type);
+                        const is_updated_at = comptime std.mem.eql(u8, field.name, "updated_at");
+
+                        // 跳过值为 null 的 optional 字段（updated_at 除外，它总是被设置）
+                        const should_include = is_updated_at or (if (comptime type_info == .optional) value != null else true);
+                        if (should_include) {
+                            if (field_count > 0) try sql.appendSlice(allocator, ", ");
+                            try sql.appendSlice(allocator, field.name);
+                            try sql.appendSlice(allocator, " = ");
+
+                            // 自动设置 updated_at 为当前时间戳（MySQL datetime 格式）
+                            if (is_updated_at) {
+                                const now = @divTrunc(std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds(), 1000);
+                                // 转换为 MySQL datetime 格式: YYYY-MM-DD HH:MM:SS
+                                var buf: [32]u8 = undefined;
+                                const formatted = try std.fmt.bufPrint(&buf, "FROM_UNIXTIME({d})", .{now});
+                                try sql.appendSlice(allocator, formatted);
+                            } else {
+                                try appendValue(allocator, &sql, value, field.name);
+                            }
+
+                            field_count += 1;
+                        }
+                    }
+                }
+            }
+
+            // 如果没有字段需要更新，返回错误
+            if (field_count == 0) {
+                sql.deinit(allocator);
+                return error.NoFieldsToUpdate;
+            }
+
+            try sql.appendSlice(allocator, " WHERE ");
+            try sql.appendSlice(allocator, pk);
+            try sql.appendSlice(allocator, " = ");
+            try appendValue(allocator, &sql, id, pk);
+
+            return sql.toOwnedSlice(allocator);
+        }
+
+        fn appendValue(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), value: anytype, field_name: []const u8) !void {
+            const T2 = @TypeOf(value);
+            const type_info = @typeInfo(T2);
+
+            // 处理字符串类型（包括 []const u8 和 *const [N:0]u8）
+            if (T2 == []const u8) {
+                try sql.append(allocator, '\'');
+                // 转义危险字符以防止 SQL 注入
+                try appendEscapedString(allocator, sql, value);
+                try sql.append(allocator, '\'');
+            } else if (type_info == .pointer and type_info.pointer.size == .one) {
+                // 处理 *const [N:0]u8 类型（字符串字面量）
+                const child_info = @typeInfo(type_info.pointer.child);
+                if (child_info == .array and child_info.array.child == u8) {
+                    try sql.append(allocator, '\'');
+                    const str: []const u8 = value;
+                    try appendEscapedString(allocator, sql, str);
+                    try sql.append(allocator, '\'');
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .optional) {
+                if (value) |v| {
+                    try appendValue(allocator, sql, v, field_name);
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .int or type_info == .comptime_int) {
+                if (std.mem.endsWith(u8, field_name, "_at")) {
+                    // 转换时间戳从纳秒到秒
+                    const seconds = @as(u64, @intCast(value)) / 1_000_000_000;
+                    var buf: [32]u8 = undefined;
+                    const formatted = try std.fmt.bufPrint(&buf, "{d}", .{seconds});
+                    try sql.appendSlice(allocator, formatted);
+                } else {
+                    var buf: [32]u8 = undefined;
+                    const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                    try sql.appendSlice(allocator, formatted);
+                }
+            } else if (type_info == .float or type_info == .comptime_float) {
+                var buf: [64]u8 = undefined;
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{value});
+                try sql.appendSlice(allocator, formatted);
+            } else if (T2 == bool) {
+                try sql.appendSlice(allocator, if (value) "1" else "0");
+            } else {
+                try sql.appendSlice(allocator, "NULL");
+            }
+        }
+
+        /// 转义字符串中的危险字符以防止 SQL 注入
+        /// 转义: 单引号('), 反斜杠(\), NULL字节(\0), 换行(\n), 回车(\r), 双引号(")
+        fn appendEscapedString(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), str: []const u8) !void {
+            for (str) |c| {
+                switch (c) {
+                    '\'' => try sql.appendSlice(allocator, "''"), // SQL 标准转义
+                    '\\' => try sql.appendSlice(allocator, "\\\\"),
+                    0 => try sql.appendSlice(allocator, "\\0"), // NULL 字节
+                    '\n' => try sql.appendSlice(allocator, "\\n"),
+                    '\r' => try sql.appendSlice(allocator, "\\r"),
+                    '"' => try sql.appendSlice(allocator, "\\\""),
+                    else => try sql.append(allocator, c),
+                }
+            }
+        }
+    };
+}
+
+// ============================================================================
+// 模型查询构建器
+// ============================================================================
+
+/// 模型查询构建器
+pub fn ModelQuery(comptime T: type) type {
+    const OrmQueryResult = QueryResult(T);
+    const relations_mod = @import("relations.zig");
+    const EagerLoader = relations_mod.EagerLoader(T);
+
+    return struct {
+        const Self = @This();
+
+        db: *Database,
+        table: []const u8,
+        select_fields: std.ArrayListUnmanaged([]const u8),
+        where_clauses: std.ArrayListUnmanaged([]const u8),
+        order_clauses: std.ArrayListUnmanaged([]const u8),
+        group_fields: std.ArrayListUnmanaged([]const u8),
+        join_clauses: std.ArrayListUnmanaged([]const u8),
+        having_clause: ?[]const u8 = null,
+        limit_val: ?u64 = null,
+        offset_val: ?u64 = null,
+        distinct_flag: bool = false,
+        bind_params: std.ArrayListUnmanaged(query_mod.Value), // 参数绑定
+        eager_loader: EagerLoader, // 关系预加载器
+        soft_delete_mode: soft_deletes.SoftDeleteMode, // 软删除模式
+
+        pub fn init(db: *Database, table: []const u8) Self {
+            return Self{
+                .db = db,
+                .table = table,
+                .select_fields = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .where_clauses = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .order_clauses = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .group_fields = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .join_clauses = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .bind_params = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+                .eager_loader = EagerLoader.init(db.allocator),
+                .soft_delete_mode = .exclude_trashed, // 默认排除已删除
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            // 释放 where_clauses 中分配的字符串
+            for (self.where_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            self.where_clauses.deinit(self.db.allocator);
+
+            // 释放 order_clauses 中分配的字符串
+            for (self.order_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            self.order_clauses.deinit(self.db.allocator);
+
+            // 释放 join_clauses 中分配的字符串
+            for (self.join_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            self.join_clauses.deinit(self.db.allocator);
+
+            // 释放 having_clause（如果已分配）
+            if (self.having_clause) |clause| {
+                self.db.allocator.free(clause);
+            }
+
+            // 释放绑定参数
+            for (self.bind_params.items) |param| {
+                switch (param) {
+                    .string_val => |s| self.db.allocator.free(s),
+                    else => {},
+                }
+            }
+            self.bind_params.deinit(self.db.allocator);
+
+            // select_fields 和 group_fields 存储的是外部引用（通常是编译时常量），不需要释放
+            self.select_fields.deinit(self.db.allocator);
+            self.group_fields.deinit(self.db.allocator);
+
+            // 释放预加载器
+            self.eager_loader.deinit();
+        }
+
+        /// 预加载关系（解决 N+1 查询）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        /// _ = q.with(&.{"menus", "permissions"});
+        /// const roles = try q.get();
+        /// ```
+        pub fn with(self: *Self, relations: []const []const u8) *Self {
+            for (relations) |rel| {
+                self.eager_loader.add(rel) catch {};
+            }
+            return self;
+        }
+
+        /// 带条件的预加载关系
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        ///
+        /// // 只预加载状态为 1 的菜单
+        /// const config = relations_mod.EagerLoadConfig{
+        ///     .where_clauses = &.{
+        ///         .{ .field = "status", .op = "=", .value = "1" },
+        ///     },
+        ///     .order_by = "sort",
+        ///     .limit = 10,
+        /// };
+        /// _ = q.withWhere("menus", config);
+        /// const roles = try q.get();
+        /// ```
+        pub fn withWhere(self: *Self, relation: []const u8, config: relations_mod.EagerLoadConfig) *Self {
+            self.eager_loader.addWithConfig(relation, config) catch {};
+            return self;
+        }
+
+        /// 统计关联数量（不加载关联数据）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmRole.Query();
+        /// defer q.deinit();
+        /// _ = q.withCount(&.{"menus", "users"});
+        /// const roles = try q.get();
+        ///
+        /// // 访问计数（需要在模型中添加对应字段）
+        /// for (roles) |role| {
+        ///     std.debug.print("菜单数: {d}, 用户数: {d}\n",
+        ///         .{role.menus_count, role.users_count});
+        /// }
+        /// ```
+        ///
+        /// 注意：需要在模型中添加 {relation}_count 字段
+        pub fn withCount(self: *Self, relations: []const []const u8) *Self {
+            // 为每个关系添加 COUNT 子查询到 SELECT
+            for (relations) |rel| {
+                // 构建子查询：(SELECT COUNT(*) FROM related_table WHERE ...)
+                const subquery = std.fmt.allocPrint(self.db.allocator, "(SELECT COUNT(*) FROM {s} WHERE {s}_id = {s}.id) as {s}_count", .{ rel, self.table, self.table, rel }) catch continue;
+
+                self.select_fields.append(self.db.allocator, subquery) catch {
+                    self.db.allocator.free(subquery);
+                };
+            }
+            return self;
+        }
+
+        /// 包含已软删除的记录
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmUser.Query();
+        /// _ = q.withTrashed();
+        /// const users = try q.get();  // 包含已删除的记录
+        /// ```
+        pub fn withTrashed(self: *Self) *Self {
+            self.soft_delete_mode = .with_trashed;
+            return self;
+        }
+
+        /// 只查询已软删除的记录
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmUser.Query();
+        /// _ = q.onlyTrashed();
+        /// const users = try q.get();  // 只返回已删除的记录
+        /// ```
+        pub fn onlyTrashed(self: *Self) *Self {
+            self.soft_delete_mode = .only_trashed;
+            return self;
+        }
+
+        /// 应用查询作用域（无参数）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// // 模型定义
+        /// pub const User = struct {
+        ///     pub const scopes = .{
+        ///         .active = struct {
+        ///             pub fn apply(query: anytype) void {
+        ///                 _ = query.where("status", "=", 1);
+        ///             }
+        ///         },
+        ///     };
+        /// };
+        ///
+        /// // 使用
+        /// var q = OrmUser.Query();
+        /// _ = q.scope("active");
+        /// const users = try q.get();
+        /// ```
+        pub fn scope(self: *Self, comptime name: []const u8) *Self {
+            if (comptime query_scopes.hasScopes(T)) {
+                const scopes_value = T.scopes;
+                if (@hasField(@TypeOf(scopes_value), name)) {
+                    const scope_def = @field(scopes_value, name);
+                    scope_def.apply(self);
+                }
+            }
+            return self;
+        }
+
+        /// 应用查询作用域（带参数）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// // 模型定义
+        /// pub const User = struct {
+        ///     pub const scopes = .{
+        ///         .byRole = struct {
+        ///             pub fn apply(query: anytype, role_id: i32) void {
+        ///                 _ = query.where("role_id", "=", role_id);
+        ///             }
+        ///         },
+        ///     };
+        /// };
+        ///
+        /// // 使用
+        /// var q = OrmUser.Query();
+        /// _ = q.scopeWith("byRole", .{1});
+        /// const users = try q.get();
+        /// ```
+        pub fn scopeWith(self: *Self, comptime name: []const u8, args: anytype) *Self {
+            if (comptime query_scopes.hasScopes(T)) {
+                const scopes_value = T.scopes;
+                if (@hasField(@TypeOf(scopes_value), name)) {
+                    const scope_def = @field(scopes_value, name);
+                    @call(.auto, scope_def.apply, .{self} ++ args);
+                }
+            }
+            return self;
+        }
+
+        /// SELECT 字段
+        pub fn select(self: *Self, fields: []const []const u8) *Self {
+            for (fields) |f| {
+                self.select_fields.append(self.db.allocator, f) catch {};
+            }
+            return self;
+        }
+
+        /// WHERE 条件（参数化）
+        pub fn where(self: *Self, field: []const u8, op: []const u8, val: anytype) *Self {
+            var clause_buf: [256]u8 = undefined;
+            const clause = std.fmt.bufPrint(&clause_buf, "{s} {s} ?", .{ field, op }) catch return self;
+            const clause_owned = self.db.allocator.dupe(u8, clause) catch return self;
+
+            self.where_clauses.append(self.db.allocator, clause_owned) catch {
+                self.db.allocator.free(clause_owned);
+                return self;
+            };
+
+            // 添加参数（深拷贝字符串）
+            var param = query_mod.Value.from(val);
+            if (param == .string_val) {
+                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch return self;
+                param = .{ .string_val = str_copy };
+            }
+            self.bind_params.append(self.db.allocator, param) catch return self;
+
+            return self;
+        }
+
+        /// WHERE IN（使用参数化查询）
+        pub fn whereIn(self: *Self, field: []const u8, values: anytype) *Self {
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereIn requires array or slice"),
+            };
+
+            // 构建占位符 "field IN (?, ?, ?)"
+            var placeholders = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer placeholders.deinit(self.db.allocator);
+
+            placeholders.appendSlice(self.db.allocator, field) catch return self;
+            placeholders.appendSlice(self.db.allocator, " IN (") catch return self;
+
+            for (values, 0..) |v, i| {
+                if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
+                placeholders.append(self.db.allocator, '?') catch return self;
+
+                // 添加参数
+                if (ElemType == []const u8 or ElemType == []u8) {
+                    const str_copy = self.db.allocator.dupe(u8, v) catch return self;
+                    self.bind_params.append(self.db.allocator, .{ .string_val = str_copy }) catch {
+                        self.db.allocator.free(str_copy);
+                        return self;
+                    };
+                } else {
+                    self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
+                }
+            }
+
+            placeholders.append(self.db.allocator, ')') catch return self;
+
+            const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE IN (子查询 - SQL 字符串)
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var q = OrmOrder.Query();
+        /// defer q.deinit();
+        /// _ = q.whereInSub("user_id", "SELECT id FROM users WHERE active = 1");
+        /// const orders = try q.get();
+        /// ```
+        pub fn whereInSub(self: *Self, field: []const u8, subquery_sql: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} IN ({s})", .{ field, subquery_sql }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+        /// _ = main.whereInQuery("user_id", &subquery);
+        /// ```
+        pub fn whereInQuery(self: *Self, field: []const u8, subquery: anytype) *Self {
+            const sub_sql = subquery.toSql() catch return self;
+            defer self.db.allocator.free(sub_sql);
+
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} IN ({s})", .{ field, sub_sql }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT IN (子查询 - SQL 字符串)
+        pub fn whereNotInSub(self: *Self, field: []const u8, subquery_sql: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT IN ({s})", .{ field, subquery_sql }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT IN (子查询 - QueryBuilder)
+        pub fn whereNotInQuery(self: *Self, field: []const u8, subquery: anytype) *Self {
+            const sub_sql = subquery.toSql() catch return self;
+            defer self.db.allocator.free(sub_sql);
+
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT IN ({s})", .{ field, sub_sql }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE EXISTS (子查询 - SQL 字符串)
+        pub fn whereExists(self: *Self, subquery_sql: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "EXISTS ({s})", .{subquery_sql}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE EXISTS (子查询 - QueryBuilder)
+        pub fn whereExistsQuery(self: *Self, subquery: anytype) *Self {
+            const sub_sql = subquery.toSql() catch return self;
+            defer self.db.allocator.free(sub_sql);
+
+            const clause = std.fmt.allocPrint(self.db.allocator, "EXISTS ({s})", .{sub_sql}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT EXISTS (子查询 - SQL 字符串)
+        pub fn whereNotExists(self: *Self, subquery_sql: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "NOT EXISTS ({s})", .{subquery_sql}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT EXISTS (子查询 - QueryBuilder)
+        pub fn whereNotExistsQuery(self: *Self, subquery: anytype) *Self {
+            const sub_sql = subquery.toSql() catch return self;
+            defer self.db.allocator.free(sub_sql);
+
+            const clause = std.fmt.allocPrint(self.db.allocator, "NOT EXISTS ({s})", .{sub_sql}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE 字段比较 (field1 op field2)
+        /// 使用: .whereColumn("created_at", ">", "updated_at")
+        pub fn whereColumn(self: *Self, field1: []const u8, op: []const u8, field2: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} {s} {s}", .{ field1, op, field2 }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NULL
+        pub fn whereNull(self: *Self, field: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} IS NULL", .{field}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT NULL
+        pub fn whereNotNull(self: *Self, field: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} IS NOT NULL", .{field}) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE 简化版（默认 = 操作符）
+        /// 使用: .whereEq("name", "John")
+        pub fn whereEq(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "=", val);
+        }
+
+        /// WHERE NOT EQUAL
+        pub fn whereNe(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "!=", val);
+        }
+
+        /// WHERE GREATER THAN
+        pub fn whereGt(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, ">", val);
+        }
+
+        /// WHERE GREATER THAN OR EQUAL
+        pub fn whereGte(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, ">=", val);
+        }
+
+        /// WHERE LESS THAN
+        pub fn whereLt(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "<", val);
+        }
+
+        /// WHERE LESS THAN OR EQUAL
+        pub fn whereLte(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.where(field, "<=", val);
+        }
+
+        /// WHERE NOT IN（使用参数化查询）
+        pub fn whereNotIn(self: *Self, field: []const u8, values: anytype) *Self {
+            const ValuesType = @TypeOf(values);
+            const type_info = @typeInfo(ValuesType);
+
+            // 获取数组元素类型
+            const ElemType = switch (type_info) {
+                .pointer => |ptr| ptr.child,
+                .array => |arr| arr.child,
+                else => @compileError("whereNotIn requires array or slice"),
+            };
+
+            // 构建占位符 "field NOT IN (?, ?, ?)"
+            var placeholders = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer placeholders.deinit(self.db.allocator);
+
+            placeholders.appendSlice(self.db.allocator, field) catch return self;
+            placeholders.appendSlice(self.db.allocator, " NOT IN (") catch return self;
+
+            for (values, 0..) |v, i| {
+                if (i > 0) placeholders.appendSlice(self.db.allocator, ", ") catch return self;
+                placeholders.append(self.db.allocator, '?') catch return self;
+
+                // 添加参数
+                if (ElemType == []const u8 or ElemType == []u8) {
+                    const str_copy = self.db.allocator.dupe(u8, v) catch return self;
+                    self.bind_params.append(self.db.allocator, .{ .string_val = str_copy }) catch {
+                        self.db.allocator.free(str_copy);
+                        return self;
+                    };
+                } else {
+                    self.bind_params.append(self.db.allocator, .{ .int_val = @intCast(v) }) catch return self;
+                }
+            }
+
+            placeholders.append(self.db.allocator, ')') catch return self;
+
+            const clause = placeholders.toOwnedSlice(self.db.allocator) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE BETWEEN
+        pub fn whereBetween(self: *Self, field: []const u8, min_val: anytype, max_val: anytype) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} BETWEEN {any} AND {any}", .{ field, min_val, max_val }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT BETWEEN
+        pub fn whereNotBetween(self: *Self, field: []const u8, min_val: anytype, max_val: anytype) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT BETWEEN {any} AND {any}", .{ field, min_val, max_val }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE LIKE
+        pub fn whereLike(self: *Self, field: []const u8, pattern: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} LIKE '{s}'", .{ field, pattern }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE NOT LIKE
+        pub fn whereNotLike(self: *Self, field: []const u8, pattern: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} NOT LIKE '{s}'", .{ field, pattern }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE 原始 SQL
+        /// 原生 SQL WHERE 条件（支持占位符）
+        /// 使用:
+        ///   .whereRaw("age > 18", {})  // 无参数
+        ///   .whereRaw("age > ? AND status = ?", .{18, 1})  // 元组参数
+        ///   .whereRaw("age > ? AND status = ?", param_builder)  // ParamBuilder
+        pub fn whereRaw(self: *Self, raw_sql: []const u8, params: anytype) *Self {
+            const clause = self.db.allocator.dupe(u8, raw_sql) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+                return self;
+            };
+
+            const ParamsType = @TypeOf(params);
+
+            // 如果是 ParamBuilder，直接使用其参数
+            if (ParamsType == ParamBuilder or ParamsType == *ParamBuilder or ParamsType == *const ParamBuilder) {
+                const builder_params = if (ParamsType == ParamBuilder) params.items() else params.items();
+                for (builder_params) |p| {
+                    self.bind_params.append(self.db.allocator, p) catch {};
+                }
+                return self;
+            }
+
+            // 如果 params 是 void，不处理参数
+            if (ParamsType == void) return self;
+
+            // 添加参数（深拷贝字符串）
+            const type_info = @typeInfo(ParamsType);
+
+            switch (type_info) {
+                .pointer => |ptr| {
+                    if (ptr.size == .slice or @typeInfo(ptr.child) == .array) {
+                        for (params) |p| {
+                            var param = query_mod.Value.from(p);
+                            if (param == .string_val) {
+                                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                                param = .{ .string_val = str_copy };
+                            }
+                            self.bind_params.append(self.db.allocator, param) catch {};
+                        }
+                    }
+                },
+                .array => {
+                    for (params) |p| {
+                        var param = query_mod.Value.from(p);
+                        if (param == .string_val) {
+                            const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                            param = .{ .string_val = str_copy };
+                        }
+                        self.bind_params.append(self.db.allocator, param) catch {};
+                    }
+                },
+                .@"struct" => |s| {
+                    if (s.is_tuple) {
+                        inline for (params) |p| {
+                            var param = query_mod.Value.from(p);
+                            if (param == .string_val) {
+                                const str_copy = self.db.allocator.dupe(u8, param.string_val) catch continue;
+                                param = .{ .string_val = str_copy };
+                            }
+                            self.bind_params.append(self.db.allocator, param) catch {};
+                        }
+                    }
+                },
+                else => {},
+            }
+
+            return self;
+        }
+
+        /// 快捷方式：按最新排序
+        pub fn latest(self: *Self) *Self {
+            return self.orderBy("created_at", .desc);
+        }
+
+        /// 快捷方式：按最早排序
+        pub fn oldest(self: *Self) *Self {
+            return self.orderBy("created_at", .asc);
+        }
+
+        /// 快捷方式：只取 N 条
+        pub fn take(self: *Self, n: u64) *Self {
+            return self.limit(n);
+        }
+
+        /// 快捷方式：跳过 N 条
+        pub fn skip(self: *Self, n: u64) *Self {
+            return self.offset(n);
+        }
+
+        /// ORDER BY
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "{s} {s}", .{ field, dir.toSql() }) catch return self;
+            self.order_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// LIMIT
+        pub fn limit(self: *Self, n: u64) *Self {
+            self.limit_val = n;
+            return self;
+        }
+
+        /// OFFSET
+        pub fn offset(self: *Self, n: u64) *Self {
+            self.offset_val = n;
+            return self;
+        }
+
+        /// 分页
+        pub fn page(self: *Self, page_num: u64, page_size: u64) *Self {
+            self.limit_val = page_size;
+            self.offset_val = (page_num - 1) * page_size;
+            return self;
+        }
+
+        /// 游标分页（解决大数据集 OFFSET 性能问题）
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// // 第一页（cursor = null）
+        /// var q = OrmUser.Query();
+        /// defer q.deinit();
+        /// _ = q.cursorPaginate(null, 20, .forward);
+        /// const users = try q.get();
+        ///
+        /// // 下一页（使用最后一条的 ID）
+        /// const last_id = users[users.len - 1].id;
+        /// var q2 = OrmUser.Query();
+        /// defer q2.deinit();
+        /// _ = q2.cursorPaginate(last_id, 20, .forward);
+        /// const next_users = try q2.get();
+        /// ```
+        ///
+        /// 优势：
+        /// - 避免 OFFSET 性能问题（大数据集）
+        /// - 适合无限滚动
+        /// - 性能稳定（不随页数增加而变慢）
+        pub fn cursorPaginate(self: *Self, cursor: ?i64, page_size: u64, direction: CursorDirection) *Self {
+            const pk = comptime blk: {
+                if (@hasDecl(T, "primary_key")) {
+                    break :blk T.primary_key;
+                }
+                break :blk "id";
+            };
+
+            if (cursor) |c| {
+                switch (direction) {
+                    .forward => _ = self.where(pk, ">", c),
+                    .backward => _ = self.where(pk, "<", c),
+                }
+            }
+
+            _ = self.limit(page_size);
+
+            switch (direction) {
+                .forward => _ = self.orderBy(pk, .asc),
+                .backward => _ = self.orderBy(pk, .desc),
+            }
+
+            return self;
+        }
+
+        /// 游标方向
+        pub const CursorDirection = enum {
+            forward, // 向前（下一页）
+            backward, // 向后（上一页）
+        };
+
+        /// GROUP BY
+        pub fn groupBy(self: *Self, fields: []const []const u8) *Self {
+            for (fields) |f| {
+                self.group_fields.append(self.db.allocator, f) catch {};
+            }
+            return self;
+        }
+
+        /// HAVING
+        pub fn having(self: *Self, clause: []const u8) *Self {
+            // 释放旧的 having_clause（如果存在）
+            if (self.having_clause) |old_clause| {
+                self.db.allocator.free(old_clause);
+            }
+            // 复制字符串以确保内存安全
+            self.having_clause = self.db.allocator.dupe(u8, clause) catch {
+                self.having_clause = null;
+                return self;
+            };
+            return self;
+        }
+
+        /// DISTINCT
+        pub fn distinct(self: *Self) *Self {
+            self.distinct_flag = true;
+            return self;
+        }
+
+        /// LEFT JOIN
+        pub fn leftJoin(self: *Self, table: []const u8, on: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "LEFT JOIN {s} ON {s}", .{ table, on }) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// RIGHT JOIN
+        pub fn rightJoin(self: *Self, table: []const u8, on: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "RIGHT JOIN {s} ON {s}", .{ table, on }) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// INNER JOIN
+        pub fn innerJoin(self: *Self, table: []const u8, on: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "INNER JOIN {s} ON {s}", .{ table, on }) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// CROSS JOIN
+        pub fn crossJoin(self: *Self, table: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "CROSS JOIN {s}", .{table}) catch return self;
+            self.join_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// OR WHERE 条件
+        pub fn orWhere(self: *Self, field: []const u8, op: []const u8, val: anytype) *Self {
+            const cond = formatWhere(self.db.allocator, field, op, val) catch return self;
+            defer self.db.allocator.free(cond);
+
+            if (self.where_clauses.items.len > 0) {
+                // 修改最后一个条件为 OR
+                const clause = std.fmt.allocPrint(self.db.allocator, "OR {s}", .{cond}) catch return self;
+                self.where_clauses.append(self.db.allocator, clause) catch {
+                    self.db.allocator.free(clause);
+                };
+            } else {
+                const clause = self.db.allocator.dupe(u8, cond) catch return self;
+                self.where_clauses.append(self.db.allocator, clause) catch {
+                    self.db.allocator.free(clause);
+                };
+            }
+            return self;
+        }
+
+        /// OR WHERE 简化版
+        pub fn orWhereEq(self: *Self, field: []const u8, val: anytype) *Self {
+            return self.orWhere(field, "=", val);
+        }
+
+        /// 分组条件查询 (Laravel: ->where(function($query) { ... }))
+        /// 使用: .whereGroup(struct { fn apply(q: *Query) void { _ = q.whereEq("a", 1).orWhereEq("b", 2); } }.apply)
+        /// 生成: AND (a = 1 OR b = 2)
+        pub fn whereGroup(self: *Self, comptime callback: fn (*Self) void) *Self {
+            // 创建临时子查询来收集条件
+            var sub = Self.init(self.db, self.table);
+            callback(&sub);
+
+            // 将子查询条件合并为分组
+            if (sub.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+                group_sql.appendSlice(self.db.allocator, "(") catch return self;
+
+                for (sub.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        // 检查是否是 OR 条件
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    sub.deinit();
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            // 释放临时子查询（不释放条件字符串，已转移）
+            for (sub.where_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            sub.where_clauses.deinit(self.db.allocator);
+            sub.select_fields.deinit(self.db.allocator);
+            sub.order_clauses.deinit(self.db.allocator);
+            sub.group_fields.deinit(self.db.allocator);
+            sub.join_clauses.deinit(self.db.allocator);
+
+            return self;
+        }
+
+        /// OR 分组条件查询
+        /// 使用: .orWhereGroup(struct { fn apply(q: *Query) void { _ = q.whereEq("a", 1).whereEq("b", 2); } }.apply)
+        /// 生成: OR (a = 1 AND b = 2)
+        pub fn orWhereGroup(self: *Self, comptime callback: fn (*Self) void) *Self {
+            var sub = Self.init(self.db, self.table);
+            callback(&sub);
+
+            if (sub.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+                group_sql.appendSlice(self.db.allocator, "OR (") catch return self;
+
+                for (sub.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    sub.deinit();
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+
+            for (sub.where_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            sub.where_clauses.deinit(self.db.allocator);
+            sub.select_fields.deinit(self.db.allocator);
+            sub.order_clauses.deinit(self.db.allocator);
+            sub.group_fields.deinit(self.db.allocator);
+            sub.join_clauses.deinit(self.db.allocator);
+
+            return self;
+        }
+
+        /// 嵌套条件构建器 - 更灵活的方式
+        /// 使用:
+        /// ```zig
+        /// var nested = query.newNested();
+        /// _ = nested.whereEq("role", "admin").orWhereEq("role", "mod");
+        /// _ = query.whereNested(&nested);
+        /// ```
+        pub fn newNested(self: *Self) Self {
+            return Self.init(self.db, self.table);
+        }
+
+        /// 添加嵌套条件 (AND)
+        pub fn whereNested(self: *Self, nested: *Self) *Self {
+            if (nested.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+                group_sql.appendSlice(self.db.allocator, "(") catch return self;
+
+                for (nested.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+            return self;
+        }
+
+        /// 添加嵌套条件 (OR)
+        pub fn orWhereNested(self: *Self, nested: *Self) *Self {
+            if (nested.where_clauses.items.len > 0) {
+                var group_sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+                group_sql.appendSlice(self.db.allocator, "OR (") catch return self;
+
+                for (nested.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) {
+                        if (std.mem.startsWith(u8, clause, "OR ")) {
+                            group_sql.appendSlice(self.db.allocator, " ") catch {};
+                        } else {
+                            group_sql.appendSlice(self.db.allocator, " AND ") catch {};
+                        }
+                    }
+                    group_sql.appendSlice(self.db.allocator, clause) catch {};
+                }
+
+                group_sql.appendSlice(self.db.allocator, ")") catch {};
+
+                const group_str = group_sql.toOwnedSlice(self.db.allocator) catch {
+                    group_sql.deinit(self.db.allocator);
+                    return self;
+                };
+
+                self.where_clauses.append(self.db.allocator, group_str) catch {
+                    self.db.allocator.free(group_str);
+                };
+            }
+            return self;
+        }
+
+        /// WHERE DATE (日期比较)
+        pub fn whereDate(self: *Self, field: []const u8, op: []const u8, date: []const u8) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "DATE({s}) {s} '{s}'", .{ field, op, date }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE YEAR
+        pub fn whereYear(self: *Self, field: []const u8, op: []const u8, year: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "YEAR({s}) {s} {d}", .{ field, op, year }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE MONTH
+        pub fn whereMonth(self: *Self, field: []const u8, op: []const u8, month: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "MONTH({s}) {s} {d}", .{ field, op, month }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// WHERE DAY
+        pub fn whereDay(self: *Self, field: []const u8, op: []const u8, day: i32) *Self {
+            const clause = std.fmt.allocPrint(self.db.allocator, "DAY({s}) {s} {d}", .{ field, op, day }) catch return self;
+            self.where_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// 快捷方式：按字段降序
+        pub fn orderByDesc(self: *Self, field: []const u8) *Self {
+            return self.orderBy(field, .desc);
+        }
+
+        /// 快捷方式：按字段升序
+        pub fn orderByAsc(self: *Self, field: []const u8) *Self {
+            return self.orderBy(field, .asc);
+        }
+
+        /// 随机排序
+        pub fn inRandomOrder(self: *Self) *Self {
+            // MySQL: RAND(), SQLite: RANDOM(), PostgreSQL: RANDOM()
+            const clause = self.db.allocator.dupe(u8, "RAND()") catch return self;
+            self.order_clauses.append(self.db.allocator, clause) catch {
+                self.db.allocator.free(clause);
+            };
+            return self;
+        }
+
+        /// 重置排序
+        pub fn reorder(self: *Self) *Self {
+            for (self.order_clauses.items) |clause| {
+                self.db.allocator.free(clause);
+            }
+            self.order_clauses.clearRetainingCapacity();
+            return self;
+        }
+
+        /// SELECT RAW
+        pub fn selectRaw(self: *Self, raw: []const u8) *Self {
+            self.select_fields.append(self.db.allocator, raw) catch {};
+            return self;
+        }
+
+        /// 条件查询 (when)
+        /// 使用: query.when(condition, struct { fn apply(q: *Query) *Query { return q.whereEq("status", 1); } }.apply)
+        pub fn when(self: *Self, condition: bool, comptime apply: fn (*Self) *Self) *Self {
+            if (condition) {
+                return apply(self);
+            }
+            return self;
+        }
+
+        /// SUM 聚合
+        pub fn sum(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("SUM", field);
+        }
+
+        /// AVG 聚合
+        pub fn avg(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("AVG", field);
+        }
+
+        /// MIN 聚合
+        pub fn min(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("MIN", field);
+        }
+
+        /// MAX 聚合
+        pub fn max(self: *Self, field: []const u8) !?f64 {
+            return self.aggregate("MAX", field);
+        }
+
+        /// 通用聚合函数
+        fn aggregate(self: *Self, func: []const u8, field: []const u8) !?f64 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "SELECT ");
+            try sql.appendSlice(self.db.allocator, func);
+            try sql.append(self.db.allocator, '(');
+            try sql.appendSlice(self.db.allocator, field);
+            try sql.appendSlice(self.db.allocator, ") as agg_result FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            var result = try self.db.rawQuery(sql_str, .{});
+            defer result.deinit();
+
+            if (result.next()) |row| {
+                if (row.getString("agg_result")) |v| {
+                    return std.fmt.parseFloat(f64, v) catch null;
+                }
+            }
+            return null;
+        }
+
+        /// 批量更新
+        pub fn updateBatch(self: *Self, data: anytype) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "UPDATE ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try sql.appendSlice(self.db.allocator, " SET ");
+
+            const DataType = @TypeOf(data);
+            const fields = core_meta.fields(DataType);
+
+            inline for (fields, 0..) |field, i| {
+                if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                try sql.appendSlice(self.db.allocator, field.name);
+                try sql.appendSlice(self.db.allocator, " = ");
+                const val = @field(data, field.name);
+                try appendValueToSql(self.db.allocator, &sql, val);
+            }
+
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.exec(sql_str, .{});
+        }
+
+        fn appendValueToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), val: anytype) !void {
+            const VT = @TypeOf(val);
+            const type_info = @typeInfo(VT);
+
+            if (VT == []const u8) {
+                try sql.append(allocator, '\'');
+                // 转义危险字符以防止 SQL 注入
+                try appendEscapedStrToSql(allocator, sql, val);
+                try sql.append(allocator, '\'');
+            } else if (type_info == .pointer and type_info.pointer.size == .one) {
+                const child_info = @typeInfo(type_info.pointer.child);
+                if (child_info == .array and child_info.array.child == u8) {
+                    try sql.append(allocator, '\'');
+                    const str: []const u8 = val;
+                    try appendEscapedStrToSql(allocator, sql, str);
+                    try sql.append(allocator, '\'');
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .optional) {
+                if (val) |v| {
+                    try appendValueToSql(allocator, sql, v);
+                } else {
+                    try sql.appendSlice(allocator, "NULL");
+                }
+            } else if (type_info == .int or type_info == .comptime_int) {
+                var buf: [32]u8 = undefined;
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{val});
+                try sql.appendSlice(allocator, formatted);
+            } else if (type_info == .float or type_info == .comptime_float) {
+                var buf: [64]u8 = undefined;
+                const formatted = try std.fmt.bufPrint(&buf, "{d}", .{val});
+                try sql.appendSlice(allocator, formatted);
+            } else if (VT == bool) {
+                try sql.appendSlice(allocator, if (val) "1" else "0");
+            } else {
+                try sql.appendSlice(allocator, "NULL");
+            }
+        }
+
+        /// 转义字符串中的危险字符以防止 SQL 注入
+        fn appendEscapedStrToSql(allocator: Allocator, sql: *std.ArrayListUnmanaged(u8), str: []const u8) !void {
+            for (str) |c| {
+                switch (c) {
+                    '\'' => try sql.appendSlice(allocator, "''"),
+                    '\\' => try sql.appendSlice(allocator, "\\\\"),
+                    0 => try sql.appendSlice(allocator, "\\0"),
+                    '\n' => try sql.appendSlice(allocator, "\\n"),
+                    '\r' => try sql.appendSlice(allocator, "\\r"),
+                    '"' => try sql.appendSlice(allocator, "\\\""),
+                    else => try sql.append(allocator, c),
+                }
+            }
+        }
+
+        /// 执行查询
+        pub fn get(self: *Self) ![]T {
+            const sql = try self.toSql();
+            defer self.db.allocator.free(sql);
+
+            var result = try self.db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            const models = try self.mapResults(&result);
+
+            // 如果有预加载关系，自动加载
+            if (self.eager_loader.relations.count() > 0) {
+                self.eager_loader.load(self.db, models) catch |err| {
+                    logger_mod.err("预加载关系失败: {}", .{err});
+                };
+            }
+
+            return models;
+        }
+
+        /// 执行查询（使用 Arena Allocator 自动管理内存）
+        ///
+        /// 推荐在需要跨作用域保留查询结果时使用，避免手动深拷贝字符串字段。
+        /// Arena 内所有字符串内存由 QueryResult 统一管理，调用 deinit() 一次性释放。
+        ///
+        /// 使用示例：
+        /// ```zig
+        /// var role_q = OrmRole.Query();
+        /// defer role_q.deinit();
+        /// _ = role_q.whereRaw(in_clause);
+        /// var result = try role_q.getWithArena(self.allocator);
+        /// defer result.deinit();
+        ///
+        /// for (result.items()) |role| {
+        ///     std.debug.print("role: {s}\n", .{role.role_name}); // 安全访问
+        /// }
+        /// ```
+        pub fn getWithArena(self: *Self, backing_allocator: Allocator) !OrmQueryResult {
+            const sql = try self.toSql();
+            defer self.db.allocator.free(sql);
+
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            var result_set = try self.db.rawQuery(sql, .{});
+            defer result_set.deinit();
+
+            const rows = try self.mapResultsWithAllocator(arena.allocator(), &result_set);
+
+            return OrmQueryResult{
+                .arena = arena,
+                .models = rows,
+            };
+        }
+
+        /// 获取结果（返回 List 包装器，自动管理内存）
+        /// 使用: var list = try query.collect(); defer list.deinit();
+        pub fn collect(self: *Self) !define(T).List {
+            const data = try self.get();
+            return define(T).List{ .allocator = self.db.allocator, .data = data };
+        }
+
+        /// Laravel 风格：查找或创建记录
+        /// 使用: const user = try User.query(db).firstOrCreate(.{.email = "test@example.com"}, .{.name = "Test User"});
+        pub fn firstOrCreate(self: *Self, attributes: anytype, values: anytype) !T {
+            // 应用查找条件
+            inline for (@typeInfo(@TypeOf(attributes)).@"struct".field_names, @typeInfo(@TypeOf(attributes)).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                _ = self.where(field.name, "=", @field(attributes, field.name));
+            }
+
+            const results = try self.get();
+            if (results.len > 0) {
+                defer self.db.allocator.free(results);
+                return results[0];
+            }
+
+            // 合并 attributes 和 values 创建新记录
+            var data: T = undefined;
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (@hasField(@TypeOf(attributes), field.name)) {
+                    @field(data, field.name) = @field(attributes, field.name);
+                } else if (@hasField(@TypeOf(values), field.name)) {
+                    @field(data, field.name) = @field(values, field.name);
+                }
+            }
+
+            return try Self.create(self.db, data);
+        }
+
+        /// Laravel 风格：查找或创建并更新记录
+        /// 使用: const user = try User.query(db).updateOrCreate(.{.email = "test@example.com"}, .{.name = "Updated Name"});
+        pub fn updateOrCreate(self: *Self, attributes: anytype, values: anytype) !T {
+            // 应用查找条件
+            inline for (@typeInfo(@TypeOf(attributes)).@"struct".field_names, @typeInfo(@TypeOf(attributes)).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                _ = self.where(field.name, "=", @field(attributes, field.name));
+            }
+
+            const results = try self.get();
+            if (results.len > 0) {
+                defer self.db.allocator.free(results);
+                const existing = results[0];
+
+                // 获取主键值
+                const pk = Self.primaryKey();
+                var id: u64 = 0;
+                inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                    if (std.mem.eql(u8, field.name, pk)) {
+                        id = @field(existing, field.name);
+                        break;
+                    }
+                }
+
+                // 更新记录
+                _ = try Self.update(self.db, id, values);
+                return Self.find(self.db, id) orelse error.UpdateFailed;
+            } else {
+                // 合并 attributes 和 values 创建新记录
+                var data: T = undefined;
+                inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                    if (@hasField(@TypeOf(attributes), field.name)) {
+                        @field(data, field.name) = @field(attributes, field.name);
+                    } else if (@hasField(@TypeOf(values), field.name)) {
+                        @field(data, field.name) = @field(values, field.name);
+                    }
+                }
+
+                return try Self.create(self.db, data);
+            }
+        }
+
+        /// 检查是否存在记录
+        pub fn exists(self: *Self) !bool {
+            return (try self.count()) > 0;
+        }
+
+        /// 检查是否不存在记录
+        pub fn doesntExist(self: *Self) !bool {
+            return (try self.count()) == 0;
+        }
+
+        /// 获取某列的单个值
+        pub fn getValue(self: *Self, field_name: []const u8) !?[]const u8 {
+            self.limit_val = 1;
+
+            // 临时替换 select
+            const old_fields = self.select_fields;
+            self.select_fields = .{};
+            self.select_fields.append(self.db.allocator, field_name) catch {};
+
+            const sql = try self.toSql();
+            defer self.db.allocator.free(sql);
+
+            // 恢复
+            self.select_fields.deinit(self.db.allocator);
+            self.select_fields = old_fields;
+
+            var result = try self.db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return null;
+                return row.getString(field_name);
+            }
+            return null;
+        }
+
+        /// 获取某列的所有值
+        pub fn pluck(self: *Self, field_name: []const u8) ![][]const u8 {
+            // 临时替换 select
+            const old_fields = self.select_fields;
+            self.select_fields = .{};
+            self.select_fields.append(self.db.allocator, field_name) catch {};
+
+            const sql = try self.toSql();
+            defer self.db.allocator.free(sql);
+
+            // 恢复
+            self.select_fields.deinit(self.db.allocator);
+            self.select_fields = old_fields;
+
+            var result = try self.db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            var values = std.ArrayList([]const u8).init(self.db.allocator);
+            errdefer values.deinit();
+
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
+                if (row.getString(field_name)) |v| {
+                    try values.append(try self.db.allocator.dupe(u8, v));
+                }
+            }
+
+            return values.toOwnedSlice();
+        }
+
+        /// 克隆模型到指定分配器（只拷贝字符串字段，数值字段直接赋值）
+        inline fn cloneModel(allocator: Allocator, src: *const T) !T {
+            var dst = src.*;
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const v = @field(dst, field.name);
+                    @field(dst, field.name) = try allocator.dupe(u8, v);
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(dst, field.name)) |s| {
+                            @field(dst, field.name) = try allocator.dupe(u8, s);
+                        }
+                    }
+                }
+            }
+            return dst;
+        }
+
+        /// 释放模型中的字符串字段（匹配 mapResults 的分配策略）
+        inline fn freeModelStrings(allocator: Allocator, model: *T) void {
+            inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                if (field.type == []const u8) {
+                    const s = @field(model.*, field.name);
+                    if (s.len > 0 and s.ptr != "".ptr) {
+                        allocator.free(s);
+                    }
+                } else if (@typeInfo(field.type) == .optional) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (child == []const u8) {
+                        if (@field(model.*, field.name)) |s| {
+                            if (s.len > 0 and s.ptr != "".ptr) {
+                                allocator.free(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// 获取第一条
+        pub fn first(self: *Self) !?T {
+            self.limit_val = 1;
+            const results = try self.get();
+            if (results.len == 0) return null;
+
+            const out = try Self.cloneModel(self.db.allocator, &results[0]);
+
+            for (results) |*m| Self.freeModelStrings(self.db.allocator, m);
+            self.db.allocator.free(results);
+
+            return out;
+        }
+
+        /// 获取第一条（Arena 托管，调用方需 deinit）
+        pub fn firstWithArena(self: *Self, backing_allocator: Allocator) !struct {
+            arena: std.heap.ArenaAllocator,
+            model: ?T,
+            pub fn deinit(ctx: *@This()) void {
+                ctx.arena.deinit();
+            }
+        } {
+            var arena = std.heap.ArenaAllocator.init(backing_allocator);
+            errdefer arena.deinit();
+
+            self.limit_val = 1;
+            const results = try self.get();
+            errdefer self.db.allocator.free(results);
+
+            if (results.len == 0) {
+                self.db.allocator.free(results);
+                return .{ .arena = arena, .model = null };
+            }
+
+            const cloned = try Self.cloneModel(arena.allocator(), &results[0]);
+
+            for (results) |*m| Self.freeModelStrings(self.db.allocator, m);
+            self.db.allocator.free(results);
+
+            return .{ .arena = arena, .model = cloned };
+        }
+
+        /// 获取第一条，如果不存在则报错 (Laravel: firstOrFail)
+        pub fn firstOrFail(self: *Self) !T {
+            return (try self.first()) orelse error.ModelNotFound;
+        }
+
+        /// 获取指定字段的值 (Laravel: value)
+        pub fn value(self: *Self, field_name: []const u8) !?[]const u8 {
+            return self.getValue(field_name);
+        }
+
+        /// 批量更新匹配的记录 (Laravel: update)
+        /// 使用: User.where("status", "=", 0).update(.{ .status = 1 })
+        pub fn update(self: *Self, data: anytype) !u64 {
+            return self.updateBatch(data);
+        }
+
+        /// 批量自增指定字段 (Laravel: increment)
+        pub fn increment(self: *Self, field_name: []const u8, amount: i64) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "UPDATE ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            const clause = try std.fmt.allocPrint(self.db.allocator, " SET {s} = {s} + {d}", .{ field_name, field_name, amount });
+            defer self.db.allocator.free(clause);
+            try sql.appendSlice(self.db.allocator, clause);
+
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.exec(sql_str, .{});
+        }
+
+        /// 批量自减指定字段 (Laravel: decrement)
+        pub fn decrement(self: *Self, field_name: []const u8, amount: i64) !u64 {
+            return self.increment(field_name, -amount);
+        }
+
+        /// 获取数量
+        pub fn count(self: *Self) !u64 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "SELECT COUNT(*) as cnt FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            // 替换 SQL 中的 ? 占位符为实际参数值
+            const final_sql = try self.replacePlaceholders(sql_str);
+            defer self.db.allocator.free(final_sql);
+
+            var result = try self.db.rawQuery(final_sql, .{});
+            defer result.deinit();
+
+            if (result.next()) {
+                const row = result.getCurrentRow() orelse return @intCast(0);
+                return @intCast(row.getInt("cnt") orelse 0);
+            }
+            return 0;
+        }
+
+        /// 删除匹配的记录
+        pub fn delete(self: *Self) !u64 {
+            // 安全检查：防止无条件删除
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            const should_add_soft_delete = has_soft_deletes and has_deleted_at;
+
+            if (self.where_clauses.items.len == 0 and !should_add_soft_delete) {
+                std.log.err("[ORM] 拒绝无条件删除操作: DELETE FROM {s} (必须提供 WHERE 条件)", .{self.table});
+                return error.DeleteWithoutCondition;
+            }
+
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql.deinit(self.db.allocator);
+
+            try sql.appendSlice(self.db.allocator, "DELETE FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+            try self.appendWhere(&sql);
+
+            const sql_str = try sql.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql_str);
+
+            return self.db.exec(sql_str, .{});
+        }
+
+        /// 生成 SQL
+        pub fn toSql(self: *Self) ![]u8 {
+            var sql = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer sql.deinit(self.db.allocator);
+
+            // SELECT
+            try sql.appendSlice(self.db.allocator, "SELECT ");
+            if (self.distinct_flag) {
+                try sql.appendSlice(self.db.allocator, "DISTINCT ");
+            }
+
+            if (self.select_fields.items.len > 0) {
+                for (self.select_fields.items, 0..) |f, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                    try sql.appendSlice(self.db.allocator, f);
+                }
+            } else {
+                // 自动生成带表名前缀的字段列表，避免 JOIN 时字段歧义
+                // 例如: user.id, user.name, ...
+                inline for (core_meta.fields(T), 0..) |field, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                    try sql.appendSlice(self.db.allocator, self.table);
+                    try sql.append(self.db.allocator, '.');
+                    try sql.appendSlice(self.db.allocator, field.name);
+                }
+            }
+
+            // FROM
+            try sql.appendSlice(self.db.allocator, " FROM ");
+            try sql.appendSlice(self.db.allocator, self.table);
+
+            // JOINs
+            for (self.join_clauses.items) |j| {
+                try sql.append(self.db.allocator, ' ');
+                try sql.appendSlice(self.db.allocator, j);
+            }
+
+            // WHERE
+            try self.appendWhere(&sql);
+
+            // GROUP BY
+            if (self.group_fields.items.len > 0) {
+                try sql.appendSlice(self.db.allocator, " GROUP BY ");
+                for (self.group_fields.items, 0..) |f, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                    try sql.appendSlice(self.db.allocator, f);
+                }
+            }
+
+            // HAVING
+            if (self.having_clause) |h| {
+                try sql.appendSlice(self.db.allocator, " HAVING ");
+                try sql.appendSlice(self.db.allocator, h);
+            }
+
+            // ORDER BY
+            if (self.order_clauses.items.len > 0) {
+                try sql.appendSlice(self.db.allocator, " ORDER BY ");
+                for (self.order_clauses.items, 0..) |o, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, ", ");
+                    try sql.appendSlice(self.db.allocator, o);
+                }
+            }
+
+            // LIMIT
+            if (self.limit_val) |lim| {
+                const lim_str = try std.fmt.allocPrint(self.db.allocator, " LIMIT {d}", .{lim});
+                defer self.db.allocator.free(lim_str);
+                try sql.appendSlice(self.db.allocator, lim_str);
+            }
+
+            // OFFSET
+            if (self.offset_val) |off| {
+                const off_str = try std.fmt.allocPrint(self.db.allocator, " OFFSET {d}", .{off});
+                defer self.db.allocator.free(off_str);
+                try sql.appendSlice(self.db.allocator, off_str);
+            }
+
+            const final_sql = try sql.toOwnedSlice(self.db.allocator);
+
+            // 替换占位符为实际参数值（安全转义）
+            if (self.bind_params.items.len > 0) {
+                const replaced = try self.replacePlaceholders(final_sql);
+                self.db.allocator.free(final_sql);
+                return replaced;
+            }
+
+            return final_sql;
+        }
+
+        /// 替换 SQL 中的 ? 占位符为实际参数值（安全转义）
+        fn replacePlaceholders(self: *Self, sql: []const u8) ![]u8 {
+            // 先计算占位符数量
+            var placeholder_count: usize = 0;
+            for (sql) |c| {
+                if (c == '?') placeholder_count += 1;
+            }
+
+            // 校验参数数量
+            if (placeholder_count != self.bind_params.items.len) {
+                std.log.err("Parameter count mismatch in SQL:\n  SQL: {s}\n  Placeholders: {d}\n  Parameters: {d}", .{ sql, placeholder_count, self.bind_params.items.len });
+
+                if (placeholder_count > self.bind_params.items.len) {
+                    return error.TooFewParameters;
+                } else {
+                    return error.TooManyParameters;
+                }
+            }
+
+            var result = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer result.deinit(self.db.allocator);
+
+            var param_idx: usize = 0;
+            var i: usize = 0;
+
+            while (i < sql.len) : (i += 1) {
+                if (sql[i] == '?') {
+                    const param = self.bind_params.items[param_idx];
+                    param_idx += 1;
+
+                    switch (param) {
+                        .string_val => |s| {
+                            try result.append(self.db.allocator, '\'');
+                            // SQL 标准转义
+                            for (s) |c| {
+                                if (c == '\'') {
+                                    try result.appendSlice(self.db.allocator, "''");
+                                } else {
+                                    try result.append(self.db.allocator, c);
+                                }
+                            }
+                            try result.append(self.db.allocator, '\'');
+                        },
+                        .int_val => |n| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{n});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .uint_val => |n| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{n});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .float_val => |f| {
+                            var buf: [32]u8 = undefined;
+                            const str = try std.fmt.bufPrint(&buf, "{d}", .{f});
+                            try result.appendSlice(self.db.allocator, str);
+                        },
+                        .bool_val => |b| {
+                            try result.appendSlice(self.db.allocator, if (b) "1" else "0");
+                        },
+                        .null_val => {
+                            try result.appendSlice(self.db.allocator, "NULL");
+                        },
+                        else => {
+                            return error.UnsupportedParameterType;
+                        },
+                    }
+                } else {
+                    try result.append(self.db.allocator, sql[i]);
+                }
+            }
+
+            return result.toOwnedSlice(self.db.allocator);
+        }
+
+        fn appendWhere(self: *Self, sql: *std.ArrayListUnmanaged(u8)) !void {
+            // 检查是否需要添加软删除条件
+            const has_soft_deletes = comptime soft_deletes.hasSoftDeletes(T);
+            const has_deleted_at = comptime soft_deletes.hasDeletedAtField(T);
+            const should_add_soft_delete = has_soft_deletes and has_deleted_at;
+
+            var has_where = false;
+
+            // 添加软删除条件
+            if (should_add_soft_delete) {
+                const deleted_at_col = comptime soft_deletes.getDeletedAtColumn(T);
+
+                switch (self.soft_delete_mode) {
+                    .exclude_trashed => {
+                        // 默认：排除已删除（deleted_at IS NULL）
+                        if (!has_where) {
+                            try sql.appendSlice(self.db.allocator, " WHERE ");
+                            has_where = true;
+                        } else {
+                            try sql.appendSlice(self.db.allocator, " AND ");
+                        }
+                        try sql.appendSlice(self.db.allocator, deleted_at_col);
+                        try sql.appendSlice(self.db.allocator, " IS NULL");
+                    },
+                    .only_trashed => {
+                        // 只查询已删除（deleted_at IS NOT NULL）
+                        if (!has_where) {
+                            try sql.appendSlice(self.db.allocator, " WHERE ");
+                            has_where = true;
+                        } else {
+                            try sql.appendSlice(self.db.allocator, " AND ");
+                        }
+                        try sql.appendSlice(self.db.allocator, deleted_at_col);
+                        try sql.appendSlice(self.db.allocator, " IS NOT NULL");
+                    },
+                    .with_trashed => {
+                        // 包含已删除：不添加任何条件
+                    },
+                }
+            }
+
+            // 添加用户定义的 WHERE 条件
+            if (self.where_clauses.items.len > 0) {
+                if (!has_where) {
+                    try sql.appendSlice(self.db.allocator, " WHERE ");
+                } else {
+                    try sql.appendSlice(self.db.allocator, " AND ");
+                }
+
+                for (self.where_clauses.items, 0..) |clause, i| {
+                    if (i > 0) try sql.appendSlice(self.db.allocator, " AND ");
+                    try sql.appendSlice(self.db.allocator, clause);
+                }
+            }
+        }
+
+        fn mapResults(self: *Self, result: *interface.ResultSet) ![]T {
+            return self.mapResultsWithAllocator(self.db.allocator, result);
+        }
+
+        fn mapResultsWithAllocator(self: *Self, alloc: Allocator, result: *interface.ResultSet) ![]T {
+            _ = self;
+            var models = std.ArrayListUnmanaged(T){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            errdefer models.deinit(alloc);
+
+            const fields = core_meta.fields(T);
+            var field_indices: [fields.len]?usize = @splat(null);
+
+            // 缓存字段映射索引
+            if (result.field_names.len > 0) {
+                for (result.field_names, 0..) |col_name, col_idx| {
+                    inline for (fields, 0..) |field, f_idx| {
+                        if (std.mem.eql(u8, col_name, field.name)) {
+                            field_indices[f_idx] = col_idx;
+                        }
+                    }
+                }
+            }
+
+            while (result.next()) {
+                const row = result.getCurrentRow() orelse break;
+                var model: T = undefined;
+
+                inline for (fields, 0..) |field, f_idx| {
+                    // 使用缓存索引
+                    var val: ?[]const u8 = null;
+                    if (field_indices[f_idx]) |idx| {
+                        if (idx < row.values.len) {
+                            val = row.values[idx];
+                        }
+                    }
+
+                    if (@typeInfo(field.type) == .optional) {
+                        const child_type = @typeInfo(field.type).optional.child;
+                        if (val) |v| {
+                            // 根据可选类型的子类型进行转换
+                            if (child_type == []const u8) {
+                                @field(model, field.name) = try alloc.dupe(u8, v);
+                            } else if (@typeInfo(child_type) == .int) {
+                                @field(model, field.name) = std.fmt.parseInt(child_type, v, 10) catch null;
+                            } else if (@typeInfo(child_type) == .float) {
+                                @field(model, field.name) = std.fmt.parseFloat(child_type, v) catch null;
+                            } else {
+                                @field(model, field.name) = null;
+                            }
+                        } else {
+                            @field(model, field.name) = null;
+                        }
+                    } else if (field.type == []const u8) {
+                        // 复制字符串到堆内存（避免悬空指针）
+                        if (val) |v| {
+                            @field(model, field.name) = try alloc.dupe(u8, v);
+                        } else {
+                            @field(model, field.name) = "";
+                        }
+                    } else if (@typeInfo(field.type) == .int) {
+                        if (val) |v| {
+                            @field(model, field.name) = std.fmt.parseInt(field.type, v, 10) catch 0;
+                        } else {
+                            @field(model, field.name) = 0;
+                        }
+                    } else if (@typeInfo(field.type) == .float) {
+                        if (val) |v| {
+                            @field(model, field.name) = std.fmt.parseFloat(field.type, v) catch 0;
+                        } else {
+                            @field(model, field.name) = 0;
+                        }
+                    } else if (field.type == bool) {
+                        @field(model, field.name) = if (val) |v| std.mem.eql(u8, v, "1") else false;
+                    }
+                }
+
+                try models.append(alloc, model);
+            }
+
+            return models.toOwnedSlice(alloc);
+        }
+    };
+}
+
+// ============================================================================
+// 关联关系
+// ============================================================================
+
+/// 一对多关联
+pub fn HasMany(comptime _: type, comptime Child: type) type {
+    return struct {
+        pub fn get(db: *Database, parent_id: anytype, foreign_key: []const u8) ![]Child {
+            const child_model = define(Child);
+            var q = child_model.query(db);
+            defer q.deinit();
+            _ = q.where(foreign_key, "=", parent_id);
+            return q.get();
+        }
+    };
+}
+
+/// 属于关联
+pub fn BelongsTo(comptime _: type, comptime Parent: type) type {
+    return struct {
+        pub fn get(db: *Database, foreign_key_value: anytype) !?Parent {
+            const parent_model = define(Parent);
+            return parent_model.find(db, foreign_key_value);
+        }
+    };
+}
+
+// ============================================================================
+// 测试
+// ============================================================================
+
+test "define: 模型定义" {
+    const User = define(struct {
+        pub const table_name = "users";
+        pub const primary_key = "id";
+
+        id: u64,
+        name: []const u8,
+    });
+
+    try std.testing.expectEqualStrings("users", User.tableName());
+    try std.testing.expectEqualStrings("id", User.primaryKey());
+}
+
+test "ModelQuery: SQL生成" {
+    // 模拟的查询测试
+    const UserModel = struct {
+        pub const table_name = "users";
+        id: u64,
+        name: []const u8,
+    };
+
+    const User = define(UserModel);
+
+    // 验证模型定义
+    try std.testing.expectEqualStrings("users", User.tableName());
+    try std.testing.expectEqualStrings("id", User.primaryKey());
+}
+
+// ============================================================================
+// 连接池（用于 MySQL 高并发）
+// ============================================================================
+
+/// 连接池配置
+pub const PoolConfig = struct {
+    /// 最小连接数（预热连接数，池启动时预创建）
+    min_size: usize = 3,
+    /// 最大连接数（硬上限，超过此数后 acquire 会等待或超时）
+    max_size: usize = 30,
+    /// 获取连接的超时时间（毫秒）
+    acquire_timeout_ms: u64 = 5000,
+    /// 空闲连接最大存活时间（毫秒），超时的空闲连接会被回收
+    max_idle_time_ms: u64 = 300_000,
+    /// 连接最大生命周期（毫秒），超过此时间连接会被重建
+    max_lifetime_ms: u64 = 1_800_000,
+    /// 事务超时时间（毫秒）
+    transaction_timeout_ms: u64 = 30_000,
+    /// 空闲连接回收间隔（毫秒），0 表示禁用自动回收
+    idle_eviction_interval_ms: u64 = 120_000,
+};
+
+/// 连接池统计信息
+pub const PoolStats = struct {
+    total: usize,
+    active: usize,
+    idle: usize,
+    in_transaction: usize,
+};
+
+/// 连接包装器
+const PooledConnection = struct {
+    conn: interface.Connection,
+    id: usize,
+    in_use: bool,
+    in_transaction: bool,
+    created_at: i64,
+    last_used: i64,
+    transaction_start: ?i64,
+    broken: bool = false,
+
+    pub fn init(conn: interface.Connection, id: usize) PooledConnection {
+        const now = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+        return .{
+            .conn = conn,
+            .id = id,
+            .in_use = false,
+            .in_transaction = false,
+            .created_at = now,
+            .last_used = now,
+            .transaction_start = null,
+            .broken = false,
+        };
+    }
+
+    pub fn isHealthy(self: *const PooledConnection, config: PoolConfig) bool {
+        const now = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+        if (now - self.created_at > config.max_lifetime_ms) return false;
+        if (!self.in_use and now - self.last_used > config.max_idle_time_ms) return false;
+        if (self.broken) return false;
+        if (self.in_transaction) {
+            if (self.transaction_start) |start| {
+                if (now - start > config.transaction_timeout_ms) return false;
+            }
+        }
+        return true;
+    }
+};
+
+/// MySQL 连接池
+///
+/// 设计原则：
+/// - 有界池：max_size 硬上限，超出的 acquire 会等待或超时
+/// - 快速路径：优先从空闲栈获取（LIFO，利用热连接）
+/// - 慢速路径：池满时等待条件变量，释放时通知
+/// - 健康检查：acquire 时验证连接有效性，无效则重建
+/// - 自动回收：后台线程定期清理空闲超时、超生命周期的连接
+/// - 优雅关闭：deinit 先标记关闭，广播唤醒所有等待者，再逐一销毁
+///
+/// 内存所有权：
+/// - ConnectionPool 拥有 all_connections 中所有 PooledConnection
+/// - 每个 PooledConnection 拥有其 conn (interface.Connection)
+/// - idle_connections 是 all_connections 中空闲连接的引用子集
+///
+/// 线程安全：
+/// - state_mutex：保护 all_connections 和 closed 状态
+/// - idle_mutex：保护 idle_connections 列表
+/// - condition：用于等待可用连接（与 state_mutex 关联）
+pub const ConnectionPool = struct {
+    allocator: Allocator,
+    config: PoolConfig,
+    db_config: interface.MySQLConfig,
+
+    all_connections: std.ArrayListUnmanaged(*PooledConnection),
+    idle_connections: std.ArrayListUnmanaged(*PooledConnection),
+
+    state_mutex: std.Io.Mutex = .init,
+    idle_mutex: std.Io.Mutex = .init,
+    condition: std.Io.Condition = .init,
+    next_id: usize = 0,
+    closed: bool = false,
+    eviction_thread: ?std.Thread = null,
+
+    pub fn init(allocator: Allocator, db_config: interface.MySQLConfig, pool_config: PoolConfig) !ConnectionPool {
+        var pool = ConnectionPool{
+            .allocator = allocator,
+            .config = pool_config,
+            .db_config = db_config,
+            .all_connections = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+            .idle_connections = .{ .items = &.{}, .capacity = 0, .pointer_stability = .{} },
+            .next_id = 0,
+            .closed = false,
+            .eviction_thread = null,
+        };
+
+        for (0..pool_config.min_size) |_| {
+            const conn = try interface.Driver.mysql(allocator, db_config);
+            const pooled = try allocator.create(PooledConnection);
+            pooled.* = PooledConnection.init(conn, pool.next_id);
+            pool.next_id += 1;
+
+            try pool.all_connections.append(allocator, pooled);
+            try pool.idle_connections.append(allocator, pooled);
+        }
+
+        return pool;
+    }
+
+    /// 启动空闲连接回收线程
+    pub fn startEviction(self: *ConnectionPool) !void {
+        if (self.config.idle_eviction_interval_ms == 0) return;
+        if (self.eviction_thread != null) return;
+        self.eviction_thread = try std.Thread.spawn(.{}, evictionWorker, .{self});
+    }
+
+    fn evictionWorker(self: *ConnectionPool) void {
+        while (true) {
+            const interval_ns = @as(u64, self.config.idle_eviction_interval_ms) * std.time.ns_per_ms;
+            var ts = std.c.timespec{ .sec = @intCast(interval_ns / std.time.ns_per_s), .nsec = @intCast(interval_ns % std.time.ns_per_s) };
+            _ = std.c.nanosleep(&ts, null);
+
+            self.state_mutex.lockUncancelable(core_io.getIo());
+            if (self.closed) {
+                self.state_mutex.unlock(core_io.getIo());
+                break;
+            }
+            self.state_mutex.unlock(core_io.getIo());
+
+            var to_destroy = std.ArrayListUnmanaged(*PooledConnection){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer to_destroy.deinit(self.allocator);
+
+            self.idle_mutex.lockUncancelable(core_io.getIo());
+            var i: usize = 0;
+            while (i < self.idle_connections.items.len) {
+                const conn = self.idle_connections.items[i];
+                if (!conn.in_use and !conn.isHealthy(self.config)) {
+                    _ = self.idle_connections.swapRemove(i);
+                    to_destroy.append(self.allocator, conn) catch {};
+                } else {
+                    i += 1;
+                }
+            }
+            self.idle_mutex.unlock(core_io.getIo());
+
+            for (to_destroy.items) |conn| {
+                conn.conn.deinit();
+
+                self.state_mutex.lockUncancelable(core_io.getIo());
+                for (self.all_connections.items, 0..) |p, k| {
+                    if (p == conn) {
+                        _ = self.all_connections.swapRemove(k);
+                        break;
+                    }
+                }
+                self.state_mutex.unlock(core_io.getIo());
+
+                self.allocator.destroy(conn);
+            }
+        }
+    }
+
+    pub fn deinit(self: *ConnectionPool) void {
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        self.closed = true;
+        self.state_mutex.unlock(core_io.getIo());
+
+        self.condition.broadcast(core_io.getIo());
+
+        if (self.eviction_thread) |thread| {
+            thread.join();
+        }
+
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        defer self.state_mutex.unlock(core_io.getIo());
+        self.idle_mutex.lockUncancelable(core_io.getIo());
+        defer self.idle_mutex.unlock(core_io.getIo());
+
+        for (self.all_connections.items) |pooled| {
+            pooled.conn.deinit();
+            self.allocator.destroy(pooled);
+        }
+
+        self.all_connections.deinit(self.allocator);
+        self.idle_connections.deinit(self.allocator);
+    }
+
+    /// 获取连接
+    ///
+    /// 三级策略：
+    /// 1. 快速路径：从空闲栈获取（O(1)），验证健康后返回
+    /// 2. 中速路径：池未满时创建新连接
+    /// 3. 慢速路径：池满时等待条件变量，超时则返回 AcquireTimeout
+    pub fn acquire(self: *ConnectionPool) !*PooledConnection {
+        const deadline = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds() + @as(i64, @intCast(self.config.acquire_timeout_ms));
+
+        while (true) {
+            // 快速路径：从空闲栈获取
+            self.idle_mutex.lockUncancelable(core_io.getIo());
+
+            if (self.idle_connections.items.len > 0) {
+                const pooled = self.idle_connections.swapRemove(self.idle_connections.items.len - 1);
+                self.idle_mutex.unlock(core_io.getIo());
+
+                if (pooled.isHealthy(self.config)) {
+                    if (pooled.conn.exec("SELECT 1")) |_| {
+                        pooled.in_use = true;
+                        pooled.last_used = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+                        return pooled;
+                    } else |_| {
+                        pooled.broken = true;
+                    }
+                }
+
+                // 不健康则尝试重建
+                pooled.conn.deinit();
+                if (interface.Driver.mysql(self.allocator, self.db_config)) |new_conn| {
+                    pooled.conn = new_conn;
+                    pooled.created_at = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+                    pooled.last_used = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+                    pooled.in_use = true;
+                    pooled.broken = false;
+                    return pooled;
+                } else |_| {
+                    self.state_mutex.lockUncancelable(core_io.getIo());
+                    for (self.all_connections.items, 0..) |p, k| {
+                        if (p == pooled) {
+                            _ = self.all_connections.swapRemove(k);
+                            break;
+                        }
+                    }
+                    self.state_mutex.unlock(core_io.getIo());
+                    self.allocator.destroy(pooled);
+                    return error.ConnectionFailed;
+                }
+            }
+            self.idle_mutex.unlock(core_io.getIo());
+
+            // 中速路径：创建新连接
+            self.state_mutex.lockUncancelable(core_io.getIo());
+
+            if (self.closed) {
+                self.state_mutex.unlock(core_io.getIo());
+                return error.PoolClosed;
+            }
+
+            if (self.all_connections.items.len < self.config.max_size) {
+                self.state_mutex.unlock(core_io.getIo());
+
+                var conn = interface.Driver.mysql(self.allocator, self.db_config) catch |err| {
+                    return err;
+                };
+
+                self.state_mutex.lockUncancelable(core_io.getIo());
+
+                if (self.closed) {
+                    conn.deinit();
+                    self.state_mutex.unlock(core_io.getIo());
+                    return error.PoolClosed;
+                }
+
+                if (self.all_connections.items.len < self.config.max_size) {
+                    const pooled = self.allocator.create(PooledConnection) catch |err| {
+                        conn.deinit();
+                        self.state_mutex.unlock(core_io.getIo());
+                        return err;
+                    };
+                    pooled.* = PooledConnection.init(conn, self.next_id);
+                    self.next_id += 1;
+                    pooled.in_use = true;
+
+                    self.all_connections.append(self.allocator, pooled) catch |err| {
+                        conn.deinit();
+                        self.allocator.destroy(pooled);
+                        self.state_mutex.unlock(core_io.getIo());
+                        return err;
+                    };
+
+                    self.state_mutex.unlock(core_io.getIo());
+                    return pooled;
+                } else {
+                    conn.deinit();
+                }
+            }
+
+            // 慢速路径：等待
+            const now = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+            if (now >= deadline) {
+                self.state_mutex.unlock(core_io.getIo());
+                return error.AcquireTimeout;
+            }
+
+            const wait_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
+            self.condition.waitTimeout(core_io.getIo(), &self.state_mutex, .{ .duration = .{ .raw = std.Io.Duration.fromNanoseconds(wait_ns), .clock = .real } }) catch {};
+            self.state_mutex.unlock(core_io.getIo());
+        }
+    }
+
+    /// 归还连接
+    ///
+    /// - 清理事务状态（未提交事务自动回滚）
+    /// - 损坏连接直接销毁并从池移除
+    /// - 健康连接放入空闲栈，通知等待者
+    pub fn release(self: *ConnectionPool, conn: *PooledConnection) void {
+        if (conn.in_transaction) {
+            conn.conn.rollback() catch {};
+            conn.in_transaction = false;
+            conn.transaction_start = null;
+        }
+
+        conn.in_use = false;
+        conn.last_used = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+
+        if (conn.broken) {
+            conn.conn.deinit();
+
+            self.state_mutex.lockUncancelable(core_io.getIo());
+            for (self.all_connections.items, 0..) |p, i| {
+                if (p == conn) {
+                    _ = self.all_connections.swapRemove(i);
+                    break;
+                }
+            }
+            self.state_mutex.unlock(core_io.getIo());
+
+            self.allocator.destroy(conn);
+            self.condition.signal(core_io.getIo());
+            return;
+        }
+
+        self.idle_mutex.lockUncancelable(core_io.getIo());
+        self.idle_connections.append(self.allocator, conn) catch {
+            self.idle_mutex.unlock(core_io.getIo());
+
+            self.state_mutex.lockUncancelable(core_io.getIo());
+            for (self.all_connections.items, 0..) |p, i| {
+                if (p == conn) {
+                    _ = self.all_connections.swapRemove(i);
+                    break;
+                }
+            }
+            self.state_mutex.unlock(core_io.getIo());
+
+            conn.conn.deinit();
+            self.allocator.destroy(conn);
+            return;
+        };
+        self.idle_mutex.unlock(core_io.getIo());
+
+        self.condition.signal(core_io.getIo());
+    }
+
+    /// 获取池统计信息
+    pub fn getStats(self: *ConnectionPool) PoolStats {
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        const total = self.all_connections.items.len;
+        self.state_mutex.unlock(core_io.getIo());
+
+        self.idle_mutex.lockUncancelable(core_io.getIo());
+        const idle = self.idle_connections.items.len;
+        self.idle_mutex.unlock(core_io.getIo());
+
+        return PoolStats{
+            .total = total,
+            .active = if (total >= idle) total - idle else 0,
+            .idle = idle,
+            .in_transaction = 0,
+        };
+    }
+
+    /// 检查连接池整体健康状态
+    pub fn isHealthy(self: *ConnectionPool) bool {
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        defer self.state_mutex.unlock(core_io.getIo());
+
+        if (self.closed) return false;
+        if (self.all_connections.items.len == 0) return false;
+
+        self.idle_mutex.lockUncancelable(core_io.getIo());
+        defer self.idle_mutex.unlock(core_io.getIo());
+        return self.idle_connections.items.len > 0 or
+            self.all_connections.items.len < self.config.max_size;
+    }
+
+    /// 手动维护：清理过期连接并补充至 min_size
+    pub fn maintain(self: *ConnectionPool) !void {
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        if (self.closed) {
+            self.state_mutex.unlock(core_io.getIo());
+            return;
+        }
+        self.state_mutex.unlock(core_io.getIo());
+
+        var to_destroy = std.ArrayListUnmanaged(*PooledConnection){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+        defer to_destroy.deinit(self.allocator);
+
+        self.idle_mutex.lockUncancelable(core_io.getIo());
+        var i: usize = 0;
+        while (i < self.idle_connections.items.len) {
+            const conn = self.idle_connections.items[i];
+            if (!conn.isHealthy(self.config)) {
+                _ = self.idle_connections.swapRemove(i);
+                to_destroy.append(self.allocator, conn) catch {};
+            } else {
+                i += 1;
+            }
+        }
+        self.idle_mutex.unlock(core_io.getIo());
+
+        for (to_destroy.items) |conn| {
+            conn.conn.deinit();
+
+            self.state_mutex.lockUncancelable(core_io.getIo());
+            for (self.all_connections.items, 0..) |p, k| {
+                if (p == conn) {
+                    _ = self.all_connections.swapRemove(k);
+                    break;
+                }
+            }
+            self.state_mutex.unlock(core_io.getIo());
+
+            self.allocator.destroy(conn);
+        }
+
+        self.state_mutex.lockUncancelable(core_io.getIo());
+        const current_count = self.all_connections.items.len;
+        self.state_mutex.unlock(core_io.getIo());
+
+        if (current_count < self.config.min_size and current_count < self.config.max_size) {
+            const need = @min(self.config.min_size - current_count, self.config.max_size - current_count);
+            for (0..need) |_| {
+                const conn = interface.Driver.mysql(self.allocator, self.db_config) catch continue;
+                const pooled = self.allocator.create(PooledConnection) catch {
+                    conn.deinit();
+                    continue;
+                };
+
+                self.state_mutex.lockUncancelable(core_io.getIo());
+                pooled.* = PooledConnection.init(conn, self.next_id);
+                self.next_id += 1;
+                self.all_connections.append(self.allocator, pooled) catch {
+                    self.state_mutex.unlock(core_io.getIo());
+                    conn.deinit();
+                    self.allocator.destroy(pooled);
+                    continue;
+                };
+                self.state_mutex.unlock(core_io.getIo());
+
+                self.idle_mutex.lockUncancelable(core_io.getIo());
+                self.idle_connections.append(self.allocator, pooled) catch {};
+                self.idle_mutex.unlock(core_io.getIo());
+            }
+        }
+    }
+};
+pub const Transaction = struct {
+    pool: *ConnectionPool,
+    conn: *PooledConnection,
+    committed: bool = false,
+    rolled_back: bool = false,
+
+    pub fn init(pool: *ConnectionPool) !Transaction {
+        const conn = try pool.acquire();
+
+        conn.in_transaction = true;
+        conn.transaction_start = std.Io.Timestamp.now(core_io.getIo(), .real).toMilliseconds();
+
+        try conn.conn.beginTransaction();
+
+        return Transaction{
+            .pool = pool,
+            .conn = conn,
+            .committed = false,
+            .rolled_back = false,
+        };
+    }
+
+    pub fn deinit(self: *Transaction) void {
+        if (!self.committed and !self.rolled_back) {
+            self.rollback() catch {};
+        }
+
+        self.pool.release(self.conn);
+    }
+
+    pub fn commit(self: *Transaction) !void {
+        if (self.committed or self.rolled_back) {
+            return error.TransactionAlreadyFinished;
+        }
+
+        try self.conn.conn.commit();
+        self.committed = true;
+
+        self.conn.in_transaction = false;
+        self.conn.transaction_start = null;
+    }
+
+    pub fn rollback(self: *Transaction) !void {
+        if (self.committed or self.rolled_back) {
+            return error.TransactionAlreadyFinished;
+        }
+
+        try self.conn.conn.rollback();
+        self.rolled_back = true;
+
+        self.conn.in_transaction = false;
+        self.conn.transaction_start = null;
+    }
+
+    pub fn query(self: *Transaction, sql: []const u8) !interface.ResultSet {
+        if (self.committed or self.rolled_back) {
+            return error.TransactionAlreadyFinished;
+        }
+
+        return self.conn.conn.query(sql);
+    }
+
+    pub fn exec(self: *Transaction, sql: []const u8) !u64 {
+        if (self.committed or self.rolled_back) {
+            return error.TransactionAlreadyFinished;
+        }
+
+        return self.conn.conn.exec(sql);
+    }
+
+    /// 别名：与 Database 接口兼容
+    pub fn rawExec(self: *Transaction, sql: []const u8) !u64 {
+        return self.exec(sql);
+    }
+
+    /// 别名：与 Database 接口兼容
+    pub fn rawQuery(self: *Transaction, sql: []const u8) !interface.ResultSet {
+        return self.query(sql);
+    }
+};
+
+// ============================================================================
+// 关联查询构建器
+// ============================================================================
+
+/// 关联类型
+pub const RelationType = enum {
+    has_one,
+    has_many,
+    belongs_to,
+};
+
+/// 关联查询构建器
+/// 用于处理 hasOne, hasMany, belongsTo 关联
+pub fn RelationQuery(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const Model = define(T);
+
+        db: *Database,
+        foreign_key: []const u8,
+        foreign_value: u64,
+        relation_type: RelationType,
+        conditions: std.ArrayListUnmanaged(Condition),
+        order_items: std.ArrayListUnmanaged(OrderItem),
+        limit_val: ?u64,
+
+        const Condition = struct {
+            sql: []const u8,
+            owns_sql: bool,
+        };
+
+        const OrderItem = struct {
+            field: []const u8,
+            dir: query_mod.OrderDir,
+        };
+
+        pub fn init(db: *Database, foreign_key: []const u8, foreign_value: u64, relation_type: RelationType) Self {
+            return Self{
+                .db = db,
+                .foreign_key = foreign_key,
+                .foreign_value = foreign_value,
+                .relation_type = relation_type,
+                .conditions = .{},
+                .order_items = .{},
+                .limit_val = null,
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            for (self.conditions.items) |cond| {
+                if (cond.owns_sql) {
+                    self.db.allocator.free(cond.sql);
+                }
+            }
+            self.conditions.deinit(self.db.allocator);
+            self.order_items.deinit(self.db.allocator);
+        }
+
+        /// 添加额外条件
+        pub fn where(self: *Self, field: []const u8, op: []const u8, value: anytype) *Self {
+            const sql = formatWhere(self.db.allocator, field, op, value) catch return self;
+            self.conditions.append(self.db.allocator, .{ .sql = sql, .owns_sql = true }) catch {};
+            return self;
+        }
+
+        /// 排序
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
+            self.order_items.append(self.db.allocator, .{ .field = field, .dir = dir }) catch {};
+            return self;
+        }
+
+        /// 限制数量
+        pub fn limit(self: *Self, n: u64) *Self {
+            self.limit_val = n;
+            return self;
+        }
+
+        /// 获取关联数据
+        pub fn get(self: *Self) ![]T {
+            defer self.deinit();
+
+            var sql_buf = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql_buf.deinit(self.db.allocator);
+
+            try sql_buf.appendSlice(self.db.allocator, "SELECT * FROM ");
+            try sql_buf.appendSlice(self.db.allocator, Model.tableName());
+            try sql_buf.appendSlice(self.db.allocator, " WHERE ");
+            try sql_buf.appendSlice(self.db.allocator, self.foreign_key);
+            try sql_buf.appendSlice(self.db.allocator, " = ");
+
+            var id_buf: [32]u8 = undefined;
+            const id_str = std.fmt.bufPrint(&id_buf, "{d}", .{self.foreign_value}) catch "0";
+            try sql_buf.appendSlice(self.db.allocator, id_str);
+
+            // 添加额外条件
+            for (self.conditions.items) |cond| {
+                try sql_buf.appendSlice(self.db.allocator, " AND ");
+                try sql_buf.appendSlice(self.db.allocator, cond.sql);
+            }
+
+            // 排序
+            if (self.order_items.items.len > 0) {
+                try sql_buf.appendSlice(self.db.allocator, " ORDER BY ");
+                for (self.order_items.items, 0..) |item, i| {
+                    if (i > 0) try sql_buf.appendSlice(self.db.allocator, ", ");
+                    try sql_buf.appendSlice(self.db.allocator, item.field);
+                    try sql_buf.appendSlice(self.db.allocator, if (item.dir == .desc) " DESC" else " ASC");
+                }
+            }
+
+            // 限制
+            if (self.limit_val) |lim| {
+                try sql_buf.appendSlice(self.db.allocator, " LIMIT ");
+                var lim_buf: [32]u8 = undefined;
+                const lim_str = std.fmt.bufPrint(&lim_buf, "{d}", .{lim}) catch "1";
+                try sql_buf.appendSlice(self.db.allocator, lim_str);
+            } else if (self.relation_type == .has_one or self.relation_type == .belongs_to) {
+                try sql_buf.appendSlice(self.db.allocator, " LIMIT 1");
+            }
+
+            const sql = try sql_buf.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql);
+
+            var result = try self.db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            return mapResults(T, self.db.allocator, &result);
+        }
+
+        /// 获取第一条关联记录
+        pub fn first(self: *Self) !?T {
+            _ = self.limit(1);
+            const results = try self.get();
+            if (results.len == 0) return null;
+            defer self.db.allocator.free(results);
+            return results[0];
+        }
+
+        /// 获取关联数量
+        pub fn count(self: *Self) !u64 {
+            var sql_buf = std.ArrayListUnmanaged(u8){ .items = &.{}, .capacity = 0, .pointer_stability = .{} };
+            defer sql_buf.deinit(self.db.allocator);
+
+            try sql_buf.appendSlice(self.db.allocator, "SELECT COUNT(*) as cnt FROM ");
+            try sql_buf.appendSlice(self.db.allocator, Model.tableName());
+            try sql_buf.appendSlice(self.db.allocator, " WHERE ");
+            try sql_buf.appendSlice(self.db.allocator, self.foreign_key);
+            try sql_buf.appendSlice(self.db.allocator, " = ");
+
+            var id_buf: [32]u8 = undefined;
+            const id_str = std.fmt.bufPrint(&id_buf, "{d}", .{self.foreign_value}) catch "0";
+            try sql_buf.appendSlice(self.db.allocator, id_str);
+
+            // 添加额外条件
+            for (self.conditions.items) |cond| {
+                try sql_buf.appendSlice(self.db.allocator, " AND ");
+                try sql_buf.appendSlice(self.db.allocator, cond.sql);
+            }
+
+            const sql = try sql_buf.toOwnedSlice(self.db.allocator);
+            defer self.db.allocator.free(sql);
+
+            var result = try self.db.rawQuery(sql, .{});
+            defer result.deinit();
+
+            if (result.next()) |row| {
+                if (row.getString("cnt")) |cnt_str| {
+                    return std.fmt.parseInt(u64, cnt_str, 10) catch 0;
+                }
+            }
+            return 0;
+        }
+
+        /// 检查是否存在关联
+        pub fn exists(self: *Self) !bool {
+            const cnt = try self.count();
+            self.deinit();
+            return cnt > 0;
+        }
+
+        /// 获取并返回 List 包装器
+        pub fn collect(self: *Self) !Model.List {
+            const data = try self.get();
+            return Model.List{ .allocator = self.db.allocator, .data = data };
+        }
+    };
+}
+
+/// 预加载查询构建器 (With)
+/// 用于预加载关联数据，避免 N+1 查询问题
+pub fn WithQuery(comptime T: type, comptime Related: type) type {
+    return struct {
+        const Self = @This();
+        const MainModel = define(T);
+        const RelatedModel = define(Related);
+
+        db: *Database,
+        foreign_key: []const u8,
+        conditions: std.ArrayListUnmanaged(Condition),
+        order_items: std.ArrayListUnmanaged(OrderItem),
+        limit_val: ?u64,
+
+        const Condition = struct {
+            sql: []const u8,
+            owns_sql: bool,
+        };
+
+        const OrderItem = struct {
+            field: []const u8,
+            dir: query_mod.OrderDir,
+        };
+
+        /// 预加载结果
+        pub const WithResult = struct {
+            main: T,
+            related: []Related,
+        };
+
+        pub fn init(db: *Database, foreign_key: []const u8) Self {
+            return Self{
+                .db = db,
+                .foreign_key = foreign_key,
+                .conditions = .{},
+                .order_items = .{},
+                .limit_val = null,
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            for (self.conditions.items) |cond| {
+                if (cond.owns_sql) {
+                    self.db.allocator.free(cond.sql);
+                }
+            }
+            self.conditions.deinit(self.db.allocator);
+            self.order_items.deinit(self.db.allocator);
+        }
+
+        /// 添加主模型条件
+        pub fn where(self: *Self, field: []const u8, op: []const u8, value: anytype) *Self {
+            const sql = formatWhere(self.db.allocator, field, op, value) catch return self;
+            self.conditions.append(self.db.allocator, .{ .sql = sql, .owns_sql = true }) catch {};
+            return self;
+        }
+
+        /// 排序
+        pub fn orderBy(self: *Self, field: []const u8, dir: query_mod.OrderDir) *Self {
+            self.order_items.append(self.db.allocator, .{ .field = field, .dir = dir }) catch {};
+            return self;
+        }
+
+        /// 限制数量
+        pub fn limit(self: *Self, n: u64) *Self {
+            self.limit_val = n;
+            return self;
+        }
+
+        /// 获取主模型及其关联数据
+        pub fn get(self: *Self) ![]WithResult {
+            defer self.deinit();
+
+            // 1. 先获取主模型
+            var main_query = MainModel.Query();
+            defer main_query.deinit();
+
+            for (self.conditions.items) |cond| {
+                _ = main_query.whereRaw(cond.sql);
+            }
+            for (self.order_items.items) |item| {
+                _ = main_query.orderBy(item.field, item.dir);
+            }
+            if (self.limit_val) |lim| {
+                _ = main_query.limit(lim);
+            }
+
+            const mains = try main_query.get();
+            if (mains.len == 0) {
+                return &[_]WithResult{};
+            }
+
+            // 2. 收集主键 ID
+            var ids = std.ArrayList(u64).init(self.db.allocator);
+            defer ids.deinit();
+
+            const pk = MainModel.primaryKey();
+            for (mains) |main| {
+                inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                    if (std.mem.eql(u8, field.name, pk)) {
+                        try ids.append(@field(main, field.name));
+                        break;
+                    }
+                }
+            }
+
+            // 3. 批量查询关联数据 (避免 N+1)
+            var related_query = RelatedModel.Query();
+            defer related_query.deinit();
+            _ = related_query.whereIn(self.foreign_key, ids.items);
+
+            const all_related = try related_query.get();
+            defer self.db.allocator.free(all_related);
+
+            // 4. 组装结果
+            var results = std.ArrayList(WithResult).init(self.db.allocator);
+            errdefer results.deinit();
+
+            for (mains) |main| {
+                var main_id: u64 = 0;
+                inline for (@typeInfo(T).@"struct".field_names, @typeInfo(T).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                    if (std.mem.eql(u8, field.name, pk)) {
+                        main_id = @field(main, field.name);
+                        break;
+                    }
+                }
+
+                // 收集该主模型的关联
+                var related_list = std.ArrayList(Related).init(self.db.allocator);
+                for (all_related) |rel| {
+                    var rel_fk: u64 = 0;
+                    inline for (@typeInfo(Related).@"struct".field_names, @typeInfo(Related).@"struct".field_types) |fieldn, fieldt| { const field = .{ .name = fieldn, .type = fieldt };
+                        if (std.mem.eql(u8, field.name, self.foreign_key)) {
+                            const val = @field(rel, field.name);
+                            if (@TypeOf(val) == u64) {
+                                rel_fk = val;
+                            } else if (@TypeOf(val) == ?u64) {
+                                rel_fk = val orelse 0;
+                            } else if (@TypeOf(val) == u32) {
+                                rel_fk = val;
+                            } else if (@TypeOf(val) == ?u32) {
+                                rel_fk = val orelse 0;
+                            }
+                            break;
+                        }
+                    }
+                    if (rel_fk == main_id) {
+                        try related_list.append(rel);
+                    }
+                }
+
+                try results.append(.{
+                    .main = main,
+                    .related = try related_list.toOwnedSlice(),
+                });
+            }
+
+            return results.toOwnedSlice();
+        }
+
+        /// 释放 WithResult 数组
+        pub fn freeResults(allocator: Allocator, results: []WithResult) void {
+            for (results) |result| {
+                for (result.related) |*rel| {
+                    var r = rel.*;
+                    RelatedModel.freeModel(allocator, &r);
+                }
+                allocator.free(result.related);
+                var m = result.main;
+                MainModel.freeModel(allocator, &m);
+            }
+            allocator.free(results);
+        }
+    };
+}
+
+// ============================================================================
+// 数据库迁移器
+// ============================================================================
+
+/// 迁移器 - 支持多模型批量操作
+/// 使用示例:
+/// ```zig
+/// const Migrator = orm.Migrator;
+///
+/// // 创建所有表
+/// try Migrator.createAll(&db, .{
+///     orm_models.Admin,
+///     orm_models.Article,
+///     orm_models.Category,
+/// });
+///
+/// // 删除所有表
+/// try Migrator.dropAll(&db, .{
+///     orm_models.Category,
+///     orm_models.Article,
+///     orm_models.Admin,
+/// });
+///
+/// // 打印所有建表语句
+/// Migrator.printSql(.mysql, .{
+///     orm_models.Admin,
+///     orm_models.Article,
+/// });
+/// ```
+pub const Migrator = struct {
+    /// 批量创建表
+    pub fn createAll(db: *Database, comptime models: anytype) !void {
+        inline for (models) |Model| {
+            try Model.createTable(db);
+        }
+    }
+
+    /// 批量删除表
+    pub fn dropAll(db: *Database, comptime models: anytype) !void {
+        inline for (models) |Model| {
+            try Model.dropTable(db);
+        }
+    }
+
+    /// 刷新表（删除后重建）
+    pub fn refreshAll(db: *Database, comptime drop_order: anytype, comptime create_order: anytype) !void {
+        inline for (drop_order) |Model| {
+            try Model.dropTable(db);
+        }
+        inline for (create_order) |Model| {
+            try Model.createTable(db);
+        }
+    }
+
+    /// 打印所有建表语句（调试用）
+    pub fn printSql(comptime dialect: Dialect, comptime models: anytype) void {
+        std.debug.print("\n========== Migration SQL ({s}) ==========\n\n", .{@tagName(dialect)});
+        inline for (models) |Model| {
+            std.debug.print("-- {s}\n{s}\n\n", .{ Model.tableName(), Model.createTableSql(dialect) });
+        }
+        std.debug.print("==========================================\n", .{});
+    }
+
+    /// 打印所有删表语句
+    pub fn printDropSql(comptime models: anytype) void {
+        std.debug.print("\n========== Drop SQL ==========\n\n", .{});
+        inline for (models) |Model| {
+            std.debug.print("{s}\n", .{Model.dropTableSql()});
+        }
+        std.debug.print("==============================\n", .{});
+    }
+
+    /// 获取建表 SQL 数组（运行时）
+    pub fn getCreateSqlList(comptime dialect: Dialect, comptime models: anytype, allocator: Allocator) ![][]const u8 {
+        var list = std.ArrayList([]const u8).init(allocator);
+        errdefer list.deinit();
+
+        inline for (models) |Model| {
+            try list.append(Model.createTableSql(dialect));
+        }
+
+        return list.toOwnedSlice();
+    }
+};

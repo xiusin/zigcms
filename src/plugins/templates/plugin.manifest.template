@@ -1,0 +1,39 @@
+const plugin = @import("../plugin_interface.zig");
+const manifest_mod = @import("../plugin_manifest.zig");
+
+pub const manifest = manifest_mod.Manifest{
+    .id = "com.example.myplugin",
+    .name = "MyPlugin",
+    .version = .{ .major = 1, .minor = 0, .patch = 0 },
+    .author = "Your Name",
+    .license = "MIT",
+    .homepage = "https://example.com/myplugin",
+    .description = "Brief description of what your plugin does",
+
+    .api_version = plugin.PLUGIN_API_VERSION,
+    .zig_version_min = "0.15.0",
+    .zig_version_max = null,
+    .host_version_min = null,
+
+    .dependencies = &[_]manifest_mod.PluginDependency{},
+    .conflicts = &[_][]const u8{},
+
+    .capabilities = plugin.PluginCapabilities{
+        .http_handlers = true,
+        .custom_routes = true,
+        .event_listener = true,
+    },
+
+    .required_permissions = &[_]manifest_mod.Permission{
+        .filesystem_read,
+        .http_register_routes,
+        .event_publish,
+        .event_subscribe,
+    },
+
+    .max_memory_mb = 128,
+    .max_threads = 4,
+
+    .checksum_sha256 = null,
+    .signature = null,
+};

@@ -1,0 +1,11 @@
+{
+  "db_engine": "mysql",
+  "db_host": "127.0.0.1",
+  "db_port": 3306,
+  "db_name": "zigcms",
+  "db_user": "zigcms",
+  "db_password": "CHANGE_ME",
+  "cache_host": "127.0.0.1",
+  "cache_port": 6379,
+  "http_timeout_ms": 5000
+}

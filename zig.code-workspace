@@ -1,0 +1,60 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "extensions": {
+        "recommendations": [
+            "ziglang.vscode-zig",
+            "lorenzopirro.zig-snippets",
+            "bwork.zig-tools",
+            "streetsidesoftware.code-spell-checker",
+            "MS-CEINTL.vscode-language-pack-zh-hans",
+            "k--kato.intellij-idea-keybindings",
+            "anweber.vscode-httpyac",
+            "mk12.better-git-line-blame",
+            "ianic.zig-language-extras",
+            "lorenzopirro.zig-snippets",
+            "levrotech.zig-znippets",
+        ]
+    },
+    "settings": {
+        "editor.fontSize": 12,
+        "editor.fontFamily": "'FiraCode Nerd Font Mono','Hack Nerd Font Mono', Hack, Fira Code, Menlo, Monaco, 'Courier New', monospace",
+        "editor.autoIndent": "advanced",
+        "editor.fontLigatures": true,
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": true,
+        "zig.zls.inlayHintsShowVariableTypeHints": true,
+        "zig.zls.inlayHintsShowParameterName": true,
+        "editor.gotoLocation.alternativeDeclarationCommand": "editor.action.revealDefinition",
+        "editor.gotoLocation.alternativeDefinitionCommand": "editor.action.revealDefinition",
+        "editor.gotoLocation.alternativeTypeDefinitionCommand": "editor.action.revealDefinition",
+        "editor.selectionHighlight": false,
+        "files.autoSave": "afterDelay",
+        "editor.suggest.snippetsPreventQuickSuggestions": false,
+        "editor.quickSuggestions": {
+            "other": "on",
+            "comments": "off",
+            "strings": "on"
+        },
+        "cSpell.words": [
+            "dtos",
+            "Feishu",
+            "layui",
+            "webui"
+        ],
+        "files.exclude": {
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/Thumbs.db": true,
+            "**/.zig-cache": true,
+            "**/zig-out": true,
+            "**/target": true,
+        }
+    }
+}

@@ -1,0 +1,594 @@
+//! Bootstrap 模块 - 系统启动编排
+//!
+//! 职责：
+//! - 按正确顺序初始化各层
+//! - 注册路由
+//! - 配置服务
+//! - 提供启动摘要信息
+
+const std = @import("std");
+const core_io = @import("../core/io.zig");
+const zigcms = @import("../../root.zig");
+const logger = @import("../application/services/logger/logger.zig");
+const App = @import("App.zig").App;
+const controllers = @import("controllers/mod.zig");
+const models = @import("../domain/entities/mod.zig");
+const zap = @import("zap");
+
+const DIContainer = @import("../core/di/container.zig").DIContainer;
+const AppContext = @import("../core/context/app_context.zig").AppContext;
+
+/// MCP 控制器包装器（全局定义以便类型安全释放）
+const McpEndpoint = struct {
+    path: []const u8,
+    error_strategy: zap.Endpoint.ErrorStrategy = .log_to_console,
+    server: *@import("../mcp/mod.zig").McpServer,
+
+    pub fn get(self: *@This(), req: zap.Request) !void {
+        std.log.info("🔵 MCP GET 请求", .{});
+        var mutable_req = req;
+        try self.server.sse_transport.handleSse(&mutable_req);
+    }
+
+    pub fn post(self: *@This(), req: zap.Request) !void {
+        std.log.info("🟢 MCP POST 请求", .{});
+        var mutable_req = req;
+        try self.server.sse_transport.handleMessage(&mutable_req);
+    }
+};
+
+/// Bootstrap 模块 - 系统启动编排器
+pub const Bootstrap = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+    app: *App,
+    global_logger: *logger.Logger,
+    container: *DIContainer,
+    app_context: *AppContext,
+    route_count: usize,
+    crud_count: usize,
+    mcp_controller: ?*McpEndpoint = null, // 跟踪 MCP Endpoint
+    print_routes: bool, // 是否打印路由信息
+
+    /// 初始化 Bootstrap 模块
+    pub fn init(allocator: std.mem.Allocator, app: *App, global_logger: *logger.Logger, container: *DIContainer, app_context: *AppContext, print_routes: bool) !Self {
+        // 注册日志服务实例
+        if (!container.isRegistered(logger.Logger)) {
+            try container.registerInstance(logger.Logger, global_logger, null);
+        }
+
+        return .{
+            .allocator = allocator,
+            .app = app,
+            .global_logger = global_logger,
+            .container = container,
+            .app_context = app_context,
+            .route_count = 0,
+            .crud_count = 0,
+            .mcp_controller = null,
+            .print_routes = print_routes,
+        };
+    }
+
+    /// 清理资源
+    pub fn deinit(self: *Self) void {
+        // 清理 MCP Server（如果已注册）
+        const mcp = @import("../mcp/mod.zig");
+        if (self.container.isRegistered(mcp.McpServer)) {
+            if (self.container.resolve(mcp.McpServer)) |mcp_server| {
+                mcp_server.deinit();
+            } else |_| {}
+        }
+
+        // 清理 MCP 控制器
+        if (self.mcp_controller) |ctrl| {
+            self.allocator.destroy(ctrl);
+            self.mcp_controller = null;
+        }
+    }
+
+    /// 获取应用上下文
+    pub fn getContext(self: *const Self) *AppContext {
+        return self.app_context;
+    }
+
+    /// 注册所有路由
+    /// 包括 CRUD 模块和自定义控制器路由
+    pub fn registerRoutes(self: *Self) !void {
+        // 注册 CRUD 模块
+        try self.registerCrudModules();
+
+        // 注册自定义控制器路由
+        try self.registerCustomRoutes();
+
+        // 根据启动参数决定是否打印路由
+        if (self.print_routes) {
+            self.app.printRoutes();
+        }
+    }
+
+    /// 注册 CRUD 模块
+    /// 自动生成 list/get/save/delete/modify/select 路由
+    fn registerCrudModules(self: *Self) !void {
+        const registerCrudWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, comptime Model: type) !void {
+                try app.crud(path, Model);
+                try app.crud("api/" ++ path, Model);
+            }
+        }.exec;
+
+        // =====================================================
+        // ecom-admin-dashboard 对接模块 (sys/biz/op 新表)
+        // =====================================================
+
+        // Phase 1: 组织/职位/角色（管理员由 system_ext.Admin 接管完整接口）
+        try registerCrudWithAlias(self.app, "system/dept", models.SysDept);
+        try registerCrudWithAlias(self.app, "system/position", models.SysPosition);
+        // 注意：sys_role 使用自定义控制器处理菜单权限关联，不使用通用 CRUD
+        // try registerCrudWithAlias(self.app, "system/role", models.SysRole);
+        self.crud_count += 2; // 原来是 3，现在是 2
+
+        // Phase 2: 菜单/字典
+        try registerCrudWithAlias(self.app, "system/menu", models.SysMenu);
+        // 字典相关（dict/dict_item/dict/category）由 registerSystemExtensionsRoutes 的 Dict 控制器托管，
+        // 这里不再走自动 CRUD，避免 list/save/delete 等路由重复注册冲突。
+        self.crud_count += 1;
+
+        // Phase 3: 配置/会员
+        try registerCrudWithAlias(self.app, "system/config", models.SysConfig);
+        try registerCrudWithAlias(self.app, "member", models.BizMember);
+        try registerCrudWithAlias(self.app, "business/member", models.BizMember);
+        self.crud_count += 3;
+
+        // 每个 CRUD 模块生成 14 个路由（原路径 7 条 + /api 前缀别名 7 条）
+        self.route_count += self.crud_count * 14;
+    }
+
+    /// 注册自定义控制器路由
+    fn registerCustomRoutes(self: *Self) !void {
+        // 登录控制器
+        try self.registerAuthRoutes();
+
+        // 公共接口
+        try self.registerPublicRoutes();
+
+        // 管理后台路由
+        try self.registerAdminRoutes();
+
+        // 系统扩展路由（独立控制器）
+        try self.registerSystemExtRoutes();
+
+        // 注意：MCP 路由需要在 initListener 之后注册
+    }
+
+    /// 注册认证相关路由
+    fn registerAuthRoutes(self: *Self) !void {
+        // 注册 Login 控制器
+        if (!self.container.isRegistered(controllers.auth.Login)) {
+            try self.container.registerSingleton(controllers.auth.Login, controllers.auth.Login, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.auth.Login {
+                    const l = try di.resolve(logger.Logger);
+                    // 从容器中解析 AuthService
+                    const auth_service = try di.resolve(@import("../application/services/auth_service.zig").AuthService);
+
+                    const ctrl = try allocator.create(controllers.auth.Login);
+                    ctrl.* = controllers.auth.Login.init(allocator, l, auth_service);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const login = try self.container.resolve(controllers.auth.Login);
+        try self.app.route("/login", login, &controllers.auth.Login.login);
+        try self.app.route("/register", login, &controllers.auth.Login.register);
+        try self.app.route("/member/login", login, &controllers.auth.Login.member_login);
+        try self.app.route("/api/member/login", login, &controllers.auth.Login.member_login);
+        try self.app.route("/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
+        try self.app.route("/api/member/refreshInfo", login, &controllers.auth.Login.member_refresh_info);
+        try self.app.route("/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
+        try self.app.route("/api/member/refreshPermissions", login, &controllers.auth.Login.member_refresh_permissions);
+
+        // 注册 OAuth 控制器
+        if (!self.container.isRegistered(controllers.auth.OAuth)) {
+            try self.container.registerSingleton(controllers.auth.OAuth, controllers.auth.OAuth, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.auth.OAuth {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.auth.OAuth);
+                    ctrl.* = controllers.auth.OAuth.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const oauth = try self.container.resolve(controllers.auth.OAuth);
+        try self.app.route("/api/oauth/authorize", oauth, &controllers.auth.OAuth.authorize);
+        try self.app.route("/api/oauth/callback", oauth, &controllers.auth.OAuth.callback);
+        try self.app.route("/api/oauth/refresh", oauth, &controllers.auth.OAuth.refresh);
+        try self.app.route("/api/oauth/bind", oauth, &controllers.auth.OAuth.bind);
+        try self.app.route("/api/oauth/bind/list", oauth, &controllers.auth.OAuth.bindList);
+        try self.app.route("/api/oauth/unbind", oauth, &controllers.auth.OAuth.unbind);
+
+        self.route_count += 14;
+    }
+
+    /// 注册公共接口路由
+    fn registerPublicRoutes(self: *Self) !void {
+        // 注册 Public 控制器
+        if (!self.container.isRegistered(controllers.common.Public)) {
+            try self.container.registerSingleton(controllers.common.Public, controllers.common.Public, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.common.Public {
+                    const l = try di.resolve(logger.Logger);
+                    const ctrl = try allocator.create(controllers.common.Public);
+                    ctrl.* = controllers.common.Public.init(allocator, l);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const public = try self.container.resolve(controllers.common.Public);
+        try self.app.route("/public/upload", public, &controllers.common.Public.upload);
+        try self.app.route("/public/folder", public, &controllers.common.Public.folder);
+        try self.app.route("/public/files", public, &controllers.common.Public.files);
+        self.route_count += 3;
+    }
+
+    /// 注册管理后台路由
+    fn registerAdminRoutes(self: *Self) !void {
+        // 注册 Setting 控制器
+        if (!self.container.isRegistered(controllers.admin.Setting)) {
+            try self.container.registerSingleton(controllers.admin.Setting, controllers.admin.Setting, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.admin.Setting {
+                    _ = di; // Setting 控制器不需要其他依赖
+                    const ctrl = try allocator.create(controllers.admin.Setting);
+                    ctrl.* = controllers.admin.Setting.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const setting = try self.container.resolve(controllers.admin.Setting);
+        try self.app.route("/setting/get", setting, &controllers.admin.Setting.get);
+        try self.app.route("/setting/save", setting, &controllers.admin.Setting.save);
+        try self.app.route("/setting/send_email", setting, &controllers.admin.Setting.send_mail);
+        try self.app.route("/setting/upload_config/get", setting, &controllers.admin.Setting.get_upload_config);
+        try self.app.route("/setting/upload_config/save", setting, &controllers.admin.Setting.save_upload_config);
+        try self.app.route("/setting/upload_config/test", setting, &controllers.admin.Setting.test_upload_config);
+        self.route_count += 6;
+
+        // 注意：角色管理路由已在 registerCrudModules 中通过 crud("role", models.Role) 注册
+        // 如果需要自定义角色控制器，请使用不同的路径前缀，如 /admin/role/*
+    }
+
+    /// 注册系统扩展路由
+    fn registerSystemExtRoutes(self: *Self) !void {
+        const registerWithAlias = struct {
+            fn exec(app: *App, comptime path: []const u8, ctrl: anytype, handler: anytype) !void {
+                app.route("/api" ++ path, ctrl, handler) catch |err| switch (err) {
+                    else => {
+                        if (!std.mem.eql(u8, @errorName(err), "AlreadyExists")) return err;
+                    },
+                };
+            }
+        }.exec;
+
+        if (!self.container.isRegistered(controllers.system_ext.Dept)) {
+            try self.container.registerSingleton(controllers.system_ext.Dept, controllers.system_ext.Dept, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Dept {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Dept);
+                    ctrl.* = controllers.system_ext.Dept.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Admin)) {
+            try self.container.registerSingleton(controllers.system_ext.Admin, controllers.system_ext.Admin, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Admin {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Admin);
+                    ctrl.* = controllers.system_ext.Admin.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Menu)) {
+            try self.container.registerSingleton(controllers.system_ext.Menu, controllers.system_ext.Menu, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Menu {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Menu);
+                    ctrl.* = controllers.system_ext.Menu.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.DictItem)) {
+            try self.container.registerSingleton(controllers.system_ext.DictItem, controllers.system_ext.DictItem, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.DictItem {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.DictItem);
+                    ctrl.* = controllers.system_ext.DictItem.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Dict)) {
+            try self.container.registerSingleton(controllers.system_ext.Dict, controllers.system_ext.Dict, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Dict {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Dict);
+                    ctrl.* = controllers.system_ext.Dict.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Role)) {
+            try self.container.registerSingleton(controllers.system_ext.Role, controllers.system_ext.Role, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Role {
+                    const l = try di.resolve(logger.Logger);
+                    const ctrl = try allocator.create(controllers.system_ext.Role);
+                    ctrl.* = controllers.system_ext.Role.init(allocator, l);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Config)) {
+            try self.container.registerSingleton(controllers.system_ext.Config, controllers.system_ext.Config, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Config {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Config);
+                    ctrl.* = controllers.system_ext.Config.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Member)) {
+            try self.container.registerSingleton(controllers.system_ext.Member, controllers.system_ext.Member, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Member {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Member);
+                    ctrl.* = controllers.system_ext.Member.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Payment)) {
+            try self.container.registerSingleton(controllers.system_ext.Payment, controllers.system_ext.Payment, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Payment {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Payment);
+                    ctrl.* = controllers.system_ext.Payment.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Version)) {
+            try self.container.registerSingleton(controllers.system_ext.Version, controllers.system_ext.Version, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Version {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Version);
+                    ctrl.* = controllers.system_ext.Version.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        if (!self.container.isRegistered(controllers.system_ext.Log)) {
+            try self.container.registerSingleton(controllers.system_ext.Log, controllers.system_ext.Log, struct {
+                fn factory(di: *DIContainer, allocator: std.mem.Allocator) anyerror!*controllers.system_ext.Log {
+                    _ = di;
+                    const ctrl = try allocator.create(controllers.system_ext.Log);
+                    ctrl.* = controllers.system_ext.Log.init(allocator);
+                    return ctrl;
+                }
+            }.factory, null);
+        }
+
+        const dept = try self.container.resolve(controllers.system_ext.Dept);
+        const admin = try self.container.resolve(controllers.system_ext.Admin);
+        const menu = try self.container.resolve(controllers.system_ext.Menu);
+        const dict = try self.container.resolve(controllers.system_ext.Dict);
+        const role = try self.container.resolve(controllers.system_ext.Role);
+        const config_ctrl = try self.container.resolve(controllers.system_ext.Config);
+        const member_ctrl = try self.container.resolve(controllers.system_ext.Member);
+        const payment = try self.container.resolve(controllers.system_ext.Payment);
+        const log_ctrl = try self.container.resolve(controllers.system_ext.Log);
+
+        try registerWithAlias(self.app, "/system/dept/tree", dept, &controllers.system_ext.Dept.dept_tree);
+        try registerWithAlias(self.app, "/system/dept/all", dept, &controllers.system_ext.Dept.dept_all);
+        try registerWithAlias(self.app, "/system/dept/remove", dept, &controllers.system_ext.Dept.dept_delete);
+
+        try registerWithAlias(self.app, "/system/admin/list", admin, &controllers.system_ext.Admin.list_with_roles);
+        try registerWithAlias(self.app, "/system/admin/get", admin, &controllers.system_ext.Admin.get);
+        try registerWithAlias(self.app, "/system/admin/save", admin, &controllers.system_ext.Admin.save);
+        try registerWithAlias(self.app, "/system/admin/set", admin, &controllers.system_ext.Admin.set);
+        try registerWithAlias(self.app, "/system/admin/delete", admin, &controllers.system_ext.Admin.delete);
+        try registerWithAlias(self.app, "/system/admin/select", admin, &controllers.system_ext.Admin.select);
+        try registerWithAlias(self.app, "/system/admin/resetPassword", admin, &controllers.system_ext.Admin.reset_password);
+        try registerWithAlias(self.app, "/system/admin/assignRoles", admin, &controllers.system_ext.Admin.assign_roles);
+        try registerWithAlias(self.app, "/system/userInfo", admin, &controllers.system_ext.Admin.user_info);
+
+        try registerWithAlias(self.app, "/system/menu/tree", menu, &controllers.system_ext.Menu.tree);
+        try registerWithAlias(self.app, "/system/menu/export", menu, &controllers.system_ext.Menu.menu_export);
+
+        try registerWithAlias(self.app, "/system/dict/list", dict, &controllers.system_ext.Dict.list);
+        try registerWithAlias(self.app, "/system/dict/save", dict, &controllers.system_ext.Dict.save);
+        try registerWithAlias(self.app, "/system/dict/delete", dict, &controllers.system_ext.Dict.delete);
+        try registerWithAlias(self.app, "/system/dict/set", dict, &controllers.system_ext.Dict.set);
+        try registerWithAlias(self.app, "/system/dict/items", dict, &controllers.system_ext.Dict.items);
+        try registerWithAlias(self.app, "/system/dict/item/save", dict, &controllers.system_ext.Dict.itemSave);
+        try registerWithAlias(self.app, "/system/dict/item/delete", dict, &controllers.system_ext.Dict.itemDelete);
+        try registerWithAlias(self.app, "/system/dict/item/set", dict, &controllers.system_ext.Dict.itemSet);
+
+        try registerWithAlias(self.app, "/system/role/save", role, &controllers.system_ext.Role.save);
+        try registerWithAlias(self.app, "/system/role/list", role, &controllers.system_ext.Role.list);
+        try registerWithAlias(self.app, "/system/role/permissions/get", role, &controllers.system_ext.Role.role_permissions_get);
+        try registerWithAlias(self.app, "/system/role/permissions/info", role, &controllers.system_ext.Role.role_permissions_info);
+        try registerWithAlias(self.app, "/system/role/delete", role, &controllers.system_ext.Role.delete);
+
+        try registerWithAlias(self.app, "/system/config/refresh-cache", config_ctrl, &controllers.system_ext.Config.refresh_cache);
+        try registerWithAlias(self.app, "/system/config/export", config_ctrl, &controllers.system_ext.Config.config_export);
+        try registerWithAlias(self.app, "/system/config/import", config_ctrl, &controllers.system_ext.Config.config_import);
+        try registerWithAlias(self.app, "/system/config/backup", config_ctrl, &controllers.system_ext.Config.config_backup);
+
+        try registerWithAlias(self.app, "/business/member/export", member_ctrl, &controllers.system_ext.Member.member_export);
+        try registerWithAlias(self.app, "/business/member/batchEnable", member_ctrl, &controllers.system_ext.Member.batch_enable);
+        try registerWithAlias(self.app, "/business/member/batchDisable", member_ctrl, &controllers.system_ext.Member.batch_disable);
+        try registerWithAlias(self.app, "/business/member/batchDelete", member_ctrl, &controllers.system_ext.Member.batch_delete);
+        try registerWithAlias(self.app, "/business/member/tag/add", member_ctrl, &controllers.system_ext.Member.tag_add);
+        try registerWithAlias(self.app, "/business/member/pointRecharge", member_ctrl, &controllers.system_ext.Member.point_recharge);
+        try registerWithAlias(self.app, "/business/member/balanceRecharge", member_ctrl, &controllers.system_ext.Member.balance_recharge);
+
+        try registerWithAlias(self.app, "/system/payment/list", payment, &controllers.system_ext.Payment.list);
+        try registerWithAlias(self.app, "/system/payment/save", payment, &controllers.system_ext.Payment.save);
+        try registerWithAlias(self.app, "/system/payment/delete", payment, &controllers.system_ext.Payment.delete);
+        try registerWithAlias(self.app, "/system/payment/set", payment, &controllers.system_ext.Payment.set);
+        try registerWithAlias(self.app, "/system/payment/test", payment, &controllers.system_ext.Payment.test_conn);
+
+        try registerWithAlias(self.app, "/system/log/list", log_ctrl, &controllers.system_ext.Log.list);
+        try registerWithAlias(self.app, "/system/log/statistics", log_ctrl, &controllers.system_ext.Log.statistics);
+        try registerWithAlias(self.app, "/system/log/clean", log_ctrl, &controllers.system_ext.Log.clean);
+        try registerWithAlias(self.app, "/system/log/archive", log_ctrl, &controllers.system_ext.Log.archive);
+        try registerWithAlias(self.app, "/system/log/export", log_ctrl, &controllers.system_ext.Log.export_logs);
+
+        self.route_count += 100;
+    }
+
+    /// 注册 MCP 路由（AI 辅助开发）
+    pub fn registerMcpRoutes(self: *Self) !void {
+        const mcp = @import("../mcp/mod.zig");
+
+        // 从配置中获取 MCP 配置
+        const service_mgr = zigcms.getServiceManager() orelse return error.ServiceManagerNotInitialized;
+        const config = service_mgr.getConfig();
+
+        // 检查 MCP 是否启用
+        if (!config.mcp.enabled) {
+            logger.info("ℹ️  MCP 服务未启用", .{});
+            return;
+        }
+
+        // 初始化 MCP Server
+        const mcp_server = try mcp.McpServer.init(self.allocator, config.mcp);
+        errdefer mcp_server.deinit();
+
+        // 注册到 DI 容器
+        if (!self.container.isRegistered(mcp.McpServer)) {
+            try self.container.registerInstance(mcp.McpServer, mcp_server, null);
+        }
+
+        // 创建 MCP Endpoint
+        const mcp_endpoint = try self.allocator.create(McpEndpoint);
+        mcp_endpoint.* = .{
+            .path = config.mcp.transport.sse_path,
+            .server = mcp_server,
+        };
+        self.mcp_controller = mcp_endpoint;
+
+        // 注册到 Endpoint.Listener
+        try self.app.registerMcpEndpoint(mcp_endpoint);
+
+        logger.info("✅ MCP Endpoint 已注册: {s} (GET/POST)", .{config.mcp.transport.sse_path});
+        self.route_count += 1;
+
+        // 注意：MCP 路由注册到主 HTTP 服务器，使用 API 端口而不是 MCP 配置的端口
+        logger.info("✅ MCP 服务已启用: {s}:{d}{s}", .{
+            config.api.host,
+            config.api.port,
+            config.mcp.transport.sse_path,
+        });
+    }
+
+    /// 获取路由统计信息
+    pub fn getRouteStats(self: *const Self) RouteStats {
+        return .{
+            .total_routes = self.route_count,
+            .crud_modules = self.crud_count,
+            .crud_routes = self.crud_count * 6,
+            .custom_routes = self.route_count - (self.crud_count * 6),
+        };
+    }
+
+    /// 打印启动摘要
+    /// 显示服务器配置信息和路由统计
+    pub fn printStartupSummary(self: *const Self) void {
+        const stats = self.getRouteStats();
+        const service_mgr = zigcms.getServiceManager() orelse return;
+        const config = service_mgr.getConfig();
+
+        // 打印分隔线和标题
+        logger.info("", .{});
+        logger.info("╔══════════════════════════════════════════════════════════════╗", .{});
+        logger.info("║                    ZigCMS 启动摘要                           ║", .{});
+        logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
+
+        // 服务器配置
+        logger.info("║ 📡 服务器配置:                                               ║", .{});
+        logger.info("║    地址: http://{s}:{d}", .{ config.api.host, config.api.port });
+        logger.info("║    最大连接数: {d}", .{config.api.max_clients});
+        logger.info("║    超时时间: {d}s", .{config.api.timeout});
+        logger.info("║    静态资源目录: {s}", .{config.api.public_folder});
+
+        // 应用配置
+        logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
+        logger.info("║ ⚙️  应用配置:                                                 ║", .{});
+        logger.info("║    缓存: {s}", .{if (config.app.enable_cache) "已启用" else "已禁用"});
+        logger.info("║    缓存 TTL: {d}s", .{config.app.cache_ttl_seconds});
+        logger.info("║    插件系统: {s}", .{if (config.app.enable_plugins) "已启用" else "已禁用"});
+        logger.info("║    最大并发任务: {d}", .{config.app.max_concurrent_tasks});
+
+        // MCP 服务配置
+        logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
+        logger.info("║ 🤖 MCP 服务:                                                 ║", .{});
+        if (config.mcp.enabled) {
+            logger.info("║    状态: ✅ 已启用", .{});
+            logger.info("║    SSE 端点: http://{s}:{d}{s}", .{
+                config.api.host,
+                config.api.port,
+                config.mcp.transport.sse_path,
+            });
+            logger.info("║    消息端点: http://{s}:{d}{s}", .{
+                config.api.host,
+                config.api.port,
+                config.mcp.transport.message_path,
+            });
+            logger.info("║    工具数量: 10 个", .{});
+            logger.info("║      - 项目结构/搜索/读取", .{});
+            logger.info("║      - CRUD/模型/迁移/测试生成", .{});
+            logger.info("║      - 知识库问答/数据库/缓存操作", .{});
+            logger.info("║    📖 文档: src/mcp/docs/INDEX.md", .{});
+        } else {
+            logger.info("║    状态: ⚠️  未启用", .{});
+            logger.info("║    提示: 在 config/mcp.yaml 中设置 enabled: true", .{});
+        }
+
+        // 路由统计
+        logger.info("╠══════════════════════════════════════════════════════════════╣", .{});
+        logger.info("║ 🛣️  路由统计:                                                 ║", .{});
+        logger.info("║    CRUD 模块: {d} 个 (每个模块 6 条路由)", .{stats.crud_modules});
+        logger.info("║    CRUD 路由: {d} 条", .{stats.crud_routes});
+        logger.info("║    自定义路由: {d} 条", .{stats.custom_routes});
+        logger.info("║    总路由数: {d} 条", .{stats.total_routes});
+
+        // 结束
+        logger.info("╚══════════════════════════════════════════════════════════════╝", .{});
+        logger.info("", .{});
+    }
+};
+
+/// 路由统计信息
+pub const RouteStats = struct {
+    total_routes: usize,
+    crud_modules: usize,
+    crud_routes: usize,
+    custom_routes: usize,
+};

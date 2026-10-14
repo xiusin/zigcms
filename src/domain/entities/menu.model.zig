@@ -1,0 +1,16 @@
+pub const Menu = struct {
+    id: ?i32 = null,
+    title: []const u8 = "",
+    parent_id: i32 = 0,
+    href: []const u8 = "",
+    icon: []const u8 = "",
+    auth_node: []const u8 = "",
+    params: []const u8 = "",
+    pid: i32 = 0,
+    remark: []const u8 = "",
+    sort: i32 = 0,
+    status: i32 = 0,
+    target: []const u8 = "",
+    create_time: i64 = 0,
+    update_time: i64 = 0,
+};
